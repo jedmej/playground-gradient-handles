@@ -28,14 +28,25 @@ token system and the critique that shaped it.
 | Drag on ring (touch)       | Change radius                                               |
 | `Tab`                      | Focus next node                                             |
 | `← ↑ → ↓`                  | Nudge 1 px (`Shift` = 10 px)                                 |
-| `[` / `]`                  | Radius −/+ 4 px (`Shift` = 16 px)                            |
+| `-` / `=` (also `+`, numpad −/+) | Radius −/+ 4 px (`Shift` = 16 px) on the selected / focused node; bursts coalesce into one undo step |
+| Scroll / two-finger scroll over a node | Radius (`r *= exp(−Δy · 0.0015)`). Trackpad pinch (`ctrl` + wheel) is the same ×3. Never scrolls or zooms the page while over a node; over empty field the page behaves normally |
+| `⇧` or `⌥` + scroll over a node | SOFT −/+ (`soft −= Δ · 0.0012`); one `SOFT N-xx` undo step per 700 ms burst |
+| SOFT gauge (inner 270° tick arc inside the bezel) | Drag it to set the node's softness 0–100 %. Visible with the bezel; hidden under 64 px reach and in draw mode |
+| `SOFT` row `[−]` `[+]`      | Softness −/+ 10 %                                            |
+| `]` / `[`                  | Layer up / down (`⇧]` bring to front, `⇧[` send to back). Layer = array order = serial `N-xx` = Tab order; the node stays selected |
+| Right-click a node (`ContextMenu`, `Shift+F10` on a focused node) | Node menu: BRING TO FRONT · MOVE UP · MOVE DOWN · SEND TO BACK · DELETE. ↑/↓ move, Enter/Space activate, Esc / click outside / scroll closes |
 | `Esc`                      | Deselect                                                    |
 | Double-click empty field   | Add a node there (colour = field under the point)           |
 | Double-tap (touch)         | Same, two taps within 380 ms and 36 px (mouse: 320 ms / 24 px)  |
 | `Add node` button          | Adds a node at the emptiest spot (max 16)                   |
 | `Delete` / `Backspace`     | Remove selected node (min 2)                                |
 | `Remove node` button       | Same                                                        |
-| Tap, then hold a selected core (touch, 550 ms) | Remove it; FLARE arc shows progress on the armed hold only, moving > 6 px cancels |
+| Tap, then hold a selected core (touch, 550 ms) | Opens the node menu beside it (SIGNAL progress arc on the armed hold only, moving > 6 px cancels). Removing on touch = tap → hold → `DELETE`. Holding an unselected node does nothing |
+| Two-finger pinch (touch, node selected) | Scales that node's reach from where the pinch started; one `RADIUS` undo step. A second finger cancels any one-finger drag / hold / stroke |
+| `D` / `DRAW [D]` button    | Draw mode (crosshair everywhere, nodes not hit-tested). Press-drag paints one freehand stroke, release simplifies it (≤ 64 pts), selects it and leaves draw mode. `Esc` exits. Touch: the `DRAW` toggle on the stage foot line |
+| Drag a stroke / shape body | Hover shows an open hand; dragging anywhere on a stroke (or inside an ellipse / box / capsule core) moves the whole node. One undo step `MOVE N-xx` |
+| `SHAPE` row                | Circle / ellipse / box / capsule for the selected node (undo step `SHAPE N-xx`). Disabled for strokes, which show `STROKE · nn PTS` |
+| `ROT` `[−]` `[+]`, `,` `.` | Rotate ellipse / box / capsule 15° (`Shift` = 45°); bursts coalesce into one undo step |
 | Colour swatch / HEX field  | Recolour the selected node (OKLab tween); Enter/blur commit, Esc reverts |
 | Palette strip chip         | Select that node                                            |
 | `SAVE [↧]`                 | Store the field in CS-06 (`localStorage` key `gh.custom.v1`) |
@@ -45,7 +56,7 @@ token system and the critique that shaped it.
 | Export PNG                 | Downloads the field only (no handles) at 2048 px long side  |
 | Reset                      | Restores the current preset's positions and radii           |
 
-Grab-zone priority is deterministic: node core beats ring band beats empty
+Grab-zone priority is deterministic: node core beats the SOFT gauge beats ring band beats body beats empty
 canvas, and among overlapping candidates the nearest wins. Ring bands are only
 grabbable on rings that are visible (hovered, selected or focused), so a hidden
 ring never steals the cursor.
@@ -61,6 +72,11 @@ node then contributes a gaussian weight with a small inverse-distance tail,
 normalised, blended in OKLab, then converted back to sRGB with animated film
 grain to kill banding. Device pixel ratio is capped at 2. Export renders the
 same warp at the moment you press the button.
+
+Each node has a softness (0–1, default 0.5; strokes start at 0.75) that reshapes its weight
+(`exp(−1.5·q^p) + tail/(1+q⁴)`; 0.5 is the classic gaussian). Nodes are also layers: after the soft average the
+shader mixes each node's core over it in array order, back → front (`LAYER_K = 0.85`), so overlapping nodes stack
+while edges stay soft. See `DESIGN.md` "Round 4b".
 
 ## Development
 
@@ -85,6 +101,17 @@ Martian Mono). No runtime network calls beyond same-origin assets.
   `data-drag="none|node|ring"`.
 - Preset buttons: `[data-preset="cs01"…"cs05"]`. Export: `[data-action="export"]`.
 - Canvas frame: `[data-testid="stage"]`.
+- Round 4: `[data-node]` also carries `data-shape="circle|ellipse|box|capsule|stroke"` (and `data-pts` = point count for
+  strokes); `html[data-tool="edit|draw"]`; `data-hover-state` gains `body`; `#draw-guide` (visible only while drawing);
+  `[data-action="draw-mode|rot-minus|rot-plus"]` (two `draw-mode` buttons exist, the stage-foot one only on coarse
+  pointers); shape picker `.shape-btn[role=radio][data-shape]`. Note `[data-shape]` also matches the picker buttons,
+  so scope node queries as `[data-node][data-shape=…]`. CS-06 storage is `{v:2,…}` (v1 still loads).
+- Round 4b: `[data-node]` also carries `data-soft` (0–100, the target value) and `data-layer` (1-based, back = 1);
+  `data-hover-state` / `data-drag` gain `soft`; panel `#ns-soft`, `#ns-layer` (`LYR 03/07`), `#soft-bar` (10 `<i>`,
+  `.is-on` = filled) and `[data-action="soft-minus|soft-plus"]`. The node menu is `[data-testid="node-menu"]`
+  (always in the DOM, `hidden` while closed; `role=menu`, items `role=menuitem`) with items
+  `[data-action="layer-front|layer-up|layer-down|layer-back|menu-delete"]`. CS-06 nodes carry `soft` only when it
+  differs from the shape default (0.5, strokes 0.75). The radius keys moved from `[`/`]` to `-`/`=`.
 
 ## Credits
 

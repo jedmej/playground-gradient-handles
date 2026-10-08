@@ -15,7 +15,7 @@
       content="A mesh-gradient handle study: two to sixteen colour nodes on a shader field, with separate grab zones for moving a node and resizing its influence ring."
     />
   </head>
-  <body data-hover-state="idle" data-drag="none" data-node-count="9" data-selected="">
+  <body data-hover-state="idle" data-tool="edit" data-drag="none" data-node-count="9" data-selected="">
     <header class="topbar">
       <a class="mark" href="#top" aria-label="NEWFRAME">
         <span class="mark-glyph" aria-hidden="true"></span>NEWFRAME
@@ -48,7 +48,12 @@
           </div>
           <div class="stage-foot">
             <span class="foot-l" id="foot-serial">CUR // X —.——— Y —.———</span>
-            <span class="foot-r" id="foot-dims">—×— PX</span>
+            <span class="foot-rr">
+              <button class="mini mini-draw foot-draw" type="button" data-action="draw-mode" aria-pressed="false" title="Draw a stroke of colour">
+                <span class="mini-l">DRAW</span> <b>[D]</b>
+              </button>
+              <span class="foot-r" id="foot-dims">—×— PX</span>
+            </span>
           </div>
         </div>
       </section>
@@ -60,6 +65,7 @@
           <p class="lede">
             Colour nodes on a shader field. Grab a reticle to move it. Grab its ring to change how
             far its colour reaches. <span class="t-fine">Double-click</span><span class="t-touch">Double-tap</span> the field to drop a node.
+            <span class="t-fine">Press D, or DRAW,</span><span class="t-touch">Tap DRAW and drag</span> to paint a stroke of colour.
           </p>
         </div>
 
@@ -79,13 +85,55 @@
         </section>
 
         <section class="spec-section" aria-labelledby="h-node">
-          <h2 class="label" id="h-node">NODE <span class="dim" id="node-hint">— HOVER OR TAP A RETICLE</span></h2>
+          <div class="label label-row">
+            <h2 id="h-node">NODE <span class="dim" id="node-hint">— HOVER / TAP A RETICLE</span></h2>
+            <span class="label-actions">
+              <button class="mini mini-draw" type="button" data-action="draw-mode" aria-pressed="false" title="Draw a stroke of colour (D)">
+                <span class="mini-l">DRAW</span> <b>[D]</b>
+              </button>
+            </span>
+          </div>
           <div class="palette" id="palette" data-testid="palette" role="group" aria-label="Palette: current node colours"></div>
           <dl class="node-spec" id="node-spec">
-            <div class="full"><dt>ID</dt><dd id="ns-id">—</dd></div>
+            <div class="full"><dt>ID</dt><dd class="id-dd"><span id="ns-id">—</span><span class="ns-layer" id="ns-layer">—</span></dd></div>
             <div><dt>X</dt><dd id="ns-x">—</dd></div>
             <div><dt>Y</dt><dd id="ns-y">—</dd></div>
-            <div class="full"><dt>R</dt><dd id="ns-r">—</dd></div>
+            <div class="full soft-row">
+              <dt>R</dt><dd id="ns-r">—</dd>
+              <dt class="soft-dt">SOFT</dt>
+              <dd class="soft-dd">
+                <span id="ns-soft">—</span>
+                <span class="soft-bar" id="soft-bar" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                <button type="button" class="mini mini-soft" data-action="soft-minus" aria-label="Crisper, softness −10%" title="Crisper −10% (⇧ scroll)" disabled>[−]</button>
+                <button type="button" class="mini mini-soft" data-action="soft-plus" aria-label="Softer, softness +10%" title="Softer +10% (⇧ scroll)" disabled>[+]</button>
+              </dd>
+            </div>
+            <div class="full shape-row">
+              <dt>SHAPE</dt>
+              <dd class="shape-dd">
+                <span class="shape-tag" id="shape-tag" hidden>STROKE · 00 PTS</span>
+                <span class="shape-group" id="shape-group" role="radiogroup" aria-label="Node shape">
+                  <button type="button" class="shape-btn" role="radio" aria-checked="false" aria-label="Circle" title="Circle" data-shape="circle" disabled>
+                    <i class="glyph g-circle" aria-hidden="true"></i>
+                  </button>
+                  <button type="button" class="shape-btn" role="radio" aria-checked="false" aria-label="Ellipse" title="Ellipse" data-shape="ellipse" disabled>
+                    <i class="glyph g-ellipse" aria-hidden="true"></i>
+                  </button>
+                  <button type="button" class="shape-btn" role="radio" aria-checked="false" aria-label="Box" title="Box" data-shape="box" disabled>
+                    <i class="glyph g-box" aria-hidden="true"></i>
+                  </button>
+                  <button type="button" class="shape-btn" role="radio" aria-checked="false" aria-label="Capsule" title="Capsule" data-shape="capsule" disabled>
+                    <i class="glyph g-capsule" aria-hidden="true"></i>
+                  </button>
+                </span>
+              </dd>
+              <dt class="rot-dt">ROT</dt>
+              <dd class="rot-dd">
+                <span id="ns-rot">—</span>
+                <button type="button" class="mini mini-rot" data-action="rot-minus" aria-label="Rotate −15°" title="Rotate −15° ( , )" disabled>[−]</button>
+                <button type="button" class="mini mini-rot" data-action="rot-plus" aria-label="Rotate +15°" title="Rotate +15° ( . )" disabled>[+]</button>
+              </dd>
+            </div>
             <div class="full last colour-row">
               <dt>COLOUR</dt>
               <dd>
@@ -136,10 +184,10 @@
         <p class="status" id="status" role="status" aria-live="polite"></p>
 
         <p class="keys">
-          <span>TAB</span> focus node <span>←↑→↓</span> nudge <span>[ ]</span> radius
+          <span>TAB</span> focus <span>←↑→↓</span> nudge <span>[ ]</span> layer
           <span>SHIFT</span> ×10
-          <span class="k-fine"><span>DBL-CLICK</span> add <span>DEL</span> remove <span>⌘Z</span> undo</span>
-          <span class="k-touch"><span>DOUBLE-TAP</span> add <span>TAP + HOLD</span> remove</span>
+          <span class="k-fine"><span>SCROLL</span> <span>− =</span> radius <span>⇧ SCROLL</span> soft <span>DBL-CLICK</span> add <span>D</span> draw <span>, .</span> rotate <span>DEL</span> remove <span>⌘Z</span> undo</span>
+          <span class="k-touch"><span>DOUBLE-TAP</span> add <span>DRAW</span> toggle <span>PINCH</span> radius <span>TAP + HOLD</span> menu</span>
         </p>
       </aside>
 
