@@ -1,6 +1,6 @@
 # Gradient handles
 
-A mesh-gradient *handle study*. Nine colour nodes sit on a WebGL field; each one
+A mesh-gradient *handle study*. Two to sixteen colour nodes (nine to start) sit on a WebGL field; each one
 has a position, a colour and an influence radius. The point of the demo is one
 interaction detail: grabbing a node and grabbing its influence ring are two
 different things, and the cursor tells you which one you are about to do.
@@ -30,6 +30,16 @@ token system and the critique that shaped it.
 | `← ↑ → ↓`                  | Nudge 1 px (`Shift` = 10 px)                                 |
 | `[` / `]`                  | Radius −/+ 4 px (`Shift` = 16 px)                            |
 | `Esc`                      | Deselect                                                    |
+| Double-click empty field   | Add a node there (colour = field under the point)           |
+| Double-tap (touch)         | Same, two taps within 380 ms and 36 px (mouse: 320 ms / 24 px)  |
+| `Add node` button          | Adds a node at the emptiest spot (max 16)                   |
+| `Delete` / `Backspace`     | Remove selected node (min 2)                                |
+| `Remove node` button       | Same                                                        |
+| Tap, then hold a selected core (touch, 550 ms) | Remove it; FLARE arc shows progress on the armed hold only, moving > 6 px cancels |
+| Colour swatch / HEX field  | Recolour the selected node (OKLab tween); Enter/blur commit, Esc reverts |
+| Palette strip chip         | Select that node                                            |
+| `SAVE [↧]`                 | Store the field in CS-06 (`localStorage` key `gh.custom.v1`) |
+| `⌘/Ctrl+Z`, `⇧⌘/Ctrl+Z`    | Undo / redo (50 steps): add, remove, colour, drags, presets |
 | Colour set rows            | Switch preset; colours tween in OKLab over ~600 ms          |
 | Export PNG                 | Downloads the field only (no handles) at 2048 px long side  |
 | Reset                      | Restores the current preset's positions and radii           |
@@ -65,7 +75,10 @@ Martian Mono). No runtime network calls beyond same-origin assets.
 
 ### Test hooks
 
-- Each handle: `[data-node="0–8"]` with live `data-x`, `data-y` (client px of
+- New in round 3: `<html>`/`<body>` `data-node-count`, `data-selected`;
+  `[data-action="add-node|remove-node|save-custom|undo"]`, `[data-preset="cs06"]`,
+  `[data-testid="node-color|node-hex|palette"]`, `[data-testid=palette] button[data-chip][data-hex]`.
+- Each handle: `[data-node="0–15"]` with live `data-x`, `data-y` (client px of
   the centre) and `data-radius` (CSS px).
 - `<html>` (and `<body>`): `data-hover-state="idle|node|ring"`,
   `data-drag="none|node|ring"`.

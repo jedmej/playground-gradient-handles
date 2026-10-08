@@ -162,3 +162,57 @@ Build to this revised plan.
   is hovered or dragged, and hide instead of clipping at the stage edge.
 - **Rulers:** end labels are inset so they clear the corner registration marks
   on narrow screens.
+
+## Round 3 — Rozwiń (dynamic nodes + custom palette)
+
+- **Node count 2–16.** `MAX_NODES`/`MIN_NODES` live in `store.ts`; the shader takes
+  `u_count` and breaks out of a fixed 16-iteration loop (WebGL1-legal). Nodes carry a
+  stable `uid`; `Handles.syncViews()` keys the SVG views by it, so re-indexing never
+  moves a reticle's animation state and DOM order always equals array order (Tab order).
+  Listeners resolve the index at event time.
+- **Add.** Double-click / double-tap on empty field (detected manually from pointer
+  events, 320 ms / 24 px, so touch behaves like mouse). The `Add node` button picks the
+  farthest point of a 9×9 grid. The new node takes the CPU-evaluated field colour under
+  it, radius 0.28, is selected, and "acquires": brackets start at 22 and settle to 14
+  while the ring eases in (snaps under reduced motion). At 16: `NODE LIMIT 16`.
+- **Remove.** Delete/Backspace, `[−] Remove node`, or on touch a 550 ms hold on a core.
+  Hold feedback is FLARE: brackets close in from 14 toward 6 while a FLARE arc fills
+  around the core (brackets also shrink more than a plain drag does, so the two are
+  distinguishable). Moving > 8 px cancels it and it stays a normal drag. At 2 nodes:
+  `MIN 2 NODES`. Selected/focused/armed indices are remapped on removal; hover and drag
+  are cleared.
+- **Colour.** The panel edits `selected ?? focused`, never hover. `[■]` swatch (native
+  colour input, visually hidden, label-wrapped) plus a mono HEX field on a void plate:
+  lime underline on focus, FLARE when invalid, Enter/blur commit, Esc reverts. Tween is
+  per node (240 ms OKLab). The shared-array tween bug is fixed: `lab`/`labFrom`/`labTo`
+  are distinct arrays and a tween copies `lab` into `labFrom`.
+- **Palette strip** under the NODE label: one chip per node, live, click selects; the
+  selected chip gets a lime underline.
+- **CS-06 CUSTOM.** `SAVE [↧]` writes `gh.custom.v1` (`{v:1,nodes,savedAt}`); parsing is
+  defensive. Restoring reconciles count (survivors glide, extras acquire, surplus drops).
+  Reset on CS-06 restores the saved state. Edited presets show a dim `MOD` tag.
+- **Undo.** `history.ts`: snapshot stack (cap 50) of `{presetIndex, nodes}`. Gestures
+  snapshot at start and push on end only if something changed; colour edits are one step
+  per session; arrow/bracket nudges coalesce per 700 ms burst. ⌘/Ctrl+Z, ⇧⌘Z / ⌘Y redo,
+  ignored inside text inputs. `UNDO [↶]` button beside Reset.
+
+## Round 3b — fixes
+
+- **Spec column.** The actions block was `position: sticky` and painted over the NODE
+  section; it is now an ordinary flex child. On desktop, Add/Remove are one row and
+  Export/Undo/Reset one row (36–38 px; 40 px on coarse pointers), labels are `nowrap`.
+  `@media (max-height: 920px / 820px)` tighten padding, gaps, preset rows (28/26 px) and
+  title (44/36 px) and hide the lede; the key legend stays (tighter) and only hides
+  below 760 px tall. Verified by bounding boxes: no
+  sibling intersections and no scroll at 1280×800, 1440×900, 1366×700 and 1920×1080.
+- **Status** is Martian Mono 11 px, SIGNAL on a VOID plate, full opacity while shown;
+  the line's height is always reserved (no layout jump). Still the `#status` live region.
+- **Touch gestures.** Double-tap 380 ms / 36 px (mouse stays 320 ms / 24 px). Long-press
+  removal arms only if the node was already selected before the press (tap selects,
+  then press-and-hold removes); the FLARE arc shows only on that armed hold; movement
+  > 6 px cancels. At 2 nodes the hold just reports `MIN 2 NODES` and the drag continues.
+  Hint copy: `TAP + HOLD` remove.
+- **Undo by identity.** Snapshots carry each node's `uid`; restore matches by uid, so
+  survivors keep their views and positions, a removed node returns at its original
+  array index with its original uid/x/y/r/hex, and add/redo behave the same. Selection
+  refs are remapped by uid. Preset specs (no uid) still reconcile by index.
