@@ -1,10 +1,11 @@
 import type { Actions } from './actions';
 import { parseHex } from './color';
+import { FieldBuffers, packField } from './field';
 import { GradientRenderer } from './gradient';
 import type { Metrics } from './handles';
 import type { History } from './history';
 import { PRESETS, type Preset } from './presets';
-import { currentPreset, CUSTOM_INDEX, emit, MAX_NODES, MIN_NODES, nodeSerial, type Store } from './store';
+import { currentPreset, CUSTOM_INDEX, emit, MAX_NODES, MIN_NODES, nodeSerial, type Shape, type Store } from './store';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -48,6 +49,17 @@ export class UI {
   private clearBtn = document.querySelector<HTMLButtonElement>('[data-action=clear-custom]')!;
   private clearLabel = this.clearBtn.querySelector<HTMLElement>('.mini-l')!;
   private clearTimer = 0;
+  private drawBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-action=draw-mode]')];
+  private shapeBtns = [...document.querySelectorAll<HTMLButtonElement>('.shape-btn')];
+  private rotBtns = [...document.querySelectorAll<HTMLButtonElement>('.mini-rot')];
+  private nsRot = $('ns-rot');
+  private nsSoft = $('ns-soft');
+  private nsLayer = $('ns-layer');
+  private softSegs = [...document.querySelectorAll<HTMLElement>('#soft-bar i')];
+  private softBtns = [...document.querySelectorAll<HTMLButtonElement>('.mini-soft')];
+  private softFill = -1;
+  private shapeTag = $('shape-tag');
+  private shapeGroup = $('shape-group');
   private eyebrowCount = $('eyebrow-count');
   private railCount = $('rail-count');
   private railNode = $('rail-node');
@@ -77,6 +89,25 @@ export class UI {
     });
     this.bindClear();
     this.bindColor();
+    for (const b of this.drawBtns) b.addEventListener('click', () => actions.toggleDraw());
+    for (const b of this.shapeBtns) {
+      b.addEventListener('click', () => {
+        const i = actions.target;
+        if (i >= 0) actions.setShape(i, b.dataset.shape as Shape);
+      });
+    }
+    for (const b of this.rotBtns) {
+      b.addEventListener('click', () => {
+        const i = actions.target;
+        if (i >= 0) actions.rotate(i, (b.dataset.action === 'rot-minus' ? -1 : 1) * 15);
+      });
+    }
+    for (const b of this.softBtns) {
+      b.addEventListener('click', () => {
+        const i = actions.target;
+        if (i >= 0) actions.softBy(i, b.dataset.action === 'soft-minus' ? -0.1 : 0.1);
+      });
+    }
     store.listeners.add(() => this.sync());
     this.sync();
   }
@@ -310,6 +341,35 @@ export class UI {
     }
   }
 
+  /** Shape picker, rotation buttons and the DRAW toggles follow the edit target and the tool. */
+  private syncShape(): void {
+    const s = this.store;
+    const t = this.actions.target;
+    const n = t >= 0 ? s.nodes[t] : null;
+    const stroke = n?.shape === 'stroke';
+    for (const b of this.shapeBtns) {
+      const dis = !n || stroke;
+      if (b.disabled !== dis) b.disabled = dis;
+      b.setAttribute('aria-checked', String(!!n && !stroke && n.shape === b.dataset.shape));
+    }
+    this.shapeTag.hidden = !stroke;
+    if (stroke) setText(this.shapeTag, `STROKE · ${pad2(n!.pts.length)} PTS`);
+    this.shapeGroup.closest('.shape-row')!.classList.toggle('is-stroke', stroke);
+    const canRot = !!n && n.shape !== 'circle' && !stroke;
+    for (const b of this.rotBtns) if (b.disabled === canRot) b.disabled = !canRot;
+    for (const b of this.softBtns) {
+      const dis = !n || (b.dataset.action === 'soft-minus' ? n.soft <= 0.0001 : n.soft >= 0.9999);
+      if (b.disabled !== dis) b.disabled = dis;
+    }
+    const draw = s.tool === 'draw';
+    for (const b of this.drawBtns) {
+      b.setAttribute('aria-pressed', String(draw));
+      b.classList.toggle('is-on', draw);
+      const l = b.querySelector<HTMLElement>('.mini-l');
+      if (l) setText(l, draw ? 'DRAW ON' : 'DRAW');
+    }
+  }
+
   /** Called on store events: things that change rarely. */
   sync(): void {
     const s = this.store;
@@ -339,6 +399,7 @@ export class UI {
     this.undoBtn.disabled = !this.history.canUndo;
     this.saveBtn.classList.toggle('is-dirty', s.modified || s.presetIndex !== CUSTOM_INDEX);
     this.syncColor();
+    this.syncShape();
     s.nodes.forEach((n, i) => {
       const g = document.querySelector<SVGGElement>(`[data-node="${i}"]`);
       g?.setAttribute(
@@ -362,10 +423,15 @@ export class UI {
 
     let state = 'IDLE';
     let glyph = '[—]';
-    if (s.drag.kind === 'node') { state = `MOVE ${nodeSerial(s.drag.index)}`; glyph = '[✕]'; }
+    if (s.drawing) { state = 'DRAWING'; glyph = '[✎]'; }
+    else if (s.tool === 'draw') { state = 'DRAW'; glyph = '[✎]'; }
+    else if (s.drag.kind === 'node') { state = `MOVE ${nodeSerial(s.drag.index)}`; glyph = '[✕]'; }
     else if (s.drag.kind === 'ring') { state = `RADIUS ${nodeSerial(s.drag.index)}`; glyph = '[○]'; }
+    else if (s.drag.kind === 'soft') { state = `SOFT ${nodeSerial(s.drag.index)}`; glyph = '[◐]'; }
     else if (s.hover.kind === 'node') { state = `NODE ${nodeSerial(s.hover.index)}`; glyph = '[+]'; }
     else if (s.hover.kind === 'ring') { state = `RING ${nodeSerial(s.hover.index)}`; glyph = '[○]'; }
+    else if (s.hover.kind === 'soft') { state = `SOFT ${nodeSerial(s.hover.index)}`; glyph = '[◐]'; }
+    else if (s.hover.kind === 'body') { state = `BODY ${nodeSerial(s.hover.index)}`; glyph = '[◇]'; }
     else if (s.selected !== null) { state = `SEL ${nodeSerial(s.selected)}`; glyph = '[▪]'; }
     setText(this.stateV, state);
     setText(this.stateGlyph, glyph);
@@ -376,6 +442,10 @@ export class UI {
     if (root.dataset.hoverState !== hs) {
       root.dataset.hoverState = hs;
       document.body.dataset.hoverState = hs;
+    }
+    if (root.dataset.tool !== s.tool) {
+      root.dataset.tool = s.tool;
+      document.body.dataset.tool = s.tool;
     }
     if (root.dataset.drag !== ds) {
       root.dataset.drag = ds;
@@ -398,6 +468,15 @@ export class UI {
       setText(this.nsX, n.x.toFixed(3));
       setText(this.nsY, n.y.toFixed(3));
       setText(this.nsR, `${rpx} PX`);
+      setText(this.nsRot, `${String(Math.round(((n.rot * 180) / Math.PI) % 360)).padStart(3, '0')}°`);
+      const pct = Math.round(n.soft * 100);
+      setText(this.nsSoft, `${pct}%`);
+      setText(this.nsLayer, `LYR ${pad2(active + 1)}/${pad2(s.nodes.length)}`);
+      const fill = Math.round(n.soft * 10);
+      if (fill !== this.softFill) {
+        this.softFill = fill;
+        this.softSegs.forEach((seg, k) => seg.classList.toggle('is-on', k < fill));
+      }
       const rn = String(active + 1).padStart(2, '0');
       setText(this.railNode, rn);
     } else {
@@ -405,6 +484,13 @@ export class UI {
       setText(this.nsX, '—');
       setText(this.nsY, '—');
       setText(this.nsR, '—');
+      setText(this.nsRot, '—');
+      setText(this.nsSoft, '—');
+      setText(this.nsLayer, '—');
+      if (this.softFill !== 0) {
+        this.softFill = 0;
+        for (const seg of this.softSegs) seg.classList.remove('is-on');
+      }
       setText(this.railNode, '——');
     }
     this.nodeHint.hidden = active >= 0;
@@ -458,18 +544,11 @@ export class UI {
     try {
       renderer = new GradientRenderer(canvas, { preserveDrawingBuffer: true });
       renderer.resize(ew, eh, 1);
-      const positions = new Float32Array(MAX_NODES * 2);
-      const radii = new Float32Array(MAX_NODES);
-      const lab = new Float32Array(MAX_NODES * 3);
-      const min = Math.min(ew, eh);
-      s.nodes.forEach((n, i) => {
-        positions[i * 2] = n.x * ew;
-        positions[i * 2 + 1] = n.y * eh;
-        radii[i] = n.r * min;
-        lab.set(n.labTo, i * 3);
-      });
+      // Same packer as the live field (shapes and strokes included), but from settled targets.
+      const buffers = new FieldBuffers();
+      packField(s, { w: ew, h: eh, min: Math.min(ew, eh) }, buffers, true);
       // Same clock as the live field, so the export carries the warp you are looking at.
-      renderer.render({ positions, radii, lab, count: s.nodes.length, time: s.reducedMotion ? 0.5 : this.now() / 1000, grain: 0.05 });
+      renderer.render({ ...buffers, time: s.reducedMotion ? 0.5 : this.now() / 1000, grain: 0.05 });
       const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'));
       if (!blob) throw new Error('toBlob failed');
 
