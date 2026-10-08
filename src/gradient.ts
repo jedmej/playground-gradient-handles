@@ -1,3 +1,6 @@
+import { fxActive, type FxState } from './fx';
+import { buildProgram, PostPass } from './post';
+
 const VERT = `
 attribute vec2 a_pos;
 void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }
@@ -191,6 +194,9 @@ export class GradientRenderer {
   private cssH = 1;
   private scale = 1;
   private tex: WebGLTexture;
+  private post: PostPass;
+  /** Area-matched unit for radii and warp when it is not the short side (wallpaper reframing). */
+  private minUnit: number | null = null;
   /** Last bytes uploaded to the point texture. */
   private uploaded = new Uint8Array(64 * 16 * 4);
   private texDirty = false;
@@ -210,15 +216,15 @@ export class GradientRenderer {
     });
     if (!gl) throw new Error('WebGL unavailable');
     this.gl = gl;
-    this.program = this.link(VERT, FRAG);
+    this.program = buildProgram(gl, VERT, FRAG);
+    this.post = new PostPass(gl);
     gl.useProgram(this.program);
 
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(this.program, 'a_pos');
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(0); // a_pos is bound to location 0 in every program
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
     for (const name of [
       'u_res', 'u_scale', 'u_count', 'u_pos', 'u_rad', 'u_lab', 'u_time', 'u_grain', 'u_min', 'u_warp',
@@ -240,34 +246,12 @@ export class GradientRenderer {
     gl.uniform1i(this.u.u_pts, 0);
   }
 
-  private compile(type: number, src: string): WebGLShader {
-    const gl = this.gl;
-    const sh = gl.createShader(type)!;
-    gl.shaderSource(sh, src);
-    gl.compileShader(sh);
-    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-      throw new Error(gl.getShaderInfoLog(sh) ?? 'shader compile failed');
-    }
-    return sh;
-  }
-
-  private link(vs: string, fs: string): WebGLProgram {
-    const gl = this.gl;
-    const p = gl.createProgram()!;
-    gl.attachShader(p, this.compile(gl.VERTEX_SHADER, vs));
-    gl.attachShader(p, this.compile(gl.FRAGMENT_SHADER, fs));
-    gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-      throw new Error(gl.getProgramInfoLog(p) ?? 'program link failed');
-    }
-    return p;
-  }
-
-  /** Size the drawing buffer. `scale` maps CSS px → buffer px. */
-  resize(cssW: number, cssH: number, scale: number): void {
+  /** Size the drawing buffer. `scale` maps CSS px → buffer px; `minUnit` overrides the short side for radii and warp. */
+  resize(cssW: number, cssH: number, scale: number, minUnit?: number): void {
     this.cssW = Math.max(1, cssW);
     this.cssH = Math.max(1, cssH);
     this.scale = scale;
+    this.minUnit = minUnit ?? null;
     const w = Math.round(this.cssW * scale);
     const h = Math.round(this.cssH * scale);
     if (this.canvas.width !== w || this.canvas.height !== h) {
@@ -277,8 +261,15 @@ export class GradientRenderer {
     this.gl.viewport(0, 0, w, h);
   }
 
-  render(p: FieldParams): void {
+  /**
+   * Draw one frame. With no active `fx` the field goes straight to the canvas (no framebuffer); otherwise it is
+   * rendered into an offscreen texture and the post pass resolves it. `fxUnit` = buffer px per preview CSS px
+   * (default: the resize scale). Returns false when FX were asked for but could not run (plain field drawn).
+   */
+  render(p: FieldParams, fx?: FxState, fxUnit?: number): boolean {
     const gl = this.gl;
+    const wantFx = !!fx && fxActive(fx).length > 0;
+    const useFx = wantFx && this.post.begin(this.canvas.width, this.canvas.height);
     gl.useProgram(this.program);
     gl.uniform2f(this.u.u_res, this.canvas.width, this.canvas.height);
     gl.uniform1f(this.u.u_scale, this.scale);
@@ -301,10 +292,12 @@ export class GradientRenderer {
     }
     gl.uniform1f(this.u.u_time, p.time);
     gl.uniform1f(this.u.u_grain, p.grain);
-    const min = Math.min(this.cssW, this.cssH);
+    const min = this.minUnit ?? Math.min(this.cssW, this.cssH);
     gl.uniform1f(this.u.u_min, min);
     gl.uniform1f(this.u.u_warp, min * WARP);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (useFx) this.post.draw(fx!, fxUnit ?? this.scale);
+    return !wantFx || useFx;
   }
 
   dispose(): void {
