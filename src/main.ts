@@ -5,11 +5,15 @@ import '@fontsource/inter-tight/latin-600.css';
 import './styles.css';
 
 import { GradientRenderer } from './gradient';
-import { Handles } from './handles';
-import { createStore, EASE } from './store';
+import { Actions } from './actions';
+import { loadCustom } from './custom';
+import { createMetrics, Handles } from './handles';
+import { History } from './history';
+import { createStore, EASE, MAX_NODES } from './store';
 import { drawRulers, UI } from './ui';
 
 const store = createStore();
+store.custom = loadCustom();
 const stage = document.getElementById('stage') as HTMLElement;
 const canvas = document.getElementById('field') as HTMLCanvasElement;
 const svg = document.getElementById('handles') as unknown as SVGSVGElement;
@@ -17,8 +21,12 @@ const chipNode = document.getElementById('chip-node') as HTMLElement;
 const chipRadius = document.getElementById('chip-radius') as HTMLElement;
 
 const now = (): number => performance.now();
-const handles = new Handles(store, stage, svg, chipNode, chipRadius);
-const ui = new UI(store, handles.metrics, now, () => ({ ...handles.pointer, inside: handles.pointerInside }));
+const metrics = createMetrics();
+const history = new History(store, now);
+const actions = new Actions(store, history, metrics, now);
+const handles = new Handles(store, stage, svg, chipNode, chipRadius, metrics, actions, history);
+const ui = new UI(store, handles.metrics, now, () => ({ ...handles.pointer, inside: handles.pointerInside }), actions, history);
+actions.bindKeys();
 
 let renderer: GradientRenderer | null = null;
 try {
@@ -28,9 +36,9 @@ try {
   document.getElementById('status')!.textContent = 'WebGL is unavailable in this browser. The field needs it.';
 }
 
-const positions = new Float32Array(18);
-const radii = new Float32Array(9);
-const lab = new Float32Array(27);
+const positions = new Float32Array(MAX_NODES * 2);
+const radii = new Float32Array(MAX_NODES);
+const lab = new Float32Array(MAX_NODES * 3);
 
 const wordmark = document.querySelector('.wordmark') as HTMLElement;
 const wordmarkText = wordmark.firstElementChild as HTMLElement;
@@ -72,24 +80,24 @@ function tick(): void {
   const dt = Math.min(0.05, (t - last) / 1000);
   last = t;
 
-  // Colour tween in OKLab.
-  const k = store.tweenDuration > 0 ? EASE((t - store.tweenStart) / store.tweenDuration) : 1;
-  for (let i = 0; i < 9; i++) {
-    const n = store.nodes[i];
+  // Colour tween in OKLab, one clock per node.
+  for (const n of store.nodes) {
+    const k = n.dur > 0 ? EASE((t - n.t0) / n.dur) : 1;
     for (let c = 0; c < 3; c++) n.lab[c] = n.labFrom[c] + (n.labTo[c] - n.labFrom[c]) * k;
   }
 
   handles.frame(dt);
 
   const m = handles.metrics;
-  for (let i = 0; i < 9; i++) {
+  const count = store.nodes.length;
+  for (let i = 0; i < count; i++) {
     const n = store.nodes[i];
     positions[i * 2] = n.dx * m.w;
     positions[i * 2 + 1] = n.dy * m.h;
     radii[i] = n.dr * m.min;
     lab.set(n.lab, i * 3);
   }
-  renderer?.render({ positions, radii, lab, time: store.reducedMotion ? 0.5 : t / 1000, grain: 0.04 });
+  renderer?.render({ positions, radii, lab, count, time: store.reducedMotion ? 0.5 : t / 1000, grain: 0.04 });
 
   ui.frame();
   requestAnimationFrame(tick);

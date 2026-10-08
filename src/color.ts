@@ -30,6 +30,39 @@ export function hexToLab(hex: string): Lab {
   ];
 }
 
+/** Accepts `#abc`, `abc`, `#aabbcc`, `aabbcc` (any case). Returns `#AABBCC` or null. */
+export function parseHex(input: string): string | null {
+  const h = input.trim().replace(/^#/, '');
+  if (!/^[0-9a-fA-F]+$/.test(h)) return null;
+  if (h.length === 3) return `#${h.split('').map((c) => c + c).join('')}`.toUpperCase();
+  if (h.length === 6) return `#${h}`.toUpperCase();
+  return null;
+}
+
+export interface FieldSample {
+  /** Position and radius in one shared unit (px). */
+  x: number;
+  y: number;
+  r: number;
+  lab: Lab;
+}
+
+/** CPU twin of the shader's weight function (no domain warp). Returns the blended OKLab colour. */
+export function sampleField(nodes: FieldSample[], px: number, py: number): Lab {
+  const acc: Lab = [0, 0, 0];
+  let wsum = 0;
+  for (const n of nodes) {
+    const q = Math.hypot(px - n.x, py - n.y) / n.r;
+    const q2 = q * q;
+    const w = Math.exp(-q2 * 1.5) + 0.05 / (1 + q2 * q2);
+    acc[0] += n.lab[0] * w;
+    acc[1] += n.lab[1] * w;
+    acc[2] += n.lab[2] * w;
+    wsum += w;
+  }
+  return wsum > 0 ? [acc[0] / wsum, acc[1] / wsum, acc[2] / wsum] : [0, 0, 0];
+}
+
 export function labToHex(lab: Lab): string {
   const [L, a, b] = lab;
   const l_ = L + 0.3963377774 * a + 0.2158037573 * b;

@@ -12,10 +12,10 @@
     <title>Gradient handles — a mesh-gradient handle study · NEWFRAME</title>
     <meta
       name="description"
-      content="A mesh-gradient handle study: nine colour nodes on a shader field, with separate grab zones for moving a node and resizing its influence ring."
+      content="A mesh-gradient handle study: two to sixteen colour nodes on a shader field, with separate grab zones for moving a node and resizing its influence ring."
     />
   </head>
-  <body data-hover-state="idle" data-drag="none">
+  <body data-hover-state="idle" data-drag="none" data-node-count="9" data-selected="">
     <header class="topbar">
       <a class="mark" href="#top" aria-label="NEWFRAME">
         <span class="mark-glyph" aria-hidden="true"></span>NEWFRAME
@@ -55,33 +55,74 @@
 
       <aside class="spec" id="spec" aria-label="Specification">
         <div class="spec-head">
-          <p class="eyebrow">FIELD MESH 03 × 03 <span class="dim">//</span> GH-01</p>
+          <p class="eyebrow">FIELD MESH <span class="dim">//</span> <span id="eyebrow-count">09</span> NODES <span class="dim">//</span> GH-01</p>
           <h1 class="title">Gradient<br />handles</h1>
           <p class="lede">
-            Nine colour nodes on a shader field. Grab a reticle to move it. Grab its ring to
-            change how far its colour reaches.
+            Colour nodes on a shader field. Grab a reticle to move it. Grab its ring to change how
+            far its colour reaches. Double-click the field to drop a node.
           </p>
         </div>
 
         <section class="spec-section" aria-labelledby="h-presets">
-          <h2 class="label" id="h-presets">COLOUR SET</h2>
+          <div class="label label-row">
+            <h2 id="h-presets">COLOUR SET</h2>
+            <button class="mini" type="button" data-action="save-custom" title="Save the current field to CS-06">
+              SAVE <b>[↧]</b>
+            </button>
+          </div>
           <div class="presets" id="presets" role="radiogroup" aria-label="Colour set"></div>
         </section>
 
         <section class="spec-section" aria-labelledby="h-node">
           <h2 class="label" id="h-node">NODE <span class="dim" id="node-hint">— HOVER OR TAP A RETICLE</span></h2>
+          <div class="palette" id="palette" data-testid="palette" role="group" aria-label="Palette: current node colours"></div>
           <dl class="node-spec" id="node-spec">
             <div class="full"><dt>ID</dt><dd id="ns-id">—</dd></div>
             <div><dt>X</dt><dd id="ns-x">—</dd></div>
             <div><dt>Y</dt><dd id="ns-y">—</dd></div>
-            <div class="last"><dt>R</dt><dd id="ns-r">—</dd></div>
-            <div class="last"><dt>HEX</dt><dd id="ns-hex"><i class="swatch" id="ns-swatch"></i><span id="ns-hex-v">—</span></dd></div>
+            <div class="full"><dt>R</dt><dd id="ns-r">—</dd></div>
+            <div class="full last colour-row">
+              <dt>COLOUR</dt>
+              <dd>
+                <label class="swatch-btn" id="swatch-btn" title="Pick a colour">
+                  <input class="vh" id="node-color" data-testid="node-color" type="color" value="#000000" aria-label="Node colour picker" disabled />
+                  <i id="ns-swatch"></i>
+                </label>
+                <span class="hex-field" id="hex-field">
+                  <span class="hex-hash" aria-hidden="true">#</span>
+                  <input
+                    id="node-hex"
+                    data-testid="node-hex"
+                    type="text"
+                    maxlength="7"
+                    inputmode="text"
+                    spellcheck="false"
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    placeholder="——————"
+                    aria-label="Node colour hex"
+                    disabled
+                  />
+                </span>
+              </dd>
+            </div>
           </dl>
+          <div class="node-actions">
+            <button class="btn btn-ghost" id="add-node" data-action="add-node" type="button">
+              <span class="btn-label">Add node</span><b>[+]</b>
+            </button>
+            <button class="btn btn-ghost" id="remove-node" data-action="remove-node" type="button" disabled>
+              <span class="btn-label">Remove node</span><b>[−]</b>
+            </button>
+          </div>
         </section>
 
         <div class="actions">
           <button class="btn btn-primary" id="export" data-action="export" type="button">
             <span class="btn-label">Export PNG</span><b>[↓]</b>
+          </button>
+          <button class="btn btn-ghost" id="undo" data-action="undo" type="button" disabled>
+            <span class="btn-label">Undo</span><b>[↶]</b>
           </button>
           <button class="btn btn-ghost" id="reset" data-action="reset" type="button">
             <span class="btn-label">Reset</span><b>[↺]</b>
@@ -92,6 +133,8 @@
         <p class="keys">
           <span>TAB</span> focus node <span>←↑→↓</span> nudge <span>[ ]</span> radius
           <span>SHIFT</span> ×10
+          <span class="k-fine"><span>DBL-CLICK</span> add <span>DEL</span> remove <span>⌘Z</span> undo</span>
+          <span class="k-touch"><span>DOUBLE-TAP</span> add <span>TAP + HOLD</span> remove</span>
         </p>
       </aside>
 
@@ -102,7 +145,7 @@
         <span class="pict pict-box"></span>
         <div class="rail-nums"><span id="rail-node">——</span><span id="rail-preset">01</span></div>
         <span class="pict pict-check"></span>
-        <p class="rail-small">NEWFRAME / FIELD MESH 03×03<br />"HANDLE MECHANIC AFTER @EYEXAYUH"</p>
+        <p class="rail-small">NEWFRAME / FIELD MESH <span id="rail-count">09</span> NODES<br />"HANDLE MECHANIC AFTER @EYEXAYUH"</p>
         <p class="wordmark"><span>GRADIENT HANDLES</span></p>
         <span class="plus"></span>
       </aside>

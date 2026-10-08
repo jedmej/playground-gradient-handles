@@ -7,9 +7,10 @@ const FRAG = `
 precision highp float;
 uniform vec2  u_res;
 uniform float u_scale;
-uniform vec2  u_pos[9];
-uniform float u_rad[9];
-uniform vec3  u_lab[9];
+uniform int   u_count;
+uniform vec2  u_pos[16];
+uniform float u_rad[16];
+uniform vec3  u_lab[16];
 uniform float u_time;
 uniform float u_grain;
 uniform float u_min;
@@ -78,7 +79,8 @@ void main() {
 
   vec3 acc = vec3(0.0);
   float wsum = 0.0;
-  for (int i = 0; i < 9; i++) {
+  for (int i = 0; i < 16; i++) {
+    if (i >= u_count) break;
     float q2 = distance(pw, u_pos[i]) / u_rad[i];
     float w = exp(-q2 * q2 * 1.5) + 0.05 / (1.0 + q2 * q2 * q2 * q2);
     acc += u_lab[i] * w;
@@ -103,8 +105,10 @@ export interface FieldParams {
   positions: Float32Array;
   /** Radii in CSS px. */
   radii: Float32Array;
-  /** OKLab colours, 9 × 3. */
+  /** OKLab colours, 16 × 3. */
   lab: Float32Array;
+  /** Live node count (2–16); entries past it are ignored. */
+  count: number;
   time: number;
   grain: number;
 }
@@ -142,7 +146,7 @@ export class GradientRenderer {
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 
-    for (const name of ['u_res', 'u_scale', 'u_pos', 'u_rad', 'u_lab', 'u_time', 'u_grain', 'u_min', 'u_warp']) {
+    for (const name of ['u_res', 'u_scale', 'u_count', 'u_pos', 'u_rad', 'u_lab', 'u_time', 'u_grain', 'u_min', 'u_warp']) {
       this.u[name] = gl.getUniformLocation(this.program, name);
     }
   }
@@ -189,6 +193,7 @@ export class GradientRenderer {
     gl.useProgram(this.program);
     gl.uniform2f(this.u.u_res, this.canvas.width, this.canvas.height);
     gl.uniform1f(this.u.u_scale, this.scale);
+    gl.uniform1i(this.u.u_count, p.count);
     gl.uniform2fv(this.u.u_pos, p.positions);
     gl.uniform1fv(this.u.u_rad, p.radii);
     gl.uniform3fv(this.u.u_lab, p.lab);
