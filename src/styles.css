@@ -2133,3 +2133,296 @@ html[data-tool='draw'][data-drag='soft'] .stage {
     transition-duration: 0ms !important;
   }
 }
+
+/* ---------- v4: FX knobs + wallpaper export ------------------------------------ */
+
+.fx-spec,
+.wp-group {
+  font-family: var(--mono);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+
+/* One spec row per effect, same hairlines as .node-spec; SCAN and VIG share the last row. */
+.fx-row {
+  display: grid;
+  /* label | knob | readout | right column (toggles, or VIG label | knob | readout): column 4 starts at one x on every row */
+  grid-template-columns: 54px auto 5.6ch auto auto auto;
+  justify-content: start;
+  align-items: center;
+  column-gap: 8px;
+  height: 38px;
+  border-bottom: 1px dashed #a4a59e;
+}
+
+.fx-row.last {
+  border-bottom: 0;
+}
+
+.fx-row dt {
+  color: var(--graphite);
+}
+
+.fx-row dd {
+  margin: 0;
+}
+
+.fx-ctl {
+  display: contents;
+  color: var(--void);
+}
+
+.fx-opts {
+  min-width: 0;
+}
+
+.fx-read {
+  display: inline-block;
+  width: 5.6ch;
+  white-space: nowrap;
+  transition: color var(--t) var(--ease);
+}
+
+/* The knob: SOFT-gauge language. 21 ticks over 270°, lit ticks INK, FLARE while engaged. */
+.fx-knob {
+  position: relative;
+  flex: none;
+  display: block;
+  width: 30px;
+  height: 30px;
+  color: var(--ink);
+  cursor: ns-resize;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fx-knob:focus-visible {
+  outline: 2px solid var(--flare);
+  outline-offset: 1px;
+}
+
+.fx-knob svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.fx-knob .k-arc {
+  fill: none;
+  stroke: var(--graphite);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.fx-knob .k-tick {
+  stroke: var(--graphite);
+  stroke-width: 1.4;
+  opacity: 0.4;
+}
+
+.fx-knob .k-tick.is-on {
+  stroke: var(--ink);
+  opacity: 1;
+}
+
+.fx-knob .k-notch {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+.fx-knob.is-off .k-notch {
+  stroke: var(--graphite);
+}
+
+.fx-knob .k-cross {
+  fill: none;
+  stroke: var(--graphite);
+  stroke-width: 0.8;
+}
+
+.fx-knob.is-engaged .k-tick.is-on,
+.fx-knob.is-engaged .k-notch {
+  stroke: var(--flare);
+}
+
+.fx-knob.is-engaged + .fx-read {
+  color: var(--flare);
+}
+
+/* FINE | COARSE, BAYER | BLUE: .mini type, ink plate when active. Clickable while the effect is off, just quieter. */
+.fx-seg {
+  display: inline-flex;
+  transition: opacity var(--t) var(--ease);
+}
+
+.fx-row.is-off .fx-seg {
+  opacity: 0.5;
+}
+
+.fx-opt {
+  height: 22px;
+  margin-left: -1px;
+  padding: 0 7px;
+  border: 1px solid var(--void);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--void);
+  transition: background-color var(--t) var(--ease), color var(--t) var(--ease);
+}
+
+.fx-opt:first-child {
+  margin-left: 0;
+}
+
+/* Hover tint only where hover exists: a tapped chip must not stay grey on touch. */
+@media (hover: hover) {
+  .fx-opt:hover:not([aria-checked='true']) {
+    background: rgba(0, 0, 0, 0.08);
+  }
+}
+
+.fx-opt[aria-checked='true'] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.fx-opt:focus-visible,
+.wp-btn:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--flare);
+  outline-offset: 1px;
+}
+
+.mini-fxoff {
+  flex: none;
+  white-space: nowrap;
+}
+
+.mini-fxoff:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mini-fxoff:disabled:hover {
+  background: none;
+  color: var(--void);
+}
+
+.mini-fxoff:disabled:hover b {
+  color: var(--graphite);
+}
+
+/* WALLPAPER: five equal cells, each with an outlined glyph at the target's aspect. */
+.wp-group {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 8px;
+  font-size: 9.5px;
+}
+
+.wp-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 48px;
+  margin-left: -1px;
+  border: 1px solid var(--void);
+  color: var(--void);
+  transition: background-color var(--t) var(--ease), color var(--t) var(--ease);
+}
+
+.wp-btn:first-child {
+  margin-left: 0;
+}
+
+/* Hover tint only where hover exists: a tapped chip must not stay grey on touch. */
+@media (hover: hover) {
+  .wp-btn:hover:not([aria-checked='true']) {
+    background: rgba(0, 0, 0, 0.08);
+  }
+}
+
+.wp-btn[aria-checked='true'] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.wp-glyph {
+  display: block;
+  flex: none;
+  height: 14px;
+  border: 1px solid currentColor;
+}
+
+.wp-export {
+  width: 100%;
+  height: 40px;
+}
+
+@media (min-width: 960px) and (max-height: 920px) {
+  .fx-row { height: 36px; }
+  .wp-btn { height: 44px; }
+}
+
+@media (min-width: 960px) and (max-height: 820px) {
+  .fx-row { height: 34px; }
+  .fx-opt { height: 20px; }
+  .wp-btn { height: 40px; gap: 4px; }
+  .wp-export { height: 36px; }
+  .wp-group { margin-bottom: 6px; }
+}
+
+@media (min-width: 960px) and (max-height: 740px) {
+  .fx-row { height: 32px; }
+  .fx-knob { width: 28px; height: 28px; }
+  .wp-btn { height: 38px; }
+}
+
+@media (max-width: 959px) {
+  .wp-export { height: 48px; }
+}
+
+/* Touch: the knob is 34 px to look at and ≥ 44 px to hit (the pseudo-element is part of the knob). */
+@media (pointer: coarse) {
+  .fx-row {
+    height: 50px;
+  }
+
+  .fx-knob {
+    width: 34px;
+    height: 34px;
+  }
+
+  .fx-knob::before {
+    content: '';
+    position: absolute;
+    inset: -5px;
+  }
+
+  .fx-opt {
+    height: 36px;
+    padding: 0 9px;
+  }
+
+  .wp-btn {
+    height: 52px;
+  }
+
+  .wp-export {
+    height: 48px;
+  }
+}
