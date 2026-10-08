@@ -609,6 +609,42 @@ html[data-drag='ring'] .stage {
   color: inherit;
 }
 
+.label-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.mini[hidden] {
+  display: none;
+}
+
+/* CLEAR [×]: quiet ghost until armed; armed = FLARE plate, second press within 3 s deletes CS-06. */
+.mini-clear {
+  border-color: var(--graphite);
+  color: var(--graphite);
+}
+
+.mini-clear:hover {
+  background: none;
+  border-color: var(--flare);
+  color: var(--flare);
+}
+
+.mini-clear:hover b {
+  color: var(--flare);
+}
+
+.mini-clear.is-armed,
+.mini-clear.is-armed:hover {
+  background: var(--flare);
+  border-color: var(--flare);
+  color: var(--void);
+}
+
+.mini-clear.is-armed b {
+  color: var(--void);
+}
+
 .presets {
   display: flex;
   flex-direction: column;
@@ -857,7 +893,10 @@ html[data-drag='ring'] .stage {
   width: 14px;
   height: 14px;
   background: transparent;
-  outline: 1px solid var(--hull);
+  /* Mounted chip: a GRAPHITE keyline with a 1px VOID gap, so #000000 (and any near-black)
+     still reads as a filled specimen on the black plate instead of an empty bracket. */
+  outline: 1px solid var(--graphite);
+  outline-offset: 1px;
 }
 
 .swatch-btn:focus-within {
@@ -1077,9 +1116,16 @@ html[data-drag='ring'] .stage {
   display: none;
 }
 
+/* Same switch for the intro copy: "Double-click" on mouse, "Double-tap" on touch. */
+.t-touch {
+  display: none;
+}
+
 @media (pointer: coarse) {
   .keys .k-fine { display: none; }
   .keys .k-touch { display: contents; }
+  .t-fine { display: none; }
+  .t-touch { display: inline; }
 }
 
 /* ---------- rail --------------------------------------------------------- */

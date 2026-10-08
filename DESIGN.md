@@ -216,3 +216,17 @@ Build to this revised plan.
   survivors keep their views and positions, a removed node returns at its original
   array index with its original uid/x/y/r/hex, and add/redo behave the same. Selection
   refs are remapped by uid. Preset specs (no uid) still reconcile by index.
+
+## Round 3c (v2.1)
+
+- **Black swatch.** The `[■]` swatch chip carries a GRAPHITE keyline with a 1 px VOID gap
+  (`outline-offset: 1px`), like a mounted specimen, so `#000000` and near-blacks read as a
+  filled chip on the black plate instead of an empty bracket.
+- **Touch copy.** The intro says "Double-click" on fine pointers and "Double-tap" on
+  `(pointer: coarse)`, the same switch the shortcut legend uses.
+- **CLEAR CS-06.** `CLEAR [×]` sits left of `SAVE` and only exists while a custom set is
+  saved. It is a quiet GRAPHITE ghost; the first press arms it (FLARE plate, `CLEAR?`,
+  status "Press CLEAR again to delete CS-06"), a second press within 3 s removes
+  `gh.custom.v1` and returns the row to `CUSTOM — EMPTY`. Esc, blur or the timeout disarm
+  it. The field is left untouched; if CS-06 was active it becomes CS-01 + `MOD`, and undo
+  never re-activates an empty CS-06.

@@ -45,6 +45,9 @@ export class UI {
   private removeBtn = $<HTMLButtonElement>('remove-node');
   private undoBtn = $<HTMLButtonElement>('undo');
   private saveBtn = document.querySelector<HTMLButtonElement>('[data-action=save-custom]')!;
+  private clearBtn = document.querySelector<HTMLButtonElement>('[data-action=clear-custom]')!;
+  private clearLabel = this.clearBtn.querySelector<HTMLElement>('.mini-l')!;
+  private clearTimer = 0;
   private eyebrowCount = $('eyebrow-count');
   private railCount = $('rail-count');
   private railNode = $('rail-node');
@@ -68,10 +71,50 @@ export class UI {
     this.undoBtn.addEventListener('click', () => actions.undo());
     this.addBtn.addEventListener('click', () => actions.addAuto());
     this.removeBtn.addEventListener('click', () => actions.removeSelected());
-    this.saveBtn.addEventListener('click', () => actions.saveCustom());
+    this.saveBtn.addEventListener('click', () => {
+      this.disarmClear();
+      actions.saveCustom();
+    });
+    this.bindClear();
     this.bindColor();
     store.listeners.add(() => this.sync());
     this.sync();
+  }
+
+  /** CLEAR [×] needs a second press within 3 s: first press arms it (FLARE, "CLEAR?"), Esc/blur/timeout disarm. */
+  private bindClear(): void {
+    const b = this.clearBtn;
+    b.addEventListener('click', () => {
+      if (b.dataset.armed === 'true') {
+        this.disarmClear();
+        this.actions.clearCustom();
+        this.saveBtn.focus({ preventScroll: true });
+        return;
+      }
+      b.dataset.armed = 'true';
+      b.classList.add('is-armed');
+      this.clearLabel.textContent = 'CLEAR?';
+      b.setAttribute('aria-label', 'Press again to clear CS-06');
+      this.say('Press CLEAR again to delete CS-06');
+      this.clearTimer = window.setTimeout(() => this.disarmClear(), 3000);
+    });
+    b.addEventListener('blur', () => this.disarmClear());
+    b.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && b.dataset.armed === 'true') {
+        e.stopPropagation();
+        this.disarmClear();
+      }
+    });
+  }
+
+  private disarmClear(): void {
+    const b = this.clearBtn;
+    window.clearTimeout(this.clearTimer);
+    if (b.dataset.armed !== 'true') return;
+    b.dataset.armed = 'false';
+    b.classList.remove('is-armed');
+    this.clearLabel.textContent = 'CLEAR';
+    b.removeAttribute('aria-label');
   }
 
   private presetHtml(p: Preset | null): string {
@@ -117,6 +160,8 @@ export class UI {
     const b = this.presetButtons[CUSTOM_INDEX];
     b.innerHTML = this.presetHtml(c);
     b.classList.toggle('is-empty', !c);
+    if (!c) this.disarmClear();
+    this.clearBtn.hidden = !c;
   }
 
   private rebuildBarcode(): void {

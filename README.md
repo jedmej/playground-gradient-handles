@@ -39,6 +39,7 @@ token system and the critique that shaped it.
 | Colour swatch / HEX field  | Recolour the selected node (OKLab tween); Enter/blur commit, Esc reverts |
 | Palette strip chip         | Select that node                                            |
 | `SAVE [↧]`                 | Store the field in CS-06 (`localStorage` key `gh.custom.v1`) |
+| `CLEAR [×]` (twice in 3 s) | Delete the saved CS-06 set; the row goes back to `CUSTOM — EMPTY` (Esc cancels) |
 | `⌘/Ctrl+Z`, `⇧⌘/Ctrl+Z`    | Undo / redo (50 steps): add, remove, colour, drags, presets |
 | Colour set rows            | Switch preset; colours tween in OKLab over ~600 ms          |
 | Export PNG                 | Downloads the field only (no handles) at 2048 px long side  |
@@ -76,7 +77,7 @@ Martian Mono). No runtime network calls beyond same-origin assets.
 ### Test hooks
 
 - New in round 3: `<html>`/`<body>` `data-node-count`, `data-selected`;
-  `[data-action="add-node|remove-node|save-custom|undo"]`, `[data-preset="cs06"]`,
+  `[data-action="add-node|remove-node|save-custom|clear-custom|undo"]` (clear has `data-armed`), `[data-preset="cs06"]`,
   `[data-testid="node-color|node-hex|palette"]`, `[data-testid=palette] button[data-chip][data-hex]`.
 - Each handle: `[data-node="0–15"]` with live `data-x`, `data-y` (client px of
   the centre) and `data-radius` (CSS px).
