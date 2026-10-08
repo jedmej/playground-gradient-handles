@@ -1,7 +1,6 @@
 import type { Actions } from './actions';
 import { parseHex } from './color';
-import { FieldBuffers, packField } from './field';
-import { GradientRenderer } from './gradient';
+import { downloadBlob, renderOffscreen, stamp } from './exporter';
 import type { Metrics } from './handles';
 import type { History } from './history';
 import { PRESETS, type Preset } from './presets';
@@ -539,34 +538,16 @@ export class UI {
     const aspect = m.w / m.h;
     const ew = aspect >= 1 ? long : Math.round(long * aspect);
     const eh = aspect >= 1 ? Math.round(long / aspect) : long;
-    const canvas = document.createElement('canvas');
-    let renderer: GradientRenderer | null = null;
     try {
-      renderer = new GradientRenderer(canvas, { preserveDrawingBuffer: true });
-      renderer.resize(ew, eh, 1);
-      // Same packer as the live field (shapes and strokes included), but from settled targets.
-      const buffers = new FieldBuffers();
-      packField(s, { w: ew, h: eh, min: Math.min(ew, eh) }, buffers, true);
       // Same clock as the live field, so the export carries the warp you are looking at.
-      renderer.render({ ...buffers, time: s.reducedMotion ? 0.5 : this.now() / 1000, grain: 0.05 });
-      const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'));
-      if (!blob) throw new Error('toBlob failed');
+      const res = await renderOffscreen(s, m, ew, eh, s.reducedMotion ? 0.5 : this.now() / 1000);
+      if (!res.ok) throw new Error(res.reason);
 
-      const d = new Date();
-      const stamp = `${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
       const serial = currentPreset(s).serial.replace('-', '');
       this.exportCount += 1;
       const suffix = this.exportCount > 1 ? `-${this.exportCount}` : '';
-      const name = `GH-${serial}-${stamp}${suffix}.png`;
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      const name = `GH-${serial}-${stamp()}${suffix}.png`;
+      downloadBlob(res.blob, name);
 
       setText(label, 'Exported');
       this.exportBtn.classList.add('is-done');
@@ -575,7 +556,6 @@ export class UI {
       setText(label, 'Export failed');
       this.say('Export failed. Your browser blocked the canvas or the download.');
     } finally {
-      renderer?.dispose();
       window.setTimeout(() => {
         setText(label, 'Export PNG');
         this.exportBtn.classList.remove('is-done');
