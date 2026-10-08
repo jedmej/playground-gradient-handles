@@ -1,4 +1,4 @@
-import { saveCustom } from './custom';
+import { clearCustom, saveCustom } from './custom';
 import type { History } from './history';
 import type { Metrics } from './handles';
 import {
@@ -146,6 +146,20 @@ export class Actions {
     s.modified = false;
     emit(s);
     s.say(`Saved CS-06 · ${pad(s.nodes.length)} nodes` + (persisted ? '' : ' (this session only)'));
+  }
+
+  /** Delete the saved CS-06 set. The field itself is left alone; if CS-06 was active it becomes CS-01 + MOD. */
+  clearCustom(): void {
+    const s = this.store;
+    if (!s.custom) return;
+    const ok = clearCustom();
+    s.custom = null;
+    if (s.presetIndex === CUSTOM_INDEX) {
+      s.presetIndex = 0;
+      s.modified = true;
+    }
+    emit(s);
+    s.say(ok ? 'CS-06 cleared' : 'CS-06 cleared (storage unavailable)');
   }
 
   undo(): void {

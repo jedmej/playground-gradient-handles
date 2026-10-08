@@ -1,4 +1,4 @@
-import { emit, reconcile, snapshotIdentified, type NodeSpec, type Store } from './store';
+import { CUSTOM_INDEX, emit, reconcile, snapshotIdentified, type NodeSpec, type Store } from './store';
 
 interface Snapshot {
   presetIndex: number;
@@ -75,8 +75,9 @@ export class History {
 
   private restore(snap: Snapshot): void {
     const s = this.store;
-    s.presetIndex = snap.presetIndex;
-    s.modified = snap.modified;
+    const orphan = snap.presetIndex === CUSTOM_INDEX && !s.custom;
+    s.presetIndex = orphan ? 0 : snap.presetIndex;
+    s.modified = orphan || snap.modified;
     reconcile(s, snap.nodes, this.now(), true, 320);
     emit(s);
   }

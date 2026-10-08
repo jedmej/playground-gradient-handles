@@ -51,6 +51,16 @@ export function loadCustom(): Preset | null {
   }
 }
 
+/** Forget the saved CS-06 set. Returns false if storage refused (the in-memory set is cleared anyway). */
+export function clearCustom(): boolean {
+  try {
+    localStorage.removeItem(CUSTOM_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Returns the saved preset and whether it reached storage (false in private mode / quota errors). */
 export function saveCustom(nodes: NodeSpec[]): { preset: Preset; persisted: boolean } {
   const preset = customPreset(nodes);

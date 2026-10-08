@@ -59,16 +59,21 @@
           <h1 class="title">Gradient<br />handles</h1>
           <p class="lede">
             Colour nodes on a shader field. Grab a reticle to move it. Grab its ring to change how
-            far its colour reaches. Double-click the field to drop a node.
+            far its colour reaches. <span class="t-fine">Double-click</span><span class="t-touch">Double-tap</span> the field to drop a node.
           </p>
         </div>
 
         <section class="spec-section" aria-labelledby="h-presets">
           <div class="label label-row">
             <h2 id="h-presets">COLOUR SET</h2>
-            <button class="mini" type="button" data-action="save-custom" title="Save the current field to CS-06">
-              SAVE <b>[↧]</b>
-            </button>
+            <span class="label-actions">
+              <button class="mini mini-clear" type="button" data-action="clear-custom" title="Clear the saved CS-06 set" hidden>
+                <span class="mini-l">CLEAR</span> <b>[×]</b>
+              </button>
+              <button class="mini" type="button" data-action="save-custom" title="Save the current field to CS-06">
+                SAVE <b>[↧]</b>
+              </button>
+            </span>
           </div>
           <div class="presets" id="presets" role="radiogroup" aria-label="Colour set"></div>
         </section>
