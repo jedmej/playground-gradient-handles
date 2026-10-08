@@ -196,10 +196,16 @@ b {
   padding: 26px 24px 20px 26px;
   min-height: 0;
   min-width: 0;
+  /* The frame is centred: when a wallpaper target gives the stage its own aspect it letterboxes inside this box. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .stage-frame {
   position: relative;
+  flex: none;
+  width: 100%;
   height: 100%;
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
@@ -250,6 +256,18 @@ b {
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   cursor: var(--cur-cross), crosshair;
+}
+
+/* Wallpaper framing (main.ts fitStage): exact px tracks at the target's aspect, so rulers, stage and foot stay aligned. */
+.stage-frame.is-fit {
+  width: calc(18px + var(--sw));
+  height: calc(18px + var(--sh) + var(--foot-row));
+  grid-template-columns: 18px var(--sw);
+  grid-template-rows: 18px var(--sh) minmax(var(--foot-row), auto);
+}
+
+.stage-frame.is-fit .stage {
+  aspect-ratio: auto;
 }
 
 html[data-hover-state='node'] .stage {
@@ -305,6 +323,9 @@ html[data-tool='draw'][data-drag] .stage {
 .stage-foot {
   grid-column: 2;
   grid-row: 3;
+  /* A narrow (portrait) stage wraps the readouts onto a second line instead of overflowing. */
+  flex-wrap: wrap;
+  gap: 0 14px;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
@@ -369,7 +390,7 @@ html[data-tool='draw'][data-drag] .stage {
   stroke-dasharray: 3 3;
   stroke-opacity: 0.9;
   transition: stroke-dasharray var(--t) var(--ease), stroke var(--t) var(--ease),
-    stroke-opacity var(--t) var(--ease), stroke-width var(--t) var(--ease);
+    stroke-opacity var(--t) var(--ease), stroke-width var(--t) var(--ease), filter 200ms var(--ease);
 }
 
 .node .ring-c.halo {
@@ -380,7 +401,7 @@ html[data-tool='draw'][data-drag] .stage {
 .node .ticks.ink {
   stroke: #fff;
   stroke-opacity: 0.9;
-  transition: stroke var(--t) var(--ease), stroke-opacity var(--t) var(--ease);
+  transition: stroke var(--t) var(--ease), stroke-opacity var(--t) var(--ease), filter 200ms var(--ease);
 }
 
 .node .ticks.halo {
@@ -400,7 +421,7 @@ html[data-tool='draw'][data-drag] .stage {
   stroke-linejoin: round;
   paint-order: stroke fill;
   opacity: 0;
-  transition: opacity var(--t) var(--ease), fill var(--t) var(--ease);
+  transition: opacity 50ms linear, fill var(--t) var(--ease), filter 200ms var(--ease);
 }
 
 .node.is-ring .ring-c.ink {
@@ -411,7 +432,7 @@ html[data-tool='draw'][data-drag] .stage {
 }
 
 .node.is-ring .ticks.ink { stroke: var(--signal); }
-.node.is-ring .bearing { opacity: 1; }
+.node.is-ring .bearing { opacity: var(--pb, 1); }
 
 .node.is-ring-drag .ring-c.ink {
   stroke: #fff;
@@ -420,7 +441,7 @@ html[data-tool='draw'][data-drag] .stage {
 }
 
 .node.is-ring-drag .ticks.ink { stroke: #fff; }
-.node.is-ring-drag .bearing { opacity: 1; fill: var(--flare); }
+.node.is-ring-drag .bearing { opacity: var(--pb, 1); fill: var(--flare); }
 .node.is-ring-drag .ring-c.halo { stroke-opacity: 0.7; }
 
 .node .core.halo {
@@ -840,6 +861,11 @@ html[data-tool='draw'][data-drag] .stage {
 
 .chip-btn:hover::after {
   background: var(--graphite);
+}
+
+.chip-btn.is-board-hover:not(.is-selected) {
+  outline: 2px solid var(--graphite);
+  outline-offset: -2px;
 }
 
 .chip-btn.is-selected {
@@ -1764,6 +1790,10 @@ html[data-tool='draw'][data-drag] .stage {
     grid-template-rows: 18px auto var(--foot-row);
   }
 
+  .stage-frame.is-fit {
+    height: auto;
+  }
+
   .stage {
     aspect-ratio: 4 / 3;
   }
@@ -1948,15 +1978,28 @@ html[data-tool='draw'][data-drag] .stage {
   stroke-opacity: 0.6;
 }
 
-.node.is-soft-hover .g-knob.ink,
-.node.is-soft-hover .g-ticks.ink { stroke: var(--signal); }
+.node.is-soft-hover .gauge.soft .g-knob.ink,
+.node.is-soft-hover .gauge.soft .g-ticks.ink,
+.node.is-opac-hover .gauge.opac .g-knob.ink,
+.node.is-opac-hover .gauge.opac .g-ticks.ink { stroke: var(--signal); }
 
-.node.is-soft-drag .g-fill.ink,
-.node.is-soft-drag .g-knob.ink,
-.node.is-soft-flash .g-fill.ink,
-.node.is-soft-flash .g-knob.ink { stroke: var(--flare); }
+.node.is-soft-drag .gauge.soft .g-fill.ink,
+.node.is-soft-drag .gauge.soft .g-knob.ink,
+.node.is-soft-flash .gauge.soft .g-fill.ink,
+.node.is-soft-flash .gauge.soft .g-knob.ink,
+.node.is-opac-drag .gauge.opac .g-fill.ink,
+.node.is-opac-drag .gauge.opac .g-knob.ink,
+.node.is-opac-flash .gauge.opac .g-fill.ink,
+.node.is-opac-flash .gauge.opac .g-knob.ink { stroke: var(--flare); }
 
-.node .soft-label {
+/* Hover thickens the whole gauge. */
+.node.is-soft-hover .gauge.soft .g-fill.ink,
+.node.is-opac-hover .gauge.opac .g-fill.ink { stroke-width: 3; }
+.node.is-soft-hover .gauge.soft .g-knob.ink,
+.node.is-opac-hover .gauge.opac .g-knob.ink { stroke-width: 2.25; }
+
+.node .soft-label,
+.node .opac-label {
   font-family: var(--mono);
   font-size: 8px;
   font-weight: 600;
@@ -1973,22 +2016,68 @@ html[data-tool='draw'][data-drag] .stage {
 
 .node.is-soft-hover .soft-label,
 .node.is-soft-drag .soft-label,
-.node.is-soft-flash .soft-label { opacity: 1; }
+.node.is-soft-flash .soft-label,
+.node.is-opac-hover .opac-label,
+.node.is-opac-drag .opac-label,
+.node.is-opac-flash .opac-label { opacity: 1; }
 
-.node.is-soft-hover .soft-label { fill: var(--signal); }
+.node.is-soft-hover .soft-label,
+.node.is-opac-hover .opac-label { fill: var(--signal); }
 .node.is-soft-drag .soft-label,
-.node.is-soft-flash .soft-label { fill: var(--flare); }
+.node.is-soft-flash .soft-label,
+.node.is-opac-drag .opac-label,
+.node.is-opac-flash .opac-label { fill: var(--flare); }
 
-/* Cursor: the gauge keeps the stage crosshair (the knob does the highlighting). */
+/* Cursor: SOFT swallows it on hover, drag and wheel like ROT / OPAC; the highlighted knob is the cursor. */
 html[data-hover-state='soft'] .stage,
 html[data-drag='soft'] .stage {
-  cursor: var(--cur-cross), crosshair;
+  cursor: none;
 }
 
 html[data-tool='draw'][data-hover-state='soft'] .stage,
 html[data-tool='draw'][data-drag='soft'] .stage {
   cursor: var(--cur-cross), crosshair;
 }
+
+/* ROT dial: a full-turn track just inside the ring, ticks every 15°, SIGNAL fill from 000, a notch at the angle.
+   Same halo + ink dual stroke as the gauges. */
+.node .rotd {
+  pointer-events: none;
+  will-change: opacity;
+}
+.node .rot-track.ink,
+.node .rot-ticks.ink { stroke: #fff; stroke-width: 1; stroke-opacity: 0.9; fill: none; }
+.node .rot-track.ink { stroke-opacity: 0.5; }
+.node .rot-track.halo { stroke-width: 3; stroke-opacity: 0.5; fill: none; }
+.node .rot-ticks.halo { stroke-width: 3; stroke-opacity: 0.55; fill: none; }
+.node .rot-fill.ink { stroke: var(--signal); stroke-width: 2; fill: none; }
+.node .rot-fill.halo { stroke-width: 4.5; stroke-opacity: 0.6; fill: none; }
+.node .rot-knob.ink { stroke: #fff; stroke-width: 1.75; transition: stroke var(--t) var(--ease); }
+.node .rot-knob.halo { stroke-width: 4.5; stroke-opacity: 0.6; }
+
+.node.is-rot-hover .rot-track.ink { stroke-opacity: 0.9; stroke-width: 1.75; }
+.node.is-rot-hover .rot-ticks.ink,
+.node.is-rot-hover .rot-knob.ink { stroke: var(--signal); }
+.node.is-rot-hover .rot-fill.ink { stroke-width: 3; }
+.node.is-rot-hover .rot-knob.ink { stroke-width: 2.5; }
+.node.is-rot-drag .rot-fill.ink,
+.node.is-rot-drag .rot-knob.ink,
+.node.is-rot-flash .rot-fill.ink,
+.node.is-rot-flash .rot-knob.ink { stroke: var(--flare); }
+
+/* Cursor: the dials swallow it on hover, drag and wheel; the notch is the cursor. */
+html[data-hover-state='rot'] .stage,
+html[data-drag='rot'] .stage,
+html[data-hover-state='opac'] .stage,
+html[data-drag='opac'] .stage,
+html[data-hover-state='hue'] .stage,
+html[data-drag='hue'] .stage,
+html[data-hover-state='sat'] .stage,
+html[data-drag='sat'] .stage,
+html[data-hover-state='lum'] .stage,
+html[data-drag='lum'] .stage,
+.stage.wheel-hide,
+.stage.wheel-hide * { cursor: none !important; }
 
 /* Spec: LYR beside the serial, SOFT row with a barcode-language segment bar. */
 .node-spec .id-dd {
@@ -2146,11 +2235,11 @@ html[data-tool='draw'][data-drag='soft'] .stage {
   font-size: 11px;
 }
 
-/* One spec row per effect, same hairlines as .node-spec; SCAN and VIG share the last row. */
+/* One spec row per effect, same hairlines as .node-spec. */
 .fx-row {
   display: grid;
-  /* label | knob | readout | right column (toggles, or VIG label | knob | readout): column 4 starts at one x on every row */
-  grid-template-columns: 54px auto 5.6ch auto auto auto;
+  /* checkbox | label | knob | readout | options: columns share one x on every row */
+  grid-template-columns: 14px 54px auto 5.6ch auto;
   justify-content: start;
   align-items: center;
   column-gap: 8px;
@@ -2184,6 +2273,59 @@ html[data-tool='draw'][data-drag='soft'] .stage {
   width: 5.6ch;
   white-space: nowrap;
   transition: color var(--t) var(--ease);
+}
+
+/* ON checkbox: 14 px keyline square, ink plate with a paper tick when on. */
+.fx-cbw {
+  display: flex;
+  align-items: center;
+}
+
+.fx-check {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border: 1px solid var(--void);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color var(--t) var(--ease);
+}
+
+.fx-check::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0;
+  width: 4px;
+  height: 8px;
+  border: solid var(--paper);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  transition: transform var(--t) var(--ease);
+}
+
+.fx-check:checked {
+  background: var(--ink);
+}
+
+.fx-check:checked::after {
+  transform: rotate(45deg) scale(1);
+}
+
+/* Hit area beyond the 14 px square. */
+.fx-check::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+.fx-check:focus-visible {
+  outline: 2px solid var(--flare);
+  outline-offset: 2px;
 }
 
 /* The knob: SOFT-gauge language. 21 ticks over 270°, lit ticks INK, FLARE while engaged. */
@@ -2326,7 +2468,7 @@ html[data-tool='draw'][data-drag='soft'] .stage {
 /* WALLPAPER: five equal cells, each with an outlined glyph at the target's aspect. */
 .wp-group {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-bottom: 8px;
   font-size: 9.5px;
 }
@@ -2366,6 +2508,89 @@ html[data-tool='draw'][data-drag='soft'] .stage {
   flex: none;
   height: 14px;
   border: 1px solid currentColor;
+}
+
+.wp-glyph-custom {
+  border-style: dashed;
+}
+
+/* CUSTOM: W × H mono inputs, swap, range hint. */
+.wp-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
+.wp-custom[hidden] {
+  display: none;
+}
+
+.wp-dim {
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+  gap: 4px;
+  border-bottom: 1px solid var(--void);
+}
+
+.wp-dim input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  border-radius: 0;
+}
+
+.wp-dim:focus-within {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.wp-dim input.is-bad {
+  color: var(--graphite);
+  text-decoration: line-through;
+}
+
+.wp-swap {
+  flex: none;
+  width: 28px;
+  height: 26px;
+  border: 1px solid var(--void);
+  color: var(--void);
+  font: inherit;
+}
+
+.wp-swap:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.wp-swap:focus-visible {
+  outline: 1px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.wp-range {
+  flex: none;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.wp-range.is-bad {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+@media (max-width: 420px) {
+  .wp-range { display: none; }
 }
 
 .wp-export {
@@ -2426,3 +2651,248 @@ html[data-tool='draw'][data-drag='soft'] .stage {
     height: 48px;
   }
 }
+
+/* ---------- FX dial (global FX rings over the stage) ---------------------- */
+/* Same vocabulary as a node: dashed bezel + ticks + bearings, corner brackets, halo/ink strokes, black mono chips. */
+.fxdial {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.fxdial .halo { fill: none; stroke: #000; stroke-opacity: 0.6; stroke-width: 3; stroke-linecap: butt; }
+.fxdial .ink { fill: none; stroke: #fff; stroke-width: 1; stroke-linecap: butt; }
+.fxdial .fxring { outline: none; pointer-events: none; transition: opacity 60ms linear; }
+.gring .halo, .gring .ink {
+  transition: stroke-width var(--t) var(--ease), stroke var(--t) var(--ease), stroke-opacity var(--t) var(--ease);
+}
+
+/* Bezel */
+.fxdial .ring-c.halo { stroke-width: 3.5; }
+.fxdial .ring-c.ink { stroke: #fff; stroke-width: 1.25; stroke-dasharray: 3 3; stroke-opacity: 0.9; }
+.fxdial .fxbezel .ticks.ink { stroke-opacity: 0.9; }
+.fxdial .fxbezel .ticks.halo { stroke-width: 3; stroke-opacity: 0.55; }
+.fxdial .bearing {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  fill: #fff;
+  stroke: #000;
+  stroke-width: 2.5px;
+  stroke-opacity: 0.7;
+  paint-order: stroke;
+}
+.fxdial.has-hover .fxbezel .ticks.ink { stroke: var(--signal); }
+
+/* Centre reticle: corner brackets + core dot, like a node. */
+.fxdial .fxret .halo { stroke-width: 3; stroke-opacity: 0.55; }
+.fxdial .fxret .core.halo { fill: #000; fill-opacity: 0.55; stroke: none; }
+.fxdial .fxret .core.ink { fill: #fff; stroke: none; }
+
+/* Gauges */
+.gring .base.ink { stroke-opacity: 0.5; }
+.gring .base.halo { stroke-opacity: 0.5; }
+.gring .gticks.ink { stroke-opacity: 0.9; }
+.gring .fill.ink { stroke: var(--signal); stroke-width: 2; }
+.gring .fill.halo { stroke-width: 4.5; }
+.gring .knob.ink { stroke-width: 1.5; }
+.gring .knob.halo { stroke-width: 4; }
+.gring.is-off .knob.ink, .gring.is-off .gticks.ink { stroke-opacity: 0.5; }
+
+/* Callout chip: the node coordinate tag, one per ring, in the ring's own bottom gap. */
+.gring .tag-bg,
+.fxempty .tag-bg { fill: var(--void); fill-opacity: 0.92; transition: fill var(--t) var(--ease); }
+.gring .tag-text,
+.fxempty .tag-text {
+  font-family: var(--mono);
+  font-size: var(--fx-fs, 9px);
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  fill: var(--paper);
+  stroke: none;
+  pointer-events: none;
+}
+.gring.is-off .tag-text { fill: var(--graphite); fill-opacity: 1; }
+.gring.is-hover .tag-bg, .fxdial .fxring:focus-visible .tag-bg { fill: var(--signal); fill-opacity: 1; }
+.gring.is-hover .tag-text, .fxdial .fxring:focus-visible .tag-text { fill: var(--void); font-weight: 600; }
+.gring.is-drag .tag-bg { fill: var(--flare); fill-opacity: 1; }
+.gring.is-drag .tag-text { fill: var(--void); font-weight: 600; }
+
+/* Hover: the band thickens a touch, the others step back. */
+.gring.is-hover .base.ink { stroke-width: 1.5; stroke-opacity: 0.8; }
+.gring.is-hover .base.halo { stroke-width: 4; }
+.gring.is-hover .fill.ink { stroke-width: 3; }
+.gring.is-hover .fill.halo { stroke-width: 6; }
+.gring.is-hover .knob.ink { stroke: var(--signal); stroke-width: 2.2; }
+.gring.is-hover .knob.halo { stroke-width: 5; }
+.gring.is-hover .gticks.ink { stroke: var(--signal); }
+.fxdial.has-hover .fxring:not(.is-hover) { opacity: calc(var(--pa, 1) * 0.7); }
+.fxdial .fxring:focus-visible .base.ink { stroke-width: 1.5; stroke-opacity: 0.9; }
+.fxdial .fxring:focus-visible .knob.ink { stroke: var(--signal); }
+.gring.is-drag .fill.ink, .gring.is-drag .knob.ink { stroke: var(--flare); }
+
+/* Acquire / release: driven per frame from fxdial.ts (staggered; closing plays it backwards). */
+.fxdial .fxret, .fxdial .fxring, .fxdial .fxbezel, .fxdial .fxempty { transform-box: view-box; transform-origin: 0 0; }
+.fxdial .fxring { opacity: var(--pa, 1); }
+
+/* The stage's own crosshair, everywhere over the open dial (rings included). */
+.stage.fx-open, .stage.fx-open * { cursor: var(--cur-cross), crosshair !important; }
+/* Over a ring band the cursor is swallowed too (hover, drag, wheel): the lit notch is the cursor. */
+.stage.fx-ring, .stage.fx-ring * { cursor: none !important; }
+.stage.fx-grab, .stage.fx-grab *,
+.stage.fx-hide, .stage.fx-hide * { cursor: none !important; }
+/* While the pointer is swallowed the notch is the cursor: it grows and rides the arc. */
+.gring.is-drag .knob.ink { stroke-width: 2.4; }
+.gring.is-drag .knob.halo { stroke-width: 6; }
+
+.foot-fx { margin: 0; height: 20px; }
+@media (pointer: coarse) {
+  .foot-fx { height: 40px; padding: 0 12px; }
+}
+
+/* OPAC row: the SOFT row's twin, label flush left. */
+.soft-row.opac-row .soft-dt { margin-left: 0; }
+
+/* ---------- UI focus: while any dial / gauge / ring is adjusted, only that control stays at full strength ---------- */
+/* `.stage.ui-focus` is set by whichever control is in use (a drag, or a wheel burst until it settles). The node's
+   `g.node` (or `svg.fxdial`) gets `.is-focus`; a node also gets `.focus-soft|rot|opac|ring` naming the control.
+   Dimming is `filter: opacity()` rather than `opacity`, so it never fights the per-frame inline opacity the bezel
+   animation writes. In ≈ 100 ms, out ≈ 200 ms; the gradient canvas never dims. */
+.stage .handles > *,
+.stage .handles .node > *,
+.stage .handles .node .ring > .gauge,
+.stage .handles .node .ring > .halo,
+.stage > .fxdial,
+.stage .fxdial .fxbezel,
+.stage .fxdial .fxret,
+.stage .fxdial .fxempty {
+  transition: filter 200ms var(--ease);
+}
+/* (ring bezel, ticks and bearings carry `filter` in their own transition lists above) */
+.stage .chip {
+  transition: opacity 120ms var(--ease), background-color var(--t) var(--ease), color var(--t) var(--ease), filter 200ms var(--ease);
+}
+.stage .fxdial .fxring { transition: opacity 60ms linear, filter 200ms var(--ease); }
+
+.stage.ui-focus .handles > :not(.is-focus),
+.stage.ui-focus .chip.is-on:not(.is-focus),
+.stage.ui-focus > .fxdial:not(.is-focus),
+/* inside the node being adjusted: everything but the active control */
+.stage.ui-focus .node.is-focus > :not(.ring),
+.stage.ui-focus .node.focus-soft .ring > :not(.gauge.soft),
+.stage.ui-focus .node.focus-opac .ring > :not(.gauge.opac),
+.stage.ui-focus .node.focus-rot .ring > :not(.gauge.rot),
+.stage.ui-focus .node.focus-hue .ring > :not(.gauge.hue),
+.stage.ui-focus .node.focus-sat .ring > :not(.gauge.sat),
+.stage.ui-focus .node.focus-lum .ring > :not(.gauge.lum),
+.stage.ui-focus .node.focus-ring .ring > .gauge,
+/* inside the FX dial: only the active ring (and its chip) */
+.stage.ui-focus .fxdial.is-focus .fxbezel,
+.stage.ui-focus .fxdial.is-focus .fxret,
+.stage.ui-focus .fxdial.is-focus .fxempty,
+.stage.ui-focus .fxdial.is-focus .fxring:not(.is-active) {
+  filter: opacity(0.2);
+  transition-duration: 100ms;
+}
+
+/* The hover dim (70 %) only applies while merely hovering. */
+.fxdial.is-focus.has-hover .fxring:not(.is-hover) { opacity: var(--pa, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .stage .handles > *,
+  .stage .handles .node > *,
+  .stage .handles .node .ring > *,
+  .node .ring-c.ink,
+  .node .ticks.ink,
+  .node .bearing,
+  .stage .chip,
+  .stage > .fxdial,
+  .stage .fxdial .fxbezel,
+  .stage .fxdial .fxret,
+  .stage .fxdial .fxempty,
+  .stage .fxdial .fxring,
+  .stage.ui-focus .handles > :not(.is-focus),
+  .stage.ui-focus .fxdial.is-focus .fxring:not(.is-active) {
+    transition: none;
+  }
+}
+.gring { pointer-events: none; }
+
+/* Non-circle nodes: the shape's own dashed outline shows the extent, so the circular size ring (dashed ring, ticks,
+   bearings) is hidden; the gauge stack and the corner brackets stay. Resize by scroll / pinch / keys. */
+.node.no-ring .ring-c,
+.node.no-ring .ring > .ticks,
+.node.no-ring .ring > .bearing { display: none; }
+
+/* ---------- PREVIEW [P]: bare wallpaper ---------- */
+/* `.stage-frame.is-preview` (main.ts) fades every control on the artboard and the stage furniture out; the canvas and
+   the frame's box are untouched, so the field renders exactly as the export. Input is blocked in main.ts. */
+.foot-preview {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  margin: 0;
+  z-index: 2;
+}
+.foot-preview[aria-pressed='true'],
+.foot-preview[aria-pressed='true']:hover {
+  background: var(--void);
+  color: var(--signal);
+}
+.foot-preview[aria-pressed='true'] b { color: var(--signal); }
+.stage-frame .ruler,
+.stage-frame .reg,
+.stage-frame .stage-foot,
+.stage > :not(canvas) {
+  transition: opacity 200ms var(--ease), visibility 0s linear 0s;
+}
+.stage-frame.is-preview .ruler,
+.stage-frame.is-preview .reg,
+.stage-frame.is-preview .stage-foot,
+.stage-frame.is-preview .stage > :not(canvas) {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 200ms var(--ease), visibility 0s linear 200ms;
+}
+.stage-frame.is-preview .stage {
+  outline-color: transparent;
+  cursor: default;
+}
+@media (max-width: 959px) {
+  /* Touch-sized button (36 px) needs its own strip above the frame so it never sits on the top bar. */
+  .stage-col { padding-top: 46px; }
+  .foot-preview { bottom: calc(100% + 4px); height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage-frame .ruler,
+  .stage-frame .reg,
+  .stage-frame .stage-foot,
+  .stage > :not(canvas),
+  .stage-frame.is-preview .ruler,
+  .stage-frame.is-preview .reg,
+  .stage-frame.is-preview .stage-foot,
+  .stage-frame.is-preview .stage > :not(canvas) {
+    transition: none;
+  }
+}
+
+/* ---------- COLOUR page: HUE / SAT / LUM gauges (same renderer) with the track painted in the colour it controls ---------- */
+/* The hairline base and the SIGNAL fill give way to the colour band; ticks and the notch stay on top. */
+.gring.ccol .base,
+.gring.ccol .fill { display: none; }
+.gring.ccol .ctrack-under { stroke: #000; stroke-opacity: 0.6; }
+.gring.ccol .ctrack path:not(.ctrack-under) { stroke-opacity: 1; }
+.gring.ccol .gticks.halo { stroke-opacity: 0.35; }
+.gring.ccol .gticks.ink { stroke-opacity: 0.75; }
+/* Hover thickens the band like it thickens a plain gauge's arc. */
+.gring.ccol.is-hover .ctrack,
+.gring.ccol.is-drag .ctrack { stroke-width: 8px; }
+.gring.ccol.is-hover .ctrack-under,
+.gring.ccol.is-drag .ctrack-under { stroke-width: 11px; }
+/* The core swatch chip: the current colour in a keylined disc. */
+.node .csw { pointer-events: none; will-change: opacity; }
+.node .csw-halo { stroke: #000; stroke-opacity: 0.6; stroke-width: 4; }
+.node .csw-ink { stroke: #fff; stroke-width: 1.25; stroke-opacity: 0.95; }

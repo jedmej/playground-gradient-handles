@@ -6,6 +6,7 @@ import './styles.css';
 
 import { blueNoise } from './bluenoise';
 import { createFxPersist, loadFxStorage, rememberFx } from './fx';
+import { FxDial } from './fxdial';
 import { FxPanel, WallpaperPanel } from './fxpanel';
 import { GradientRenderer } from './gradient';
 import { Actions } from './actions';
@@ -15,6 +16,7 @@ import { History } from './history';
 import { FieldBuffers, packField } from './field';
 import { createStore, EASE } from './store';
 import { drawRulers, UI } from './ui';
+import { wallpaperTarget } from './wallpaper';
 
 const store = createStore();
 store.custom = loadCustom();
@@ -22,9 +24,10 @@ const savedFx = loadFxStorage();
 if (savedFx) {
   store.fx = savedFx.fx;
   store.wallpaper = savedFx.wp;
+  store.wpCustom = savedFx.cs;
 }
 rememberFx(store.fx);
-const persistFx = createFxPersist(store.fx, store.wallpaper);
+const persistFx = createFxPersist(store.fx, store.wallpaper, store.wpCustom);
 // ~60 ms of one-off work (deterministic, cached for every context incl. the export one).
 blueNoise();
 const stage = document.getElementById('stage') as HTMLElement;
@@ -32,6 +35,60 @@ const canvas = document.getElementById('field') as HTMLCanvasElement;
 const svg = document.getElementById('handles') as unknown as SVGSVGElement;
 const chipNode = document.getElementById('chip-node') as HTMLElement;
 const chipRadius = document.getElementById('chip-radius') as HTMLElement;
+
+// ----- PREVIEW [P]: bare wallpaper. `.is-preview` on the stage frame hides the furniture (CSS); these window-capture
+// listeners are registered before any other component's, so while it is on the stage never sees a pointer / wheel
+// event and no edit key reaches the handlers (the stage stays inert).
+const previewFrame = stage.parentElement as HTMLElement;
+const previewBtn = document.querySelector<HTMLButtonElement>('[data-action="preview"]')!;
+const isPreview = (): boolean => previewFrame.classList.contains('is-preview');
+const TYPING = 'input:not([type=color]):not([type=checkbox]), textarea, select, [contenteditable=""], [contenteditable="true"]';
+function setPreview(on: boolean): void {
+  if (on === isPreview()) return;
+  if (on && (store.drag.kind !== 'none' || store.drawing)) return;
+  if (on) {
+    fxDial.close();
+    if (store.tool === 'draw') actions.setDraw(false);
+    const a = document.activeElement as HTMLElement | null;
+    if (a && stage.contains(a)) a.blur();
+  }
+  previewFrame.classList.toggle('is-preview', on);
+  previewBtn.setAttribute('aria-pressed', String(on));
+}
+previewBtn.addEventListener('click', () => setPreview(!isPreview()));
+for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'pointerover', 'pointerout', 'click', 'dblclick', 'contextmenu', 'wheel']) {
+  window.addEventListener(
+    type,
+    (e) => {
+      if (!isPreview() || !(e.target instanceof Node) || !stage.contains(e.target)) return;
+      e.stopImmediatePropagation();
+      if (e.cancelable && type !== 'pointermove') e.preventDefault();
+    },
+    { capture: true, passive: false },
+  );
+}
+window.addEventListener(
+  'keydown',
+  (e) => {
+    const t = e.target as HTMLElement | null;
+    if (t?.closest?.(TYPING)) return;
+    const mod = e.metaKey || e.ctrlKey;
+    if (!mod && !e.altKey && !e.repeat && (e.key === 'p' || e.key === 'P' || (e.key === 'Escape' && isPreview()))) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setPreview(e.key === 'Escape' ? false : !isPreview());
+      return;
+    }
+    if (!isPreview()) return;
+    // Anything that could mutate the composition is swallowed; Tab, and Enter / Space on a button, stay usable.
+    if (e.key === 'Tab' || e.key === 'F5' || e.key.startsWith('F') && e.key.length > 1) return;
+    if ((e.key === 'Enter' || e.key === ' ') && t?.closest?.('button, a, [role="button"]') && !stage.contains(t)) return;
+    if (mod && !/^[zy]$/i.test(e.key)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  },
+  { capture: true },
+);
 
 const now = (): number => performance.now();
 const metrics = createMetrics();
@@ -42,6 +99,9 @@ const ui = new UI(store, handles.metrics, now, () => ({ ...handles.pointer, insi
 actions.bindKeys();
 new FxPanel(store, actions, history);
 new WallpaperPanel(store, handles.metrics, now);
+const fxDial = new FxDial(store, actions, history, stage, handles.metrics, (x, y) => handles.emptyAt(x, y), () => handles.busy());
+
+import.meta.hot?.dispose(() => fxDial.destroy());
 
 let renderer: GradientRenderer | null = null;
 try {
@@ -69,7 +129,37 @@ function fitWordmark(): void {
   wordmark.style.fontSize = `${size}px`;
 }
 
+const frame = stage.parentElement as HTMLElement;
+const stageCol = frame.parentElement as HTMLElement;
+const MOBILE = matchMedia('(max-width: 959px)');
+let fitWp = store.wallpaper;
+let fitCw = store.wpCustom.w;
+let fitCh = store.wpCustom.h;
+
+/**
+ * WYSIWYG framing: the stage takes the selected wallpaper's aspect, fitted (contain) inside the stage column and
+ * centred. Rulers / foot share the frame's grid, so exact px tracks keep them aligned. Everything else (canvas,
+ * handles, hit-testing, readouts, FX) already derives from the stage's measured box in layout().
+ * Desktop: the column's own box bounds it. Stacked mobile: the column's height follows the stage, so only its
+ * width counts and the height is capped to ~68 % of the viewport (a phone target stays on screen).
+ */
+function fitStage(): void {
+  const cs = getComputedStyle(stageCol);
+  const root = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--foot-row')) || 22;
+  const availW = stageCol.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 18;
+  const availH = MOBILE.matches
+    ? Math.max(240, window.innerHeight * 0.68) - 18 - root
+    : stageCol.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 18 - root;
+  const t = wallpaperTarget(store.wallpaper, store.wpCustom);
+  const k = Math.min(availW / t.w, availH / t.h);
+  if (!(k > 0)) return;
+  frame.style.setProperty('--sw', `${Math.max(60, Math.floor(t.w * k))}px`);
+  frame.style.setProperty('--sh', `${Math.max(60, Math.floor(t.h * k))}px`);
+  frame.classList.add('is-fit');
+}
+
 function layout(): void {
+  fitStage();
   handles.updateMetrics();
   const m = handles.metrics;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -81,6 +171,7 @@ document.fonts.ready.then(fitWordmark);
 
 const ro = new ResizeObserver(() => layout());
 ro.observe(stage);
+ro.observe(stageCol);
 window.addEventListener('resize', layout);
 window.addEventListener('scroll', () => handles.updateMetrics(), { passive: true });
 matchMedia('(pointer: coarse)').addEventListener('change', (e) => (store.coarse = e.matches));
@@ -92,6 +183,12 @@ function tick(): void {
   const t = now();
   const dt = Math.min(0.05, (t - last) / 1000);
   last = t;
+  if (store.wallpaper !== fitWp || store.wpCustom.w !== fitCw || store.wpCustom.h !== fitCh) {
+    fitWp = store.wallpaper;
+    fitCw = store.wpCustom.w;
+    fitCh = store.wpCustom.h;
+    layout();
+  }
 
   // Colour tween in OKLab, one clock per node.
   for (const n of store.nodes) {
@@ -103,9 +200,10 @@ function tick(): void {
 
   packField(store, handles.metrics, buffers);
   renderer?.render({ ...buffers, time: store.reducedMotion ? 0.5 : t / 1000, grain: 0.04 }, store.fx);
-  persistFx(store.fx, store.wallpaper);
+  persistFx(store.fx, store.wallpaper, store.wpCustom);
 
   ui.frame();
+  fxDial.frame();
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);

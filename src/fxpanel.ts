@@ -5,7 +5,7 @@ import type { Metrics } from './handles';
 import type { History } from './history';
 import { Knob } from './knob';
 import { currentPreset, type Store } from './store';
-import { wallpaperFilename, wallpaperSize, wallpaperTarget, type WallpaperId } from './wallpaper';
+import { clampSide, CUSTOM_MAX, CUSTOM_MIN, DEFAULT_CUSTOM, wallpaperFilename, wallpaperSize, wallpaperTarget, type WallpaperId } from './wallpaper';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -20,6 +20,7 @@ export class FxPanel {
   private knobs = new Map<FxId, Knob>();
   private reads = new Map<FxId, HTMLElement>();
   private rows = new Map<FxId, HTMLElement>();
+  private checks = new Map<FxId, HTMLInputElement>();
   private opts = [...document.querySelectorAll<HTMLButtonElement>('[data-fx-opt]')];
   private offBtn = document.querySelector<HTMLButtonElement>('[data-action="fx-off"]')!;
   private hint = $('fx-hint');
@@ -48,6 +49,14 @@ export class FxPanel {
         }),
       );
     }
+    for (const id of FX_IDS) {
+      const cb = document.querySelector<HTMLInputElement>(`[data-fx-check="${id}"]`)!;
+      this.checks.set(id, cb);
+      // One toggle = one undo step; sync() snaps `checked` back to the store either way.
+      cb.addEventListener('change', () => {
+        if (cb.checked !== this.store.fx[id] > 0) this.actions.fxToggle(id);
+      });
+    }
     for (const b of this.opts) {
       b.addEventListener('click', () => this.actions.fxOption(b.dataset.fxOpt as Parameters<Actions['fxOption']>[0]));
     }
@@ -73,6 +82,7 @@ export class FxPanel {
       const read = this.reads.get(id)!;
       setText(read, text);
       read.classList.toggle('dim', fx[id] <= 0);
+      this.checks.get(id)!.checked = fx[id] > 0;
       // Option toggles stay clickable while their effect is off, just quieter.
       this.rows.get(id)!.classList.toggle('is-off', fx[id] <= 0);
     }
@@ -97,23 +107,63 @@ export class WallpaperPanel {
   private btn = document.querySelector<HTMLButtonElement>('[data-action="export-wallpaper"]')!;
   private label = this.btn.querySelector<HTMLElement>('.btn-label')!;
   private count = 0;
-  private lastWp: WallpaperId | null = null;
+  private customSeeded: boolean;
+  private customRow = $('wp-custom');
+  private wIn = $('wp-w') as HTMLInputElement;
+  private hIn = $('wp-h') as HTMLInputElement;
+  private range = $('wp-range');
+  private lastKey = '';
 
   constructor(
     private store: Store,
     private metrics: Metrics,
     private now: () => number,
   ) {
+    // Seeded = a custom size already exists (selected, or differs from the default); else seed from the current preset.
+    this.customSeeded = store.wallpaper === 'custom' || store.wpCustom.w !== DEFAULT_CUSTOM.w || store.wpCustom.h !== DEFAULT_CUSTOM.h;
     for (const c of this.cells) {
-      const t = wallpaperTarget(c.dataset.wp as WallpaperId);
+      const t = wallpaperTarget(c.dataset.wp as WallpaperId, this.store.wpCustom);
       const glyph = c.querySelector<HTMLElement>('.wp-glyph');
       if (glyph) glyph.style.width = `${Math.round((14 * t.w) / t.h)}px`;
       c.addEventListener('click', () => {
+        if (t.id === 'custom' && this.store.wallpaper !== 'custom' && !this.customSeeded) {
+          // First time: start from the preset that was selected.
+          const cur = wallpaperTarget(this.store.wallpaper, this.store.wpCustom);
+          this.store.wpCustom = { w: cur.w, h: cur.h };
+        }
+        this.customSeeded = true;
         this.store.wallpaper = t.id;
         this.sync();
       });
       c.addEventListener('keydown', (e) => this.onRadioKey(e, c));
     }
+    for (const el of [this.wIn, this.hIn]) {
+      el.addEventListener('input', () => {
+        el.value = el.value.replace(/\D/g, '');
+        el.classList.toggle('is-bad', !this.valid(el.value));
+        this.range.classList.toggle('is-bad', !this.valid(this.wIn.value) || !this.valid(this.hIn.value));
+      });
+      el.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.commitCustom();
+          el.blur();
+        } else if (e.key === 'Escape') {
+          this.lastKey = '';
+          this.sync();
+          el.blur();
+        }
+      });
+      el.addEventListener('blur', () => this.commitCustom());
+      el.addEventListener('focus', () => el.select());
+    }
+    $('wp-swap').addEventListener('click', () => {
+      this.commitCustom();
+      const c = this.store.wpCustom;
+      this.store.wpCustom = { w: c.h, h: c.w };
+      this.sync();
+    });
     this.btn.addEventListener('click', () => void this.export());
     store.listeners.add(() => this.sync());
     this.sync();
@@ -130,16 +180,41 @@ export class WallpaperPanel {
     this.cells[i].click();
   }
 
+  private valid(v: string): boolean {
+    const n = Number(v);
+    return v !== '' && Number.isInteger(n) && n >= CUSTOM_MIN && n <= CUSTOM_MAX;
+  }
+
+  /** Enter / blur: clamp to 16..16384 (empty keeps the old side), store, and let tick() re-fit the artboard. */
+  private commitCustom(): void {
+    const c = this.store.wpCustom;
+    const w = clampSide(parseInt(this.wIn.value, 10), c.w);
+    const h = clampSide(parseInt(this.hIn.value, 10), c.h);
+    if (w !== c.w || h !== c.h) this.store.wpCustom = { w, h };
+    this.lastKey = '';
+    this.sync();
+  }
+
   sync(): void {
     const wp = this.store.wallpaper;
-    if (wp === this.lastWp) return;
-    this.lastWp = wp;
-    for (const c of this.cells) {
-      const on = c.dataset.wp === wp;
-      c.setAttribute('aria-checked', String(on));
-      c.tabIndex = on ? 0 : -1;
+    const c = this.store.wpCustom;
+    const key = `${wp}|${c.w}|${c.h}`;
+    if (key === this.lastKey) return;
+    this.lastKey = key;
+    for (const el of this.cells) {
+      const on = el.dataset.wp === wp;
+      el.setAttribute('aria-checked', String(on));
+      el.tabIndex = on ? 0 : -1;
     }
-    setText(this.dims, wallpaperSize(wallpaperTarget(wp)));
+    const g = this.cells.find((e) => e.dataset.wp === 'custom')?.querySelector<HTMLElement>('.wp-glyph');
+    if (g) g.style.width = `${Math.round(Math.min(26, Math.max(5, (14 * c.w) / c.h)))}px`;
+    this.customRow.hidden = wp !== 'custom';
+    if (document.activeElement !== this.wIn) this.wIn.value = String(c.w);
+    if (document.activeElement !== this.hIn) this.hIn.value = String(c.h);
+    this.wIn.classList.remove('is-bad');
+    this.hIn.classList.remove('is-bad');
+    this.range.classList.remove('is-bad');
+    setText(this.dims, wallpaperSize(wallpaperTarget(wp, c)));
   }
 
   private say(text: string): void {
@@ -149,7 +224,7 @@ export class WallpaperPanel {
   private async export(): Promise<void> {
     if (this.btn.disabled) return;
     const s = this.store;
-    const t = wallpaperTarget(s.wallpaper);
+    const t = wallpaperTarget(s.wallpaper, s.wpCustom);
     const size = wallpaperSize(t);
     this.btn.disabled = true;
     setText(this.label, 'Rendering…');

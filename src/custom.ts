@@ -23,8 +23,9 @@ export function customPreset(nodes: NodeSpec[], fx?: FxState): Preset {
     radii: nodes.map((n) => n.r),
     shapes: nodes.map((n) => {
       const soft = hasCustomSoft(n) ? n.soft : undefined;
-      if (n.shape && n.shape !== 'circle') return { shape: n.shape, rot: n.rot ?? 0, pts: copyPts(n.pts), soft };
-      return soft !== undefined ? { soft } : undefined;
+      const opac = n.opac !== undefined && n.opac < 0.9999 ? n.opac : undefined;
+      if (n.shape && n.shape !== 'circle') return { shape: n.shape, rot: n.rot ?? 0, pts: copyPts(n.pts), soft, opac };
+      return soft !== undefined || opac !== undefined ? { soft, opac } : undefined;
     }),
     ...(fx ? { fx: copyFx(fx) } : {}),
   };
@@ -36,6 +37,7 @@ function serialise(n: NodeSpec): Record<string, unknown> {
   if (n.shape && n.shape !== 'circle') o.shape = n.shape;
   if (n.rot && n.shape !== 'stroke') o.rot = round4(n.rot);
   if (hasCustomSoft(n)) o.soft = round4(n.soft as number);
+  if (n.opac !== undefined && n.opac < 0.9999) o.opac = round4(n.opac);
   if (n.shape === 'stroke') o.pts = (n.pts ?? []).map((p) => [round4(p[0]), round4(p[1])]);
   return o;
 }
@@ -86,6 +88,7 @@ function parse(raw: string | null): { nodes: NodeSpec[]; fx?: FxState } | null {
       }
     }
     if (typeof n.soft === 'number' && Number.isFinite(n.soft)) spec.soft = clamp(n.soft, 0, 1);
+    if (typeof n.opac === 'number' && Number.isFinite(n.opac)) spec.opac = clamp(n.opac, 0, 1);
     out.push(spec);
   }
   if (out.length < MIN_NODES) return null;

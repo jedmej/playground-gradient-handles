@@ -1,3 +1,6 @@
+import { wheelUp } from './wheel';
+import { G_SPAN, G_START, gaugeHit, gaugeSpacing, layoutGauge, makeGauge, renderGauge, type GaugeParts } from './gauge';
+import { colorStateOf, createColorPage, layoutColorPage, renderColorPage, withAxis, type ColorAxis, type ColorPage, type ColorState } from './colorpage';
 import type { Actions } from './actions';
 import type { History } from './history';
 import { BODY_Q, nodeQ, outlinePoints } from './field';
@@ -12,6 +15,7 @@ import {
   R_MIN,
   removeNodeAt,
   STROKE_RADIUS,
+  tweenNodeTo,
   type NodeState,
   type Store,
 } from './store';
@@ -19,28 +23,7 @@ import {
 const NS = 'http://www.w3.org/2000/svg';
 const TAU = Math.PI * 2;
 
-/** SOFT gauge: a 270° arc, gap centred on 6 o'clock, 0 % at the lower left running clockwise to 100 % at the lower right. */
-const G_START = (135 * Math.PI) / 180; // screen angle (y down, clockwise positive)
-const G_SPAN = (270 * Math.PI) / 180;
-/** The gauge is hidden below this ring radius (CSS px): too small to hold it. */
-const G_MIN_R = 64;
-const gaugeRi = (rPx: number): number => Math.min(Math.max(0.55 * rPx, 22), rPx - 18);
-const gaugePt = (ri: number, t: number, dr = 0): string => {
-  const a = G_START + G_SPAN * t;
-  return `${((ri + dr) * Math.cos(a)).toFixed(2)} ${((ri + dr) * Math.sin(a)).toFixed(2)}`;
-};
-function gaugeArc(ri: number, t0: number, t1: number): string {
-  if (t1 - t0 < 0.002) return '';
-  return `M${gaugePt(ri, t0)}A${ri.toFixed(2)} ${ri.toFixed(2)} 0 ${(t1 - t0) * 270 > 180 ? 1 : 0} 1 ${gaugePt(ri, t1)}`;
-}
-function gaugeTicks(ri: number): string {
-  let d = '';
-  for (let k = 0; k <= 10; k++) {
-    const len = k % 5 === 0 ? 4 : 2.5;
-    d += `M${gaugePt(ri, k / 10, -len)}L${gaugePt(ri, k / 10, len)}`;
-  }
-  return d;
-}
+const ROT_STEP = (15 * Math.PI) / 180;
 
 export interface Metrics {
   left: number;
@@ -86,8 +69,18 @@ interface NodeView {
   ticksInk: SVGPathElement;
   bearings: SVGTextElement[];
   gauge: SVGGElement;
-  gaugeParts: { baseH: SVGPathElement; baseI: SVGPathElement; ticksH: SVGPathElement; ticksI: SVGPathElement; fillH: SVGPathElement; fillI: SVGPathElement; knobH: SVGPathElement; knobI: SVGPathElement; label: SVGTextElement };
+  gaugeParts: GaugeParts;
   gaugeOp: number;
+  rotD: SVGGElement;
+  rotP: GaugeParts;
+  rotOp: number;
+  lastRotR: number;
+  lastRotA: number;
+  opG: SVGGElement;
+  opParts: GaugeParts;
+  opOp: number;
+  lastOpRi: number;
+  lastOpac: number;
   lastRi: number;
   lastSoft: number;
   softAttr: string;
@@ -98,6 +91,9 @@ interface NodeView {
   holdHalo: SVGCircleElement;
   holdInk: SVGCircleElement;
   holding: boolean;
+  /** COLOUR page (HUE / SAT / LUM gauges + core swatch) and its 0…1 page-flip progress (0 = default OPAC / SOFT / ROT). */
+  cp: ColorPage;
+  pg: number;
   bracket: number;
   ringOp: number;
   lastR: number;
@@ -111,7 +107,7 @@ function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, 
   return e;
 }
 
-function bracketPath(o: number, len: number): string {
+export function bracketPath(o: number, len: number): string {
   const i = o - len;
   return (
     `M${-o} ${-i}V${-o}H${-i}` +
@@ -121,7 +117,7 @@ function bracketPath(o: number, len: number): string {
   );
 }
 
-function ticksPath(r: number): string {
+export function ticksPath(r: number): string {
   let d = '';
   for (let k = 0; k < 24; k++) {
     const a = (k / 24) * TAU;
@@ -164,9 +160,18 @@ export class Handles {
   private grid: SVGPathElement;
   private gridHalo: SVGPathElement;
   private dragOffset = { x: 0, y: 0 };
+  /** Gauge stack radii (innermost first), from the same spacing rule as the FX dial; refreshed in `updateMetrics`. */
+  private gr = { sp: 30, opac: 45, soft: 75, rot: 105 };
   private pointerId: number | null = null;
+  /** uid of the node whose palette chip is hovered/focused in the side panel (null = none). */
+  private panelUid: number | null = null;
   private lastPointer = { x: 0, y: 0 };
   private hold: { start: number; x: number; y: number; uid: number } | null = null;
+  /** The one node whose bezel shows the COLOUR page (uid), and the unrounded colour behind its hex (see colorpage.ts). */
+  private colorUid: number | null = null;
+  private colorSt: ColorState | null = null;
+  /** A press on a core that has not moved yet: released in place it is a click (toggles the COLOUR page). */
+  private coreDown: { uid: number; x: number; y: number; moved: boolean } | null = null;
   /** Touch: the node the current first finger deselected on empty field (pinch may still want it). */
   private pinchRestore: { uid: number; t: number } | null = null;
   /** The stroke being drawn: the provisional node's uid and the raw sampled path (stage px). */
@@ -184,8 +189,13 @@ export class Handles {
   /** SOFT drag: the last value, and whether the pointer is parked in (or just left) the bottom gap. */
   private softPrev = 0;
   private softGap = false;
+  /** Wheel burst: the zone it started in, so one scroll drives one control. */
+  private wheelLock: { uid: number; kind: 'rot' | 'soft' | 'opac' | 'hue' | 'sat' | 'lum' | 'node'; t: number } | null = null;
+  private wheelHideTimer = 0;
+  /** Node whose control the wheel is driving, until ~700 ms after the last tick (drives `ui-focus`). */
+  private wheelFocus: { uid: number; until: number; kind: string } | null = null;
   /** Wheel / pinch feedback: which node, what was changed, and until when the readout and bezel stay up. */
-  private flash: { uid: number; kind: 'r' | 'soft'; until: number } | null = null;
+  private flash: { uid: number; kind: 'r' | 'soft' | 'rot' | 'opac' | 'hue' | 'sat' | 'lum'; until: number } | null = null;
   /** Touch pointers on the stage, and the two-finger pinch (reach of the selected node). */
   private touches = new Map<number, { x: number; y: number }>();
   private pinch: { uid: number; d0: number; r0: number } | null = null;
@@ -203,6 +213,7 @@ export class Handles {
     private actions: Actions,
     private history: History,
   ) {
+    this.wirePalette();
     this.gridHalo = el('path', { class: 'halo grid-cross' });
     this.grid = el('path', { class: 'ink grid-cross' });
     svg.append(this.gridHalo, this.grid);
@@ -243,6 +254,10 @@ export class Handles {
     stage.addEventListener('contextmenu', this.onContextMenu);
     // Non-passive: over a node the wheel / pinch must never scroll or zoom the page.
     stage.addEventListener('wheel', this.onWheel, { passive: false });
+    // Esc and undo / redo end a wheel burst's focus at once.
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' || ((e.metaKey || e.ctrlKey) && /^[zy]$/i.test(e.key))) this.wheelFocus = null;
+    }, true);
   }
 
   // ----- views --------------------------------------------------------------
@@ -263,21 +278,20 @@ export class Handles {
       return t;
     });
 
-    // SOFT gauge: lives in the ring group, so it appears and fades with the bezel.
-    const gauge = el('g', { class: 'gauge' });
-    const gp = {
-      baseH: el('path', { class: 'halo g-base' }),
-      baseI: el('path', { class: 'ink g-base' }),
-      ticksH: el('path', { class: 'halo g-ticks' }),
-      ticksI: el('path', { class: 'ink g-ticks' }),
-      fillH: el('path', { class: 'halo g-fill' }),
-      fillI: el('path', { class: 'ink g-fill' }),
-      knobH: el('path', { class: 'halo g-knob' }),
-      knobI: el('path', { class: 'ink g-knob' }),
-      label: el('text', { class: 'soft-label', 'text-anchor': 'middle' }),
-    };
-    gauge.append(gp.baseH, gp.baseI, gp.ticksH, gp.ticksI, gp.fillH, gp.fillI, gp.knobH, gp.knobI, gp.label);
-    ring.appendChild(gauge);
+    // OPAC / SOFT / ROT: the FX dial's gauge, on fixed radii packed round the core (see gauge.ts).
+    const gp = makeGauge('gauge soft');
+    const op = makeGauge('gauge opac');
+    const rp = makeGauge('gauge rot');
+    layoutGauge(gp, this.gr.soft, this.gr.sp);
+    layoutGauge(op, this.gr.opac, this.gr.sp);
+    layoutGauge(rp, this.gr.rot, this.gr.sp);
+    const gauge = gp.g;
+    const opG = op.g;
+    const rotD = rp.g;
+    const cp = createColorPage();
+    layoutColorPage(cp, this.gr.rot, this.gr.soft, this.gr.opac, this.gr.sp);
+    for (const c of [cp.lum, cp.sat, cp.hue]) c.p.g.style.opacity = '0';
+    ring.append(opG, gauge, rotD, cp.lum.p.g, cp.sat.p.g, cp.hue.p.g);
 
     const focusHalo = el('rect', { class: 'halo focus-rect', x: -21, y: -21, width: 42, height: 42 });
     const focus = el('rect', { class: 'ink focus-rect', x: -21, y: -21, width: 42, height: 42 });
@@ -294,13 +308,13 @@ export class Handles {
     const outInk = el('path', { class: 'ink out-p' });
     outG.append(outHalo, outInk);
     outG.style.opacity = '0';
-    g.append(ring, outG, focusHalo, focus, holdHalo, holdInk, retHalo, retInk, coreHalo, coreInk);
+    g.append(ring, outG, focusHalo, focus, holdHalo, holdInk, retHalo, retInk, cp.sw, coreHalo, coreInk);
 
     const view: NodeView = {
       outG, outHalo, outInk, outKey: '', outPts: null, shape: '', npts: -1,
       uid: n.uid, g, ring, ringHalo, ringInk, ticksHalo, ticksInk, bearings, retHalo, retInk, focus,
-      gauge, gaugeParts: gp, gaugeOp: 0, lastRi: -1, lastSoft: -1, softAttr: '', layerAttr: '',
-      holdHalo, holdInk, holding: false,
+      gauge, gaugeParts: gp, gaugeOp: 0, rotD, rotP: rp, rotOp: 0, lastRotR: -1, lastRotA: -9, opG, opParts: op, opOp: 0, lastOpRi: -1, lastOpac: -1, lastRi: -1, lastSoft: -1, softAttr: '', layerAttr: '',
+      holdHalo, holdInk, holding: false, cp, pg: 0,
       // Fresh nodes "acquire": brackets start wide and settle, the ring eases in.
       bracket: n.fresh && !this.store.reducedMotion ? 22 : 11,
       ringOp: 0, lastR: -1, lastBracket: -1, cls: '',
@@ -354,6 +368,16 @@ export class Handles {
     m.w = Math.max(1, r.width);
     m.h = Math.max(1, r.height);
     m.min = Math.min(m.w, m.h);
+    const { sp, r0 } = gaugeSpacing(m.w, m.h);
+    if (Math.abs(sp - this.gr.sp) > 0.01) {
+      this.gr = { sp, opac: r0, soft: r0 + sp, rot: r0 + 2 * sp };
+      for (const v of this.views) {
+        layoutGauge(v.opParts, this.gr.opac, sp);
+        layoutGauge(v.gaugeParts, this.gr.soft, sp);
+        layoutGauge(v.rotP, this.gr.rot, sp);
+        layoutColorPage(v.cp, this.gr.rot, this.gr.soft, this.gr.opac, sp);
+      }
+    }
     this.svg.setAttribute('viewBox', `0 0 ${m.w} ${m.h}`);
     this.svg.setAttribute('width', String(m.w));
     this.svg.setAttribute('height', String(m.h));
@@ -369,6 +393,12 @@ export class Handles {
     this.gridHalo.setAttribute('d', d);
   }
 
+  /** How far from the centre a node still counts as "under the pointer": its size ring or its outermost gauge, whichever is larger. */
+  private reachR(i: number, ringR: number): number {
+    if (this.store.tool !== 'edit') return ringR;
+    return Math.max(ringR, (this.rotShown(i) || this.onColor(i) ? this.gr.rot : this.gr.soft) + 12);
+  }
+
   private hitSizes(): { core: number; band: number } {
     return this.store.coarse ? { core: 22, band: 18 } : { core: 12, band: 10 };
   }
@@ -380,15 +410,59 @@ export class Handles {
   }
 
   /** The wheel / pinch feedback for node `i`, while it is still on screen. */
-  private flashing(i: number): { kind: 'r' | 'soft' } | null {
+  private flashing(i: number): { kind: 'r' | 'soft' | 'rot' | 'opac' | 'hue' | 'sat' | 'lum' } | null {
     const f = this.flash;
     if (!f || performance.now() > f.until) return null;
     return this.store.nodes[i]?.uid === f.uid ? f : null;
   }
 
+  /** Panel-driven hover: set from the palette chips. Real board hover, a drag or an open FX dial win. */
+  /** Delegated listeners on the palette strip: chip hover/focus lights the matching node. Mouse/pen/keyboard only. */
+  private wirePalette(): void {
+    const pal = document.getElementById('palette');
+    if (!pal) return;
+    const idx = (e: Event): number => {
+      const b = (e.target as Element | null)?.closest?.('.chip-btn') as HTMLElement | null;
+      return b ? Number(b.dataset.chip) : -1;
+    };
+    const on = (e: Event): void => {
+      if ((e as PointerEvent).pointerType === 'touch') return;
+      const i = idx(e);
+      if (i >= 0) this.setPanelHover(i);
+    };
+    const off = (e: Event): void => {
+      if ((e as PointerEvent).pointerType === 'touch') return;
+      if (idx(e) >= 0) this.setPanelHover(null);
+    };
+    pal.addEventListener('pointerover', on);
+    pal.addEventListener('pointerout', off);
+    pal.addEventListener('focusin', (e) => {
+      const b = e.target as HTMLElement;
+      if (b.matches?.(':focus-visible')) on(e);
+    });
+    pal.addEventListener('focusout', off);
+    pal.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') this.setPanelHover(null);
+    });
+  }
+
+  setPanelHover(i: number | null): void {
+    const n = i === null ? undefined : this.store.nodes[i];
+    this.panelUid = n ? n.uid : null;
+  }
+
+  /** Index of the node highlighted from the panel, or -1 when it is stale or overridden. */
+  private panelHoverIndex(): number {
+    const s = this.store;
+    if (this.panelUid === null || s.drag.kind !== 'none' || s.hover.kind !== 'idle') return -1;
+    if (document.querySelector('.fxdial.is-open, .fx-dial.is-open, [data-fxdial="open"]')) return -1;
+    return s.nodes.findIndex((n) => n.uid === this.panelUid);
+  }
+
   private revealed(i: number): boolean {
     const s = this.store;
     return (
+      this.panelHoverIndex() === i ||
       s.armed === i ||
       this.flashing(i) !== null ||
       s.selected === i ||
@@ -398,13 +472,67 @@ export class Handles {
     );
   }
 
-  /** Is node `i`'s SOFT gauge on screen (and so grabbable)? Edit tool only, and only on a big enough ring. */
-  private gaugeShown(i: number): boolean {
-    return this.store.tool === 'edit' && this.px(i).r >= G_MIN_R;
+  /** Are node `i`'s gauges on screen (and so grabbable)? Edit tool only: they sit at fixed radii, whatever the node's size. */
+  private gaugeShown(_i: number): boolean {
+    return this.store.tool === 'edit';
   }
 
-  /** Grab-zone priority: core → SOFT gauge → revealed ring band → shape/stroke body → nothing. Nearest wins. */
-  private pick(x: number, y: number): { kind: 'node' | 'soft' | 'ring' | 'body' | 'none'; index: number } {
+  /** Something is active (a selected / focused node or stroke, an open node menu, a stroke being drawn): the next empty click only clears it. */
+  busy(): boolean {
+    const s = this.store;
+    return s.selected !== null || s.focused !== null || s.drawing || this.menu.isOpen || this.colorUid !== null;
+  }
+
+  /** Is node `i` on the COLOUR page (edit tool only)? */
+  private onColor(i: number): boolean {
+    const n = this.store.nodes[i];
+    return !!n && this.colorUid === n.uid && this.store.tool === 'edit';
+  }
+
+  /** The unrounded colour of node `i`, kept across edits (see colorpage.ts). */
+  private colorOf(i: number): ColorState {
+    const n = this.store.nodes[i];
+    this.colorSt = colorStateOf(n.uid, n.hex, this.colorSt);
+    return this.colorSt;
+  }
+
+  /** Put node `i` on the COLOUR page (or back to the default one with `on = false`); only one node is ever on it. */
+  private setColorPage(i: number, on: boolean): void {
+    const n = this.store.nodes[i];
+    if (!n) return;
+    if (on) {
+      this.colorUid = n.uid;
+      this.colorOf(i);
+    } else if (this.colorUid === n.uid) this.colorUid = null;
+  }
+
+  /** Write one axis of node `i`'s colour (0…1 along its gauge) live: no tween, so the canvas follows the pointer. */
+  private setAxis(i: number, axis: ColorAxis, v: number): void {
+    const s = this.store;
+    const n = s.nodes[i];
+    if (!n) return;
+    const next = withAxis(this.colorOf(i), axis, v);
+    this.colorSt = next;
+    if (n.hex !== next.hex) tweenNodeTo(s, n, next.hex, performance.now(), 0);
+    s.modified = true;
+    emit(s);
+  }
+
+  /** Is the board empty at stage point (x, y)? Edit tool only; the core, gauge, ring band and body all count as a node. */
+  emptyAt(x: number, y: number): boolean {
+    if (this.store.tool !== 'edit' || this.store.drawing) return false;
+    this.updateMetrics();
+    return this.pick(x, y).kind === 'none';
+  }
+
+  /** Is node `i`'s ROT handle on screen? Same gate as SOFT, and only where rotation shows (not circles or strokes). */
+  private rotShown(i: number): boolean {
+    const sh = this.store.nodes[i].shape;
+    return this.gaugeShown(i) && sh !== 'circle' && sh !== 'stroke';
+  }
+
+  /** Grab-zone priority: core → ROT dial / OPAC / SOFT gauges → revealed ring band → shape/stroke body → nothing. Nearest wins. */
+  private pick(x: number, y: number): { kind: 'node' | 'soft' | 'rot' | 'opac' | 'hue' | 'sat' | 'lum' | 'ring' | 'body' | 'none'; index: number } {
     const { core, band } = this.hitSizes();
     let best = -1;
     let bestD = Infinity;
@@ -418,29 +546,31 @@ export class Handles {
     }
     if (best >= 0) return { kind: 'node', index: best };
 
-    // SOFT gauge: a ±7 px (±11 coarse) band around the arc, on its visible 270° only.
-    const gb = this.store.coarse ? 11 : 7;
-    let bestS = -1;
-    let bestSD = Infinity;
-    for (let i = 0; i < this.store.nodes.length; i++) {
-      if (!this.revealed(i) || !this.gaugeShown(i)) continue;
-      const p = this.px(i);
-      const ri = gaugeRi(p.r);
-      const d = Math.abs(Math.hypot(x - p.x, y - p.y) - ri);
-      if (d > gb || d >= bestSD) continue;
-      const u = (((Math.atan2(y - p.y, x - p.x) - G_START) % TAU) + TAU) % TAU;
-      const tol = gb / ri;
-      if (u <= G_SPAN + tol || u >= TAU - tol) {
-        bestS = i;
-        bestSD = d;
+    // Gauge rings, outermost first: the FX dial's own hit rule (half a ring spacing either side, any angle, the bottom gap included).
+    // A node on the COLOUR page offers HUE / SAT / LUM on the same three radii instead of ROT / SOFT / OPAC.
+    const arcs = [['rot', this.gr.rot], ['hue', this.gr.rot], ['soft', this.gr.soft], ['sat', this.gr.soft], ['opac', this.gr.opac], ['lum', this.gr.opac]] as const;
+    for (const [kind, ri] of arcs) {
+      let bi = -1;
+      let bd = Infinity;
+      const colorKind = kind === 'hue' || kind === 'sat' || kind === 'lum';
+      for (let i = 0; i < this.store.nodes.length; i++) {
+        if (!this.revealed(i) || this.onColor(i) !== colorKind) continue;
+        if (!(kind === 'rot' ? this.rotShown(i) : this.gaugeShown(i))) continue;
+        const p = this.px(i);
+        const d = gaugeHit(ri, x - p.x, y - p.y, this.gr.sp);
+        if (d !== null && d < bd) {
+          bi = i;
+          bd = d;
+        }
       }
+      if (bi >= 0) return { kind, index: bi };
     }
-    if (bestS >= 0) return { kind: 'soft', index: bestS };
 
     let bestR = -1;
     let bestRD = Infinity;
     for (let i = 0; i < this.store.nodes.length; i++) {
-      if (!this.revealed(i)) continue;
+      // Only circles show the dotted size ring; other shapes resize by scroll / pinch / keys (their own outline is the extent).
+      if (!this.revealed(i) || this.store.nodes[i].shape !== 'circle') continue;
       const p = this.px(i);
       const d = Math.abs(Math.hypot(x - p.x, y - p.y) - p.r);
       if (d <= band && d < bestRD) {
@@ -620,6 +750,7 @@ export class Handles {
     }
     if (s.drag.kind !== 'none') return;
     this.lastPointer = { x, y };
+    this.coreDown = null;
 
     // DRAW tool: nothing is hit-tested; a primary press starts a stroke.
     if (s.tool === 'draw') {
@@ -659,6 +790,8 @@ export class Handles {
       s.armed = res.index;
       this.views[res.index].g.focus({ preventScroll: true });
       this.lastTap = null;
+      // Released in place this press is a click on the core: it flips the COLOUR page (see onUp).
+      this.coreDown = { uid: s.nodes[res.index].uid, x, y, moved: false };
       // Touch: first tap selects; pressing and holding an already-selected core opens the node menu.
       if (e.pointerType === 'touch' && wasSelected === res.index) {
         this.hold = { start: performance.now(), x, y, uid: s.nodes[res.index].uid };
@@ -673,6 +806,37 @@ export class Handles {
       this.softPrev = s.nodes[res.index].soft;
       this.softGap = false;
       this.applySoft(res.index, x, y);
+    } else if (res.kind === 'opac') {
+      this.history.begin();
+      s.drag = { kind: 'opac', index: res.index };
+      s.hover = { kind: 'opac', index: res.index };
+      s.selected = res.index;
+      s.armed = res.index;
+      this.lastTap = null;
+      this.softPrev = s.nodes[res.index].opac;
+      this.softGap = false;
+      this.applyOpac(res.index, x, y);
+    } else if (res.kind === 'rot') {
+      this.history.begin();
+      s.drag = { kind: 'rot', index: res.index };
+      s.hover = { kind: 'rot', index: res.index };
+      s.selected = res.index;
+      s.armed = res.index;
+      this.lastTap = null;
+      this.softPrev = s.nodes[res.index].rot / TAU;
+      this.softGap = false;
+      this.applyRot(res.index, x, y, e.shiftKey);
+    } else if (res.kind === 'hue' || res.kind === 'sat' || res.kind === 'lum') {
+      this.history.begin();
+      s.drag = { kind: res.kind, index: res.index };
+      s.hover = { kind: res.kind, index: res.index };
+      s.selected = res.index;
+      s.armed = res.index;
+      this.lastTap = null;
+      const st = this.colorOf(res.index);
+      this.softPrev = res.kind === 'hue' ? st.h / 360 : res.kind === 'sat' ? st.s : st.L;
+      this.softGap = false;
+      this.applyColor(res.index, res.kind, x, y);
     } else if (res.kind === 'ring') {
       this.history.begin();
       s.drag = { kind: 'ring', index: res.index };
@@ -720,6 +884,9 @@ export class Handles {
     this.pointerInside = true;
 
     if (this.hold && Math.hypot(x - this.hold.x, y - this.hold.y) > HOLD_SLOP) this.hold = null;
+    // Past a few px the core press is a drag, not a click.
+    const cd = this.coreDown;
+    if (cd && Math.hypot(x - cd.x, y - cd.y) > (e.pointerType === 'touch' ? 8 : 4)) cd.moved = true;
 
     if (s.drawing) {
       if (e.pointerId === this.pointerId) this.extendStroke(e);
@@ -739,6 +906,19 @@ export class Handles {
     }
     if (s.drag.kind === 'soft') {
       this.applySoft(s.drag.index, x, y);
+      return;
+    }
+    if (s.drag.kind === 'hue' || s.drag.kind === 'sat' || s.drag.kind === 'lum') {
+      this.applyColor(s.drag.index, s.drag.kind, x, y);
+      return;
+    }
+    if (this.stage.classList.contains('wheel-hide') && (e.movementX || e.movementY)) this.stage.classList.remove('wheel-hide');
+    if (s.drag.kind === 'opac') {
+      this.applyOpac(s.drag.index, x, y);
+      return;
+    }
+    if (s.drag.kind === 'rot') {
+      this.applyRot(s.drag.index, x, y, e.shiftKey);
       return;
     }
     if (e.pointerType === 'touch') return;
@@ -765,6 +945,66 @@ export class Handles {
     n.soft = Math.round(t * 1000) / 1000;
   }
 
+  /** Same mapping as SOFT (270° arc, gap holds the end it came from) for the OPAC gauge. */
+  private applyOpac(i: number, x: number, y: number): void {
+    const n = this.store.nodes[i];
+    if (!n) return;
+    const p = this.px(i);
+    const u = (((Math.atan2(y - p.y, x - p.x) - G_START) % TAU) + TAU) % TAU;
+    let t: number;
+    if (u > G_SPAN) {
+      t = this.softPrev > 0.5 ? 1 : 0;
+      this.softGap = true;
+    } else {
+      t = u / G_SPAN;
+      if (this.softGap && Math.abs(t - this.softPrev) > 0.5) t = this.softPrev;
+      else this.softGap = false;
+    }
+    this.softPrev = t;
+    n.opac = Math.round(t * 1000) / 1000;
+    this.store.modified = true;
+  }
+
+  /** HUE / SAT / LUM drag: the same 270° arc mapping as SOFT (the gap holds the end the value came from). */
+  private applyColor(i: number, axis: ColorAxis, x: number, y: number): void {
+    if (!this.store.nodes[i]) return;
+    const p = this.px(i);
+    const u = (((Math.atan2(y - p.y, x - p.x) - G_START) % TAU) + TAU) % TAU;
+    let t: number;
+    if (u > G_SPAN) {
+      t = this.softPrev > 0.5 ? 1 : 0;
+      this.softGap = true;
+    } else {
+      t = u / G_SPAN;
+      if (this.softGap && Math.abs(t - this.softPrev) > 0.5) t = this.softPrev;
+      else this.softGap = false;
+    }
+    this.softPrev = t;
+    this.setAxis(i, axis, t);
+  }
+
+  /** ROT is the same 270° arc as SOFT: 0–360° mapped along it, the gap holding the end it came from (⇧ snaps to 15°). */
+  private applyRot(i: number, x: number, y: number, snap: boolean): void {
+    const n = this.store.nodes[i];
+    if (!n) return;
+    const p = this.px(i);
+    const u = (((Math.atan2(y - p.y, x - p.x) - G_START) % TAU) + TAU) % TAU;
+    let t: number;
+    if (u > G_SPAN) {
+      t = this.softPrev > 0.5 ? 1 : 0;
+      this.softGap = true;
+    } else {
+      t = u / G_SPAN;
+      if (this.softGap && Math.abs(t - this.softPrev) > 0.5) t = this.softPrev;
+      else this.softGap = false;
+    }
+    this.softPrev = t;
+    let a = Math.min(t, 0.9999) * TAU;
+    if (snap) a = Math.round(a / ROT_STEP) * ROT_STEP;
+    n.rot = ((a % TAU) + TAU) % TAU;
+    this.store.modified = true;
+  }
+
   private hoverAt(x: number, y: number): void {
     const s = this.store;
     if (s.tool === 'draw') {
@@ -785,6 +1025,12 @@ export class Handles {
       s.armed = res.index;
     } else if (res.kind === 'soft') {
       s.hover = { kind: 'soft', index: res.index };
+    } else if (res.kind === 'opac') {
+      s.hover = { kind: 'opac', index: res.index };
+    } else if (res.kind === 'rot') {
+      s.hover = { kind: 'rot', index: res.index };
+    } else if (res.kind === 'hue' || res.kind === 'sat' || res.kind === 'lum') {
+      s.hover = { kind: res.kind, index: res.index };
     } else if (res.kind === 'ring') {
       s.hover = { kind: 'ring', index: res.index };
       this.aimArc(res.index, x, y);
@@ -794,7 +1040,7 @@ export class Handles {
     if (s.armed !== null && s.armed !== s.selected && s.armed !== s.focused) {
       const p = this.px(s.armed);
       const d = Math.hypot(x - p.x, y - p.y);
-      if (d > p.r + this.hitSizes().band * 1.6) s.armed = null;
+      if (d > this.reachR(s.armed, p.r) + this.hitSizes().band * 1.6) s.armed = null;
     }
     if (prev.kind !== s.hover.kind || prev.index !== s.hover.index) emit(s);
   }
@@ -817,7 +1063,14 @@ export class Handles {
     if (this.pointerId !== e.pointerId) return;
     this.pointerId = null;
     this.hold = null;
+    const click = this.coreDown;
+    this.coreDown = null;
     if (this.stage.hasPointerCapture(e.pointerId)) this.stage.releasePointerCapture(e.pointerId);
+    if (click && !click.moved && e.type === 'pointerup' && s.drag.kind === 'node' && s.tool === 'edit') {
+      // A click on the core (no drag): flip that node's bezel between the default page and COLOUR.
+      const ci = s.nodes.findIndex((n) => n.uid === click.uid);
+      if (ci >= 0) this.setColorPage(ci, !this.onColor(ci));
+    }
     if (s.drawing) {
       if (e.type === 'pointercancel') this.cancelStroke('STROKE CANCELLED');
       else this.finishStroke();
@@ -851,7 +1104,7 @@ export class Handles {
   /** Undo label of the drag in progress. */
   private dragLabel(): string {
     const { kind, index } = this.store.drag;
-    return `${kind === 'ring' ? 'RADIUS' : kind === 'soft' ? 'SOFT' : 'MOVE'} ${nodeSerial(index)}`;
+    return `${kind === 'ring' ? 'RADIUS' : kind === 'soft' ? 'SOFT' : kind === 'rot' ? 'ROT' : kind === 'opac' ? 'OPAC' : kind === 'hue' ? 'HUE' : kind === 'sat' ? 'SAT' : kind === 'lum' ? 'LUM' : 'MOVE'} ${nodeSerial(index)}`;
   }
 
   /** Long-press completed: end the drag (it moved at most a few px) and open the node menu beside the node. */
@@ -859,6 +1112,7 @@ export class Handles {
     const s = this.store;
     const h = this.hold;
     this.hold = null;
+    this.coreDown = null;
     if (!h) return;
     const i = s.nodes.findIndex((n) => n.uid === h.uid);
     if (i < 0) return;
@@ -952,29 +1206,70 @@ export class Handles {
     const y = e.clientY - this.metrics.top;
     const hit = this.pick(x, y);
     let i = hit.index;
+    // A burst keeps the zone it started in, so resizing a ring never flips onto a gauge mid-scroll.
+    const now = performance.now();
+    const wl = this.wheelLock;
+    if (wl && now - wl.t < 400) {
+      const li = s.nodes.findIndex((nn) => nn.uid === wl.uid);
+      if (li >= 0 && !e.ctrlKey) {
+        i = li;
+        hit.kind = wl.kind;
+      }
+    }
     if (i < 0) {
       // Between the gauge, ring and core of a node the pointer is still "on" it: hovered or armed, within reach.
       const c = s.hover.kind !== 'idle' ? s.hover.index : (s.armed ?? -1);
       if (c >= 0 && c < s.nodes.length) {
         const p = this.px(c);
-        if (Math.hypot(x - p.x, y - p.y) <= p.r + this.hitSizes().band * 1.6) i = c;
+        if (Math.hypot(x - p.x, y - p.y) <= this.reachR(c, p.r) + this.hitSizes().band * 1.6) i = c;
       }
     }
     if (i < 0) return;
     e.preventDefault();
-    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
     s.armed = i;
-    if (!e.ctrlKey && (e.shiftKey || e.altKey)) {
+    const zone0 = hit.kind;
+    const colorZone = zone0 === 'hue' || zone0 === 'sat' || zone0 === 'lum';
+    const zone = e.ctrlKey ? 'r' : (e.shiftKey || e.altKey) && !colorZone ? 'soft' : zone0;
+    this.wheelFocus = { uid: s.nodes[i].uid, until: performance.now() + 700, kind: zone === 'soft' || zone === 'rot' || zone === 'opac' || zone === 'hue' || zone === 'sat' || zone === 'lum' ? zone : 'ring' };
+    const onGauge = zone === 'rot' || zone === 'soft' || zone === 'opac' || zone === 'hue' || zone === 'sat' || zone === 'lum';
+    this.wheelLock = { uid: s.nodes[i].uid, kind: onGauge ? zone : 'node', t: now };
+    if (onGauge || (!e.ctrlKey && (e.shiftKey || e.altKey))) {
+      // The cursor steps aside while a gauge is being wheeled, like the FX dial.
+      this.stage.classList.add('wheel-hide');
+      window.clearTimeout(this.wheelHideTimer);
+      this.wheelHideTimer = window.setTimeout(() => this.stage.classList.remove('wheel-hide'), 700);
+    }
+    if (zone === 'hue' || zone === 'sat' || zone === 'lum') {
+      // COLOUR page: ~25° of hue / ~10% of SAT or LUM per 100-unit notch, one `HUE` / `SAT` / `LUM` undo step per burst.
+      const d = wheelUp(e, true);
+      if (d === 0) return;
+      this.flash = { uid: s.nodes[i].uid, kind: zone, until: performance.now() + 900 };
+      this.actions.colorBurst(i, zone);
+      const st = this.colorOf(i);
+      if (zone === 'hue') this.setAxis(i, 'hue', Math.min(1, Math.max(0, st.h / 360 + d * 0.25 / 360)));
+      else this.setAxis(i, zone, Math.min(1, Math.max(0, (zone === 'sat' ? st.s : st.L) + d * 0.001)));
+    } else if (zone === 'rot') {
+      // Over the ROT dial the wheel turns the node: ~4° per 100-unit notch, one `ROT` undo step per burst.
+      const d = wheelUp(e, true);
+      if (d === 0) return;
+      this.flash = { uid: s.nodes[i].uid, kind: 'rot', until: performance.now() + 900 };
+      this.actions.rotate(i, d * 0.04);
+    } else if (zone === 'opac') {
+      const d = wheelUp(e, true);
+      if (d === 0) return;
+      this.flash = { uid: s.nodes[i].uid, kind: 'opac', until: performance.now() + 900 };
+      this.actions.opacBy(i, d * 0.0012);
+    } else if (zone === 'soft' || (!e.ctrlKey && (e.shiftKey || e.altKey))) {
       // Shift+wheel arrives as deltaX in Chromium on macOS.
-      const d = (e.deltaY || e.deltaX) * unit;
+      const d = wheelUp(e, true);
       if (d === 0) return;
       this.flash = { uid: s.nodes[i].uid, kind: 'soft', until: performance.now() + 900 };
-      this.actions.softBy(i, -d * 0.0012);
+      this.actions.softBy(i, d * 0.0012);
     } else {
-      const dy = e.deltaY * unit * (e.ctrlKey ? 3 : 1);
+      const dy = wheelUp(e) * (e.ctrlKey ? 3 : 1);
       if (dy === 0) return;
       this.flash = { uid: s.nodes[i].uid, kind: 'r', until: performance.now() + 900 };
-      const k = Math.exp(-dy * 0.0015);
+      const k = Math.exp(dy * 0.0015);
       this.actions.resize(i, (r) => r * k);
     }
   };
@@ -1044,9 +1339,16 @@ export class Handles {
       case 'ArrowRight': n.x = Math.min(1, n.x + step / m.w); break;
       case 'ArrowUp': n.y = Math.max(0, n.y - step / m.h); break;
       case 'ArrowDown': n.y = Math.min(1, n.y + step / m.h); break;
+      // Enter flips the COLOUR page, like a click on the core.
+      case 'Enter':
+        if (s.tool !== 'edit') { handled = false; break; }
+        this.setColorPage(i, !this.onColor(i));
+        break;
       // In draw mode Esc only leaves the tool (the global handler); deselect needs a second press.
       case 'Escape':
         if (s.tool === 'draw') { handled = false; break; }
+        // Esc on the COLOUR page returns to the default one first; a second press deselects.
+        if (this.onColor(i)) { this.setColorPage(i, false); break; }
         (e.currentTarget as SVGGElement).blur();
         s.selected = null;
         break;
@@ -1062,7 +1364,7 @@ export class Handles {
 
   /** Dashed core outline for non-circle nodes; the path is rebuilt only when its inputs change. */
   private updateOutline(v: NodeView, n: NodeState, rPx: number): void {
-    const op = n.shape === 'circle' ? 0 : v.ringOp;
+    const op = n.shape === 'circle' ? 0 : Math.min(1, v.ringOp * 2);
     v.outG.style.opacity = op < 0.005 ? '0' : op.toFixed(3);
     if (op < 0.005) return;
     const min = this.metrics.min;
@@ -1102,7 +1404,30 @@ export class Handles {
 
     const engagedRing = s.drag.kind === 'ring' ? s.drag.index : s.hover.kind === 'ring' ? s.hover.index : -1;
     const activeNode = s.drag.kind !== 'none' ? s.drag.index : s.hover.kind !== 'idle' ? s.hover.index : (s.selected ?? s.focused ?? -1);
-    const hintArc = s.coarse && engagedRing < 0 && s.selected !== null && s.drag.kind === 'none';
+    const panelIdx = this.panelHoverIndex();
+    const hintArc = s.coarse && engagedRing < 0 && s.selected !== null && s.drag.kind === 'none' && s.nodes[s.selected]?.shape === 'circle';
+
+    // The COLOUR page lasts while its node stays selected in the edit tool: Esc, a click off, delete, a tool change all end it.
+    if (this.colorUid !== null) {
+      const ci = s.nodes.findIndex((nn) => nn.uid === this.colorUid);
+      if (ci < 0 || s.selected !== ci || s.tool !== 'edit') this.colorUid = null;
+    }
+
+    // Focus: while any dial / gauge / ring is being dragged or wheeled, the rest of the artboard UI dims (CSS keys off `ui-focus`).
+    let focusIdx = -1;
+    let focusKind = '';
+    if (['soft', 'rot', 'opac', 'hue', 'sat', 'lum', 'ring'].includes(s.drag.kind) && s.drag.index < s.nodes.length) {
+      focusIdx = s.drag.index;
+      focusKind = s.drag.kind;
+    } else if (this.wheelFocus) {
+      const wi = performance.now() <= this.wheelFocus.until ? s.nodes.findIndex((nn) => nn.uid === this.wheelFocus!.uid) : -1;
+      if (wi >= 0) {
+        focusIdx = wi;
+        focusKind = this.wheelFocus.kind;
+      } else this.wheelFocus = null;
+    }
+    // The FX dial owns `ui-focus` while it is adjusted (`fx-focus`): never clear it from here.
+    this.stage.classList.toggle('ui-focus', focusIdx >= 0 || this.stage.classList.contains('fx-focus'));
 
     for (let i = 0; i < s.nodes.length; i++) {
       const n = s.nodes[i];
@@ -1111,21 +1436,45 @@ export class Handles {
       n.dy = approach(n.dy, n.y, 28, dt, snap);
       n.dr = approach(n.dr, n.r, 28, dt, snap);
       n.dsoft = approach(n.dsoft, n.soft, 28, dt, snap);
+      n.dopac = approach(n.dopac, n.opac, 28, dt, snap);
       n.drot = approach(n.drot, shortestAngle(n.drot, n.rot), 28, dt, snap);
 
-      const isHover = s.hover.kind === 'node' && s.hover.index === i;
+      const isHover = (s.hover.kind === 'node' && s.hover.index === i) || panelIdx === i;
       const isBody = s.hover.kind === 'body' && s.hover.index === i;
       const isDrag = s.drag.kind === 'node' && s.drag.index === i;
       const isRing = engagedRing === i;
       const isSoftHover = s.hover.kind === 'soft' && s.hover.index === i && s.drag.kind === 'none';
       const isSoftDrag = s.drag.kind === 'soft' && s.drag.index === i;
       const isSoftFlash = this.flashing(i)?.kind === 'soft';
+      const isRotHover = s.hover.kind === 'rot' && s.hover.index === i && s.drag.kind === 'none';
+      const isRotDrag = s.drag.kind === 'rot' && s.drag.index === i;
+      const isRotFlash = this.flashing(i)?.kind === 'rot';
+      const isOpacHover = s.hover.kind === 'opac' && s.hover.index === i && s.drag.kind === 'none';
+      const isOpacDrag = s.drag.kind === 'opac' && s.drag.index === i;
+      const isOpacFlash = this.flashing(i)?.kind === 'opac';
+      const isHueHover = s.hover.kind === 'hue' && s.hover.index === i && s.drag.kind === 'none';
+      const isSatHover = s.hover.kind === 'sat' && s.hover.index === i && s.drag.kind === 'none';
+      const isLumHover = s.hover.kind === 'lum' && s.hover.index === i && s.drag.kind === 'none';
+      const fk = this.flashing(i)?.kind;
+      const isHueDrag = (s.drag.kind === 'hue' && s.drag.index === i) || fk === 'hue';
+      const isSatDrag = (s.drag.kind === 'sat' && s.drag.index === i) || fk === 'sat';
+      const isLumDrag = (s.drag.kind === 'lum' && s.drag.index === i) || fk === 'lum';
       const isSel = s.selected === i;
       const isFocus = s.focused === i;
       const isHold = holdIndex === i && holdP > 0.12;
       const bracketTarget = isDrag ? 9 : isRing ? 14 : isHover ? 13 : isSel || isFocus ? 14 : 11;
       v.bracket = isHold ? 14 - 8 * holdP : approach(v.bracket, bracketTarget, 30, dt, snap);
-      v.ringOp = approach(v.ringOp, this.revealed(i) ? 1 : 0, 22, dt, snap);
+      // Bezel progress 0…1 runs linearly in time (open 260 ms, close 200 ms) and every part derives its own
+      // staggered, eased share of it, so closing is the exact reverse and a re-open mid-close turns round smoothly.
+      const wantOpen = this.revealed(i);
+      v.ringOp = snap ? (wantOpen ? 1 : 0) : Math.min(1, Math.max(0, v.ringOp + (wantOpen ? dt / 0.26 : -dt / 0.2)));
+      const P = v.ringOp;
+      const part = (k: number): number => {
+        const t = Math.min(1, Math.max(0, (P - 0.1 * k) / 0.5));
+        return 1 - (1 - t) * (1 - t) * (1 - t);
+      };
+      // Brackets close in from 2× on open and swing out and back on close (no pop at the ends).
+      const bOff = wantOpen ? 11 * (1 - part(0)) : 8 * 4 * P * (1 - P);
 
       if (isHold !== v.holding) {
         v.holding = isHold;
@@ -1185,36 +1534,57 @@ export class Handles {
         at(v.bearings[2], 0, lr + 4);
         at(v.bearings[3], -lr - 1, 3);
       }
-      // SOFT gauge: hidden on small rings and in draw mode; otherwise it rides the bezel's own fade.
+      // OPAC, SOFT, ROT: the FX dial's gauges at fixed radii (innermost first), each riding the bezel's staggered fade.
       {
-        const gp = v.gaugeParts;
-        const want = s.tool === 'edit' && r >= G_MIN_R ? 1 : 0;
-        v.gaugeOp = approach(v.gaugeOp, want, 22, dt, snap);
-        v.gauge.style.opacity = v.gaugeOp < 0.005 ? '0' : v.gaugeOp.toFixed(3);
-        if (v.gaugeOp >= 0.005 && r >= G_MIN_R - 8) {
-          const ri = gaugeRi(r);
-          if (Math.abs(ri - v.lastRi) > 0.05) {
-            v.lastRi = ri;
-            const base = gaugeArc(ri, 0, 1);
-            gp.baseH.setAttribute('d', base);
-            gp.baseI.setAttribute('d', base);
-            const t = gaugeTicks(ri);
-            gp.ticksH.setAttribute('d', t);
-            gp.ticksI.setAttribute('d', t);
-            gp.label.setAttribute('y', (ri * 0.8 + 3).toFixed(1));
-            v.lastSoft = -1;
-          }
-          if (Math.abs(n.dsoft - v.lastSoft) > 0.0004) {
-            v.lastSoft = n.dsoft;
-            const fill = gaugeArc(ri, 0, n.dsoft);
-            gp.fillH.setAttribute('d', fill);
-            gp.fillI.setAttribute('d', fill);
-            const knob = `M${gaugePt(ri, n.dsoft, -7)}L${gaugePt(ri, n.dsoft, 7)}`;
-            gp.knobH.setAttribute('d', knob);
-            gp.knobI.setAttribute('d', knob);
-            gp.label.textContent = `SOFT ${Math.round(n.dsoft * 100)}`;
-          }
+        const edit = s.tool === 'edit' ? 1 : 0;
+        // Page flip: pg runs linearly 0 → 1 (COLOUR) in 0.36 s and back. The first half collapses the default gauges
+        // outermost-first (the open stagger reversed), the second grows HUE / SAT / LUM in innermost-first, like opening.
+        const wantColor = this.onColor(i);
+        v.pg = snap ? (wantColor ? 1 : 0) : Math.min(1, Math.max(0, v.pg + (wantColor ? dt : -dt) / 0.36));
+        const ez = (q: number): number => {
+          const c = Math.min(1, Math.max(0, q));
+          return 1 - (1 - c) * (1 - c) * (1 - c);
+        };
+        const cOut = Math.min(1, v.pg * 2);
+        const cIn = Math.max(0, v.pg * 2 - 1);
+        const dflt = (k: number): number => 1 - ez((cOut - 0.1 * (4 - k)) / 0.6);
+        const colr = (k: number): number => ez((cIn - 0.1 * (k - 2)) / 0.6);
+        const rotOk = edit && n.shape !== 'circle' && n.shape !== 'stroke' ? 1 : 0;
+        v.opOp = approach(v.opOp, edit, 22, dt, snap);
+        v.gaugeOp = approach(v.gaugeOp, edit, 22, dt, snap);
+        v.rotOp = approach(v.rotOp, rotOk, 22, dt, snap);
+        const fo = (a: number): string => (a < 0.005 ? '0' : a.toFixed(3));
+        v.opG.style.opacity = fo(v.opOp * part(2) * dflt(2));
+        v.gauge.style.opacity = fo(v.gaugeOp * part(3) * dflt(3));
+        v.rotD.style.opacity = fo(v.rotOp * part(4) * dflt(4));
+        v.cp.lum.p.g.style.opacity = fo(edit * part(2) * colr(2));
+        v.cp.sat.p.g.style.opacity = fo(edit * part(3) * colr(3));
+        v.cp.hue.p.g.style.opacity = fo(edit * part(4) * colr(4));
+        v.cp.sw.style.opacity = fo(edit * part(1) * colr(1));
+        if (v.pg > 0.005 && this.colorUid === n.uid) {
+          renderColorPage(v.cp, this.colorOf(i), true);
+        } else if (v.pg > 0.005 && this.colorSt && this.colorSt.uid === n.uid) {
+          renderColorPage(v.cp, this.colorSt, true);
         }
+        v.cp.hue.p.g.classList.toggle('is-hover', isHueHover);
+        v.cp.hue.p.g.classList.toggle('is-drag', isHueDrag);
+        v.cp.sat.p.g.classList.toggle('is-hover', isSatHover);
+        v.cp.sat.p.g.classList.toggle('is-drag', isSatDrag);
+        v.cp.lum.p.g.classList.toggle('is-hover', isLumHover);
+        v.cp.lum.p.g.classList.toggle('is-drag', isLumDrag);
+        if (v.opOp >= 0.005) renderGauge(v.opParts, n.dopac, false, `OPAC // ${Math.round(n.dopac * 100)}`);
+        if (v.gaugeOp >= 0.005) renderGauge(v.gaugeParts, n.dsoft, false, `SOFT // ${Math.round(n.dsoft * 100)}`);
+        if (v.rotOp >= 0.005) {
+          const ang = (((n.drot % TAU) + TAU) % TAU) / TAU;
+          const deg = Math.round((n.rot * 180) / Math.PI) % 360;
+          renderGauge(v.rotP, ang, false, `ROT // ${String(deg).padStart(3, '0')}°`);
+        }
+        v.opParts.g.classList.toggle('is-hover', isOpacHover);
+        v.opParts.g.classList.toggle('is-drag', isOpacDrag || isOpacFlash);
+        v.gaugeParts.g.classList.toggle('is-hover', isSoftHover);
+        v.gaugeParts.g.classList.toggle('is-drag', isSoftDrag || isSoftFlash);
+        v.rotP.g.classList.toggle('is-hover', isRotHover);
+        v.rotP.g.classList.toggle('is-drag', isRotDrag || isRotFlash);
       }
       // Hide bearing labels that would fall outside the stage instead of letting them clip.
       {
@@ -1227,16 +1597,18 @@ export class Handles {
           if (v.bearings[k].getAttribute('visibility') !== want) v.bearings[k].setAttribute('visibility', want);
         });
       }
-      if (Math.abs(v.bracket - v.lastBracket) > 0.01) {
-        v.lastBracket = v.bracket;
-        const d = bracketPath(v.bracket, 6);
+      if (Math.abs(v.bracket + bOff - v.lastBracket) > 0.01) {
+        v.lastBracket = v.bracket + bOff;
+        const d = bracketPath(v.bracket + bOff, 6);
         v.retHalo.setAttribute('d', d);
         v.retInk.setAttribute('d', d);
       }
-      const op = v.ringOp;
+      const op = part(0);
       v.ring.style.opacity = op < 0.005 ? '0' : op.toFixed(3);
-      v.ring.setAttribute('transform', `scale(${(0.94 + 0.06 * op).toFixed(4)})`);
+      v.ring.setAttribute('transform', `scale(${(0.86 + 0.14 * op).toFixed(4)})`);
+      v.ring.style.setProperty('--pb', part(1).toFixed(3));
 
+      const cls0 = focusIdx === i;
       const cls =
         'node' +
         (isHover ? ' is-hover' : '') +
@@ -1246,6 +1618,15 @@ export class Handles {
         (isSoftHover ? ' is-soft-hover' : '') +
         (isSoftDrag ? ' is-soft-drag' : '') +
         (isSoftFlash ? ' is-soft-flash' : '') +
+        (isRotHover ? ' is-rot-hover' : '') +
+        (isRotDrag ? ' is-rot-drag' : '') +
+        (isRotFlash ? ' is-rot-flash' : '') +
+        (isOpacHover ? ' is-opac-hover' : '') +
+        (isOpacDrag ? ' is-opac-drag' : '') +
+        (isOpacFlash ? ' is-opac-flash' : '') +
+        (v.pg > 0.005 ? ' is-colour' : '') +
+        (cls0 ? ` is-focus focus-${focusKind}` : '') +
+        (n.shape !== 'circle' ? ' no-ring' : '') +
         (isSel ? ' is-selected' : '') +
         (isHold ? ' is-hold' : '') +
         (s.drag.kind === 'ring' && s.drag.index === i ? ' is-ring-drag' : '');
@@ -1281,20 +1662,11 @@ export class Handles {
       const p = this.px(i);
       return { x: p.x + Math.cos(angle) * (p.r + 28), y: p.y + Math.sin(angle) * (p.r + 28) };
     };
-    const atKnob = (i: number): { x: number; y: number } => {
-      const p = this.px(i);
-      const a = G_START + G_SPAN * s.nodes[i].dsoft;
-      const rr = Math.min(p.r + 22, gaugeRi(p.r) + 26);
-      return { x: p.x + Math.cos(a) * rr, y: p.y + Math.sin(a) * rr };
-    };
+    // SOFT / ROT / OPAC read out on their own gauge chips; this floating chip is for the size ring only.
     if (s.drag.kind === 'ring') {
       chip = { text: `R ${Math.round(this.px(s.drag.index).r)}PX`, ...atRing(s.drag.index, s.arcAngle) };
-    } else if (s.drag.kind === 'soft') {
-      chip = { text: `SOFT ${Math.round(s.nodes[s.drag.index].soft * 100)}%`, ...atKnob(s.drag.index) };
-    } else if (fl && fi >= 0) {
-      chip = fl.kind === 'soft'
-        ? { text: `SOFT ${Math.round(s.nodes[fi].soft * 100)}%`, ...atKnob(fi) }
-        : { text: `R ${Math.round(this.px(fi).r)}PX`, ...atRing(fi, -Math.PI / 4) };
+    } else if (fl && fi >= 0 && fl.kind === 'r') {
+      chip = { text: `R ${Math.round(this.px(fi).r)}PX`, ...atRing(fi, -Math.PI / 4) };
     }
     if (chip) {
       if (chip.text !== this.chipRadiusText) {
@@ -1307,8 +1679,9 @@ export class Handles {
       const cy = Math.min(m.h - 14, Math.max(14, chip.y));
       this.chipRadius.style.transform = `translate(${cx.toFixed(1)}px, ${cy.toFixed(1)}px) translate(-50%, -50%)`;
       this.chipRadius.classList.add('is-on');
+      this.chipRadius.classList.toggle('is-focus', focusIdx >= 0);
     } else {
-      this.chipRadius.classList.remove('is-on');
+      this.chipRadius.classList.remove('is-on', 'is-focus');
     }
 
     // Serial / coordinate readout near the active node.
@@ -1321,13 +1694,16 @@ export class Handles {
         this.chipNodeW = this.chipNode.offsetWidth;
       }
       const p = this.px(activeNode);
-      const off = 16;
+      // Clear of the gauge stack: the tag's corner sits just outside the outermost gauge's radius.
+      const gr = s.tool === 'edit' ? (n.shape === 'circle' || n.shape === 'stroke' ? this.gr.soft : this.gr.rot) + 14 : 22;
+      const off = Math.round(gr * 0.7071);
       const flipX = p.x + off + this.chipNodeW > m.w - 4;
       const flipY = p.y + off + 20 > m.h - 4;
       const cx = flipX ? p.x - off - this.chipNodeW : p.x + off;
       const cy = flipY ? p.y - off - 18 : p.y + off;
       this.chipNode.style.transform = `translate(${cx.toFixed(1)}px, ${cy.toFixed(1)}px)`;
       this.chipNode.classList.add('is-on');
+      this.chipNode.classList.remove('is-focus'); // the coordinate tag always steps back while a control is adjusted
       this.chipNode.classList.toggle('is-engaged', s.drag.kind === 'node');
     } else {
       this.chipNode.classList.remove('is-on');
