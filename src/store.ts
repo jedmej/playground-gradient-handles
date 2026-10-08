@@ -1,5 +1,7 @@
 import { hexToLab, type Lab } from './color';
+import { copyFx, FX_DEFAULT, type FxState } from './fx';
 import { PRESETS, type Preset } from './presets';
+import { DEFAULT_WALLPAPER, type WallpaperId } from './wallpaper';
 
 export type Shape = 'circle' | 'ellipse' | 'box' | 'capsule' | 'stroke';
 export type Tool = 'edit' | 'draw';
@@ -105,6 +107,10 @@ export interface Store {
   arcOpacity: number;
   coarse: boolean;
   reducedMotion: boolean;
+  /** Post-process effects (part of undo history and of CS-06). */
+  fx: FxState;
+  /** Selected wallpaper export target (persisted, not composition: no undo). */
+  wallpaper: WallpaperId;
   listeners: Set<() => void>;
   /** Status line hook; the UI installs it. */
   say: (text: string) => void;
@@ -162,6 +168,8 @@ export function createStore(): Store {
     arcOpacity: 0,
     coarse: matchMedia('(pointer: coarse)').matches,
     reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+    fx: copyFx(FX_DEFAULT),
+    wallpaper: DEFAULT_WALLPAPER,
     listeners: new Set(),
     say: () => {},
     cancelDraw: () => {},
@@ -298,6 +306,7 @@ export function applyPreset(store: Store, index: number, now: number, withLayout
   if (!preset) return false;
   store.presetIndex = index;
   store.modified = false;
+  if (preset.fx) store.fx = copyFx(preset.fx);
   reconcile(store, presetSpecs(preset), now, withLayout, 620);
   emit(store);
   return true;
