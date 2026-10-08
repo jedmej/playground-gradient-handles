@@ -170,6 +170,80 @@
           </div>
         </section>
 
+        <section class="spec-section fx-section" aria-labelledby="h-fx">
+          <div class="label label-row">
+            <h2 id="h-fx">FX <span class="dim" id="fx-hint">— ALL OFF</span></h2>
+            <span class="label-actions">
+              <button class="mini mini-fxoff" type="button" data-action="fx-off" title="Switch every effect off" disabled>
+                <span class="mini-l">ALL OFF</span> <b>[×]</b>
+              </button>
+            </span>
+          </div>
+          <dl class="fx-spec" id="fx-spec">
+            <div class="fx-row">
+              <dt>GRAIN</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="grain" role="slider" tabindex="0" aria-label="Grain" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="grain">OFF</span>
+              </dd>
+              <dd class="fx-opts">
+                <span class="fx-seg" role="radiogroup" aria-label="Grain size">
+                  <button type="button" class="fx-opt" role="radio" aria-checked="true" data-fx-opt="grain-fine">FINE</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="grain-coarse">COARSE</button>
+                </span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dt>DITHER</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="dither" role="slider" tabindex="0" aria-label="Dither levels" aria-valuemin="0" aria-valuemax="16" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="dither">OFF</span>
+              </dd>
+              <dd class="fx-opts">
+                <span class="fx-seg" role="radiogroup" aria-label="Dither pattern">
+                  <button type="button" class="fx-opt" role="radio" aria-checked="true" data-fx-opt="dither-bayer">BAYER</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="dither-blue">BLUE</button>
+                </span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dt>CHROMA</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="chroma" role="slider" tabindex="0" aria-label="Chromatic aberration" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="chroma">OFF</span>
+              </dd>
+            </div>
+            <div class="fx-row last">
+              <dt>SCAN</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="scan" role="slider" tabindex="0" aria-label="Scanlines" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="scan">OFF</span>
+              </dd>
+              <dt class="fx-dt2">VIG</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="vig" role="slider" tabindex="0" aria-label="Vignette" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="vig">OFF</span>
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="spec-section wp-section" aria-labelledby="h-wp">
+          <div class="label label-row">
+            <h2 id="h-wp">WALLPAPER <span class="dim" id="wp-dims">3840×2160</span></h2>
+          </div>
+          <div class="wp-group" id="wp-group" role="radiogroup" aria-label="Wallpaper size">
+            <button type="button" class="wp-btn" role="radio" aria-checked="false" data-wp="phone" title="Phone 1290×2796"><i class="wp-glyph" aria-hidden="true"></i><span>PHONE</span></button>
+            <button type="button" class="wp-btn" role="radio" aria-checked="false" data-wp="laptop" title="Laptop 2560×1600"><i class="wp-glyph" aria-hidden="true"></i><span>LAPTOP</span></button>
+            <button type="button" class="wp-btn" role="radio" aria-checked="true" data-wp="4k" title="4K 3840×2160"><i class="wp-glyph" aria-hidden="true"></i><span>4K</span></button>
+            <button type="button" class="wp-btn" role="radio" aria-checked="false" data-wp="ultra" title="Ultrawide 5120×2160"><i class="wp-glyph" aria-hidden="true"></i><span>ULTRA</span></button>
+            <button type="button" class="wp-btn" role="radio" aria-checked="false" data-wp="square" title="Square 2048×2048"><i class="wp-glyph" aria-hidden="true"></i><span>SQUARE</span></button>
+          </div>
+          <button class="btn btn-ghost wp-export" id="export-wallpaper" data-action="export-wallpaper" type="button">
+            <span class="btn-label">Export wallpaper</span><b>[↓]</b>
+          </button>
+        </section>
+
         <div class="actions">
           <button class="btn btn-primary" id="export" data-action="export" type="button">
             <span class="btn-label">Export PNG</span><b>[↓]</b>

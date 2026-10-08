@@ -24,6 +24,7 @@ import {
   type Store,
 } from './store';
 import { fieldHexAt } from './field';
+import { copyFx, FX_DEFAULT, fxActive, fxFromPos, fxMaxPos, fxPos, fxStatus, onValue, rememberFx, sameFx, type DitherMode, type FxId, type GrainSize } from './fx';
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 
@@ -33,6 +34,10 @@ export class Actions {
   private lastRot = -Infinity;
   private lastRadius = -Infinity;
   private lastSoft = -Infinity;
+  private lastFx = -Infinity;
+  private lastFxId: FxId | null = null;
+  /** FX panel subscribers: knob drags change the store without a full `emit`. */
+  readonly fxListeners = new Set<() => void>();
 
   constructor(
     private store: Store,
@@ -152,6 +157,77 @@ export class Actions {
     emit(s);
   }
 
+  // ----- FX -----------------------------------------------------------------------------
+
+  private fxChanged(id: FxId | null): void {
+    const s = this.store;
+    rememberFx(s.fx);
+    for (const l of this.fxListeners) l();
+    if (id) s.say(fxStatus(id, s.fx));
+  }
+
+  /** Raw set during a drag (the gesture's own begin/commit owns the undo step). Position units, see fxPos. */
+  fxSetPos(id: FxId, pos: number): void {
+    const next = fxFromPos(id, Math.min(fxMaxPos(id), Math.max(0, Math.round(pos))));
+    if (this.store.fx[id] === next) return;
+    this.store.fx[id] = next;
+    this.fxChanged(id);
+  }
+
+  /** Wheel / keyboard: absolute position, bursts on the same knob coalesce into one `FX …` undo step. */
+  fxGoto(id: FxId, pos: number): void {
+    const s = this.store;
+    const clamped = Math.min(fxMaxPos(id), Math.max(0, Math.round(pos)));
+    if (fxFromPos(id, clamped) === s.fx[id]) return;
+    const t = this.now();
+    if (t - this.lastFx > 700 || this.lastFxId !== id) this.history.mark(`FX ${id.toUpperCase()}`);
+    this.lastFx = t;
+    this.lastFxId = id;
+    this.fxSetPos(id, clamped);
+  }
+
+  fxNudge(id: FxId, steps: number): void {
+    this.fxGoto(id, fxPos(id, this.store.fx[id]) + steps);
+  }
+
+  /** Double-click / double-tap: OFF ↔ last non-zero value (or the on-value). */
+  fxToggle(id: FxId): void {
+    const s = this.store;
+    this.history.mark(`FX ${id.toUpperCase()}`);
+    this.lastFxId = null;
+    if (s.fx[id] > 0) {
+      rememberFx(s.fx);
+      s.fx[id] = 0;
+    } else {
+      s.fx[id] = onValue(id);
+    }
+    this.fxChanged(id);
+  }
+
+  fxOption(opt: 'grain-fine' | 'grain-coarse' | 'dither-bayer' | 'dither-blue'): void {
+    const s = this.store;
+    const next = { ...s.fx };
+    if (opt.startsWith('grain')) next.grainSize = opt.slice(6) as GrainSize;
+    else next.ditherMode = opt.slice(7) as DitherMode;
+    if (sameFx(next, s.fx)) return;
+    const id: FxId = opt.startsWith('grain') ? 'grain' : 'dither';
+    this.history.mark(`FX ${id.toUpperCase()}`);
+    this.lastFxId = null;
+    s.fx = next;
+    this.fxChanged(id);
+  }
+
+  fxOff(): void {
+    const s = this.store;
+    if (fxActive(s.fx).length === 0) return;
+    rememberFx(s.fx);
+    this.history.mark('FX OFF');
+    this.lastFxId = null;
+    s.fx = copyFx({ ...FX_DEFAULT, grainSize: s.fx.grainSize, ditherMode: s.fx.ditherMode });
+    this.fxChanged(null);
+    s.say('FX OFF');
+  }
+
   /** Move node `i` through the layer stack. One undo step; the same node stays selected. */
   moveLayer(i: number, move: LayerMove): boolean {
     const s = this.store;
@@ -240,7 +316,7 @@ export class Actions {
 
   saveCustom(): void {
     const s = this.store;
-    const { preset, persisted } = saveCustom(snapshotSpecs(s));
+    const { preset, persisted } = saveCustom(snapshotSpecs(s), s.fx);
     s.custom = preset;
     s.presetIndex = CUSTOM_INDEX;
     s.modified = false;
@@ -281,6 +357,8 @@ export class Actions {
       const typing = !!t?.closest?.('input:not([type=color]), textarea, select, [contenteditable=""], [contenteditable="true"]');
       if (typing) return;
       const mod = e.metaKey || e.ctrlKey;
+      // An FX knob owns its keys (arrows, PageUp/Down, Home/End); the node shortcuts must not fire from it either.
+      if (!mod && t?.closest?.('[data-fx-knob]')) return;
       if (mod && !e.altKey && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) this.redo();

@@ -1,9 +1,11 @@
+import { copyFx, sameFx, type FxState } from './fx';
 import { CUSTOM_INDEX, defaultSoft, emit, reconcile, snapshotIdentified, type NodeSpec, type Store } from './store';
 
 interface Snapshot {
   presetIndex: number;
   modified: boolean;
   nodes: NodeSpec[];
+  fx: FxState;
 }
 
 interface Entry {
@@ -15,11 +17,11 @@ const CAP = 50;
 const EPS = 1e-6;
 
 function take(store: Store): Snapshot {
-  return { presetIndex: store.presetIndex, modified: store.modified, nodes: snapshotIdentified(store) };
+  return { presetIndex: store.presetIndex, modified: store.modified, nodes: snapshotIdentified(store), fx: copyFx(store.fx) };
 }
 
 function same(a: Snapshot, b: Snapshot): boolean {
-  if (a.nodes.length !== b.nodes.length) return false;
+  if (a.nodes.length !== b.nodes.length || !sameFx(a.fx, b.fx)) return false;
   return a.nodes.every((n, i) => {
     const m = b.nodes[i];
     return (
@@ -99,6 +101,7 @@ export class History {
     const orphan = snap.presetIndex === CUSTOM_INDEX && !s.custom;
     s.presetIndex = orphan ? 0 : snap.presetIndex;
     s.modified = orphan || snap.modified;
+    s.fx = copyFx(snap.fx);
     reconcile(s, snap.nodes, this.now(), true, 320);
     emit(s);
   }

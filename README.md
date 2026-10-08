@@ -53,7 +53,15 @@ token system and the critique that shaped it.
 | `CLEAR [×]` (twice in 3 s) | Delete the saved CS-06 set; the row goes back to `CUSTOM — EMPTY` (Esc cancels) |
 | `⌘/Ctrl+Z`, `⇧⌘/Ctrl+Z`    | Undo / redo (50 steps): add, remove, colour, drags, presets |
 | Colour set rows            | Switch preset; colours tween in OKLab over ~600 ms          |
-| Export PNG                 | Downloads the field only (no handles) at 2048 px long side  |
+| FX knob (GRAIN · DITHER · CHROMA · SCAN · VIG) drag | Up / right = more, ≈ 160 px for the full range. One undo step per drag |
+| FX knob scroll             | ~1 step per 12 px, wheel up = more; a 700 ms burst is one undo step. Never scrolls the page while over a knob |
+| FX knob focused            | `← ↓` / `→ ↑` ±1 (`Shift` ×10), `PageUp` / `PageDown` ±10, `Home` OFF, `End` max. Global shortcuts are suspended while a knob has focus |
+| FX knob double-click / double-tap | Toggle OFF ↔ last non-zero value (defaults: grain 35, dither 8 LV, chroma 40, scan 45, vig 40) |
+| `FINE`/`COARSE`, `BAYER`/`BLUE` | Grain size and dither pattern; one undo step each, clickable while the effect is off |
+| `ALL OFF [×]`              | Switch every effect off (undo step `FX OFF`) |
+| WALLPAPER targets          | PHONE 1290×2796 · LAPTOP 2560×1600 · 4K 3840×2160 · ULTRA 5120×2160 · SQUARE 2048×2048. Picking one is not an undo step but is remembered |
+| Export wallpaper           | Renders the field + FX at the target size (`GH-CS01-4K-3840x2160-2041.png`). If the GPU cannot allocate it the button says `Too large`, the status line gives the real limit, and nothing downloads |
+| Export PNG                 | Downloads the field (FX included, no handles) at 2048 px long side |
 | Reset                      | Restores the current preset's positions and radii           |
 
 Grab-zone priority is deterministic: node core beats the SOFT gauge beats ring band beats body beats empty
@@ -72,6 +80,8 @@ node then contributes a gaussian weight with a small inverse-distance tail,
 normalised, blended in OKLab, then converted back to sRGB with animated film
 grain to kill banding. Device pixel ratio is capped at 2. Export renders the
 same warp at the moment you press the button.
+
+FX are an optional post pass. With everything off the field draws straight to the canvas (no framebuffer). With any FX on, the field renders into a texture and one fullscreen shader applies chromatic aberration → vignette → scanlines → grain → dither. Grain is **seeded and static** (no time term), so an export matches the preview. Pattern cells are authored in preview CSS px and scaled by `fxUnit` (buffer px per preview px), so a 4K export looks like the preview at viewing size. Wallpaper targets reframe by *cover-fit, keep node positions relative*: nodes keep their `(x·W, y·H)` positions and every size (radii, stroke offsets, warp) uses the area-matched unit `u = min · √(W·H / (stageW·stageH))`. FX and the wallpaper target persist in `localStorage` `gh.fx.v1`; CS-06 stores its FX too (optional `fx` field, still `v:2`).
 
 Each node has a softness (0–1, default 0.5; strokes start at 0.75) that reshapes its weight
 (`exp(−1.5·q^p) + tail/(1+q⁴)`; 0.5 is the classic gaussian). Nodes are also layers: after the soft average the
@@ -112,6 +122,11 @@ Martian Mono). No runtime network calls beyond same-origin assets.
   (always in the DOM, `hidden` while closed; `role=menu`, items `role=menuitem`) with items
   `[data-action="layer-front|layer-up|layer-down|layer-back|menu-delete"]`. CS-06 nodes carry `soft` only when it
   differs from the shape default (0.5, strokes 0.75). The radius keys moved from `[`/`]` to `-`/`=`.
+- v4: `html[data-fx]` / `body[data-fx]` = active effects in fixed order (`grain,dither,chroma,scan,vig`, empty when none);
+  `[data-fx-knob="grain|dither|chroma|scan|vig"]` (`role=slider`, `aria-valuenow` = raw state: 0–100, dither 0 or 2–16);
+  `[data-fx-opt="grain-fine|grain-coarse|dither-bayer|dither-blue"]` (`aria-checked`); `[data-action="fx-off"]`;
+  `#fx-hint` (`— ALL OFF` / `— 2 ON`); `[data-wp="phone|laptop|4k|ultra|square"]` (`role=radio`, `aria-checked`);
+  `[data-action="export-wallpaper"]`; `#wp-dims`; `localStorage` `gh.fx.v1` = `{v:1, fx, wp}`.
 
 ## Credits
 

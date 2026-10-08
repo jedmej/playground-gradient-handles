@@ -1,3 +1,4 @@
+import type { FxState } from './fx';
 import type { Shape } from './store';
 
 /** Optional per-node shape data (only CS-06 carries any). */
@@ -19,6 +20,8 @@ export interface Preset {
   /** Influence radii as a fraction of the short side. */
   radii: number[];
   shapes?: (ShapeExtra | undefined)[];
+  /** FX saved with the set (CS-06 only). Switching to the preset applies them. */
+  fx?: FxState;
 }
 
 export const PRESETS: Preset[] = [
