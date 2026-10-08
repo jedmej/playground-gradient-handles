@@ -4,6 +4,9 @@ import '@fontsource/inter-tight/latin-500.css';
 import '@fontsource/inter-tight/latin-600.css';
 import './styles.css';
 
+import { blueNoise } from './bluenoise';
+import { createFxPersist, loadFxStorage, rememberFx } from './fx';
+import { FxPanel, WallpaperPanel } from './fxpanel';
 import { GradientRenderer } from './gradient';
 import { Actions } from './actions';
 import { loadCustom } from './custom';
@@ -15,6 +18,15 @@ import { drawRulers, UI } from './ui';
 
 const store = createStore();
 store.custom = loadCustom();
+const savedFx = loadFxStorage();
+if (savedFx) {
+  store.fx = savedFx.fx;
+  store.wallpaper = savedFx.wp;
+}
+rememberFx(store.fx);
+const persistFx = createFxPersist(store.fx, store.wallpaper);
+// ~60 ms of one-off work (deterministic, cached for every context incl. the export one).
+blueNoise();
 const stage = document.getElementById('stage') as HTMLElement;
 const canvas = document.getElementById('field') as HTMLCanvasElement;
 const svg = document.getElementById('handles') as unknown as SVGSVGElement;
@@ -28,6 +40,8 @@ const actions = new Actions(store, history, metrics, now);
 const handles = new Handles(store, stage, svg, chipNode, chipRadius, metrics, actions, history);
 const ui = new UI(store, handles.metrics, now, () => ({ ...handles.pointer, inside: handles.pointerInside }), actions, history);
 actions.bindKeys();
+new FxPanel(store, actions, history);
+new WallpaperPanel(store, handles.metrics, now);
 
 let renderer: GradientRenderer | null = null;
 try {
@@ -88,7 +102,8 @@ function tick(): void {
   handles.frame(dt);
 
   packField(store, handles.metrics, buffers);
-  renderer?.render({ ...buffers, time: store.reducedMotion ? 0.5 : t / 1000, grain: 0.04 });
+  renderer?.render({ ...buffers, time: store.reducedMotion ? 0.5 : t / 1000, grain: 0.04 }, store.fx);
+  persistFx(store.fx, store.wallpaper);
 
   ui.frame();
   requestAnimationFrame(tick);

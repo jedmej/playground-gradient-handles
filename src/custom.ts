@@ -1,4 +1,5 @@
 import { parseHex } from './color';
+import { copyFx, parseFx, type FxState } from './fx';
 import type { Preset } from './presets';
 import { SHAPES } from './field';
 import { copyPts, defaultSoft, MAX_NODES, MIN_NODES, R_MAX, R_MIN, type NodeSpec, type Shape } from './store';
@@ -12,7 +13,7 @@ const isShape = (v: unknown): v is Shape => typeof v === 'string' && (SHAPES as 
 /** True when a node's softness differs from its shape's default (only then is it stored). */
 const hasCustomSoft = (n: NodeSpec): boolean => n.soft !== undefined && Math.abs(n.soft - defaultSoft(n.shape)) > 1e-4;
 
-export function customPreset(nodes: NodeSpec[]): Preset {
+export function customPreset(nodes: NodeSpec[], fx?: FxState): Preset {
   return {
     id: 'cs06',
     serial: 'CS-06',
@@ -25,6 +26,7 @@ export function customPreset(nodes: NodeSpec[]): Preset {
       if (n.shape && n.shape !== 'circle') return { shape: n.shape, rot: n.rot ?? 0, pts: copyPts(n.pts), soft };
       return soft !== undefined ? { soft } : undefined;
     }),
+    ...(fx ? { fx: copyFx(fx) } : {}),
   };
 }
 
@@ -50,8 +52,8 @@ function parsePts(v: unknown): [number, number][] | null {
   return out;
 }
 
-/** Validate untrusted JSON into node specs. Bad entries are skipped; fewer than 2 survivors → null. */
-function parse(raw: string | null): NodeSpec[] | null {
+/** Validate untrusted JSON into node specs (+ optional fx). Bad entries are skipped; fewer than 2 survivors → null. */
+function parse(raw: string | null): { nodes: NodeSpec[]; fx?: FxState } | null {
   if (!raw) return null;
   let data: unknown;
   try {
@@ -60,7 +62,7 @@ function parse(raw: string | null): NodeSpec[] | null {
     return null;
   }
   if (!data || typeof data !== 'object') return null;
-  const d = data as { v?: unknown; nodes?: unknown };
+  const d = data as { v?: unknown; nodes?: unknown; fx?: unknown };
   if ((d.v !== 1 && d.v !== 2) || !Array.isArray(d.nodes)) return null;
   const out: NodeSpec[] = [];
   for (const item of d.nodes) {
@@ -86,13 +88,14 @@ function parse(raw: string | null): NodeSpec[] | null {
     if (typeof n.soft === 'number' && Number.isFinite(n.soft)) spec.soft = clamp(n.soft, 0, 1);
     out.push(spec);
   }
-  return out.length >= MIN_NODES ? out : null;
+  if (out.length < MIN_NODES) return null;
+  return d.fx && typeof d.fx === 'object' ? { nodes: out, fx: parseFx(d.fx) } : { nodes: out };
 }
 
 export function loadCustom(): Preset | null {
   try {
-    const nodes = parse(localStorage.getItem(CUSTOM_KEY));
-    return nodes ? customPreset(nodes) : null;
+    const saved = parse(localStorage.getItem(CUSTOM_KEY));
+    return saved ? customPreset(saved.nodes, saved.fx) : null;
   } catch {
     return null;
   }
@@ -109,11 +112,11 @@ export function clearCustom(): boolean {
 }
 
 /** Returns the saved preset and whether it reached storage (false in private mode / quota errors). */
-export function saveCustom(nodes: NodeSpec[]): { preset: Preset; persisted: boolean } {
-  const preset = customPreset(nodes);
+export function saveCustom(nodes: NodeSpec[], fx: FxState): { preset: Preset; persisted: boolean } {
+  const preset = customPreset(nodes, fx);
   let persisted = true;
   try {
-    localStorage.setItem(CUSTOM_KEY, JSON.stringify({ v: 2, nodes: nodes.map(serialise), savedAt: Date.now() }));
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify({ v: 2, nodes: nodes.map(serialise), fx, savedAt: Date.now() }));
   } catch {
     persisted = false;
   }
