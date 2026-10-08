@@ -320,3 +320,24 @@ non-US layouts behave.
 shape default. SOFT shares the panel's R row (readout, 10-segment bar, `[−]` `[+]`), which costs no height; at 1280×800 the
 legend was also trimmed (SCROLL and `− =` share one radius chip) so nothing scrolls. `data-soft` reports the target value, `data-radius` the
 displayed one.
+
+## v4 — FX + wallpaper
+
+**Pass order** (one post shader, fixed, no UI for it): chromatic aberration → vignette → scanlines → grain → dither. Dither is last so it quantises the colour the viewer actually sees; aberration is first because it needs to resample the clean field.
+
+**Formulas.** With `d = (uv − 0.5)·res / min(res)` (short side = 1) and `dc` = `d` at a corner:
+- Aberration: `o = d · (chroma/100) · 0.07 · |d|²/|dc|²`; R at +o, G at 0, B at −o, three taps per fringe channel (0.33·o, 0.66·o and o) so the edge is a spectral smear rather than a double image.
+- Vignette, in linear light so hue survives: `rgb *= 1 − (vig/100)·0.82·smoothstep(0.28, 1.08, |d|/|dc|)`; 100 is deep, not black.
+- Scanlines: period 3 px, `s = ½ − ½cos(2π·fract(y/period))`, `rgb *= 1 − (scan/100)·0.5·s²` (thin crisp lines).
+- Grain: monochrome, `(n − ½)·(grain/100)·0.20·(0.35 + 2.6·L(1−L))`, heaviest in the mids. Fine = one hash per 1 px cell; coarse = two-octave value noise on 2.5 px cells (35mm).
+- Dither, per channel in sRGB: `q = floor(c·(N−1) + t)/(N−1)`, N = 2–16.
+
+**Why seeded grain.** The base grain in the field shader animates; the FX grain has no time term, so a PNG is the same picture you were looking at and a screenshot is reproducible. Low values double as debanding.
+
+**Why per-channel sRGB dither.** Each channel keeps its own steps, so the image keeps its palette (no foreign palette remap); the thresholds only decide which neighbouring step a pixel takes, so the local average is preserved. Bayer 8×8 (2 px cells) is the visible retro pattern; blue noise (64×64 void-and-cluster, σ 1.5, seeded, ~60 ms once at startup, shared by the export context) is the quiet one.
+
+**Unit scaling.** Cell sizes are authored in preview CSS px and become `max(1, round(base · fxUnit))` buffer px. Preview `fxUnit` is the DPR scale; export `fxUnit = u / stage.min`. Aberration and vignette are resolution-independent already.
+
+**Reframe rule (wallpaper).** Cover-fit, keep node positions relative: the field fills the target, centres stay at `(x·W, y·H)`, and all size-like values use `u = stage.min · √(W·H / (stage.w·stage.h))`. For a same-aspect target `u = min(W, H)`, i.e. the old export, exactly. Nothing is letterboxed or cropped, so no node can fall off the image; the price is that a very different aspect stretches the layout rather than cropping it.
+
+**Knob.** The SOFT gauge's language in a 30 px SVG: 270° sweep with the gap at 6 o'clock, 21 ticks (every 5 %), INK when lit, FLARE while engaged (drag, or the 900 ms after a wheel / key step). The hit area grows to ≥ 44 px on coarse pointers via a pseudo-element, so rows keep their rhythm. Dither runs OFF, 16 … 2 levels (16 positions): turning up always means a stronger effect.
