@@ -40,27 +40,60 @@ export function parseHex(input: string): string | null {
 }
 
 export interface FieldSample {
-  /** Position and radius in one shared unit (px). */
-  x: number;
-  y: number;
-  r: number;
+  /** Normalised distance to the node (shape-aware, see `nodeQ` in field.ts). */
+  q: number;
   lab: Lab;
+  /** Softness 0–1. */
+  soft: number;
 }
 
-/** CPU twin of the shader's weight function (no domain warp). Returns the blended OKLab colour. */
-export function sampleField(nodes: FieldSample[], px: number, py: number): Lab {
+const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+/** Falloff exponent of the core term: soft 0 → plateau with a crisp edge, 0.5 → gaussian, 1 → wide haze. */
+export function softP(soft: number): number {
+  return soft < 0.5 ? mix(8, 2, soft * 2) : mix(2, 1.15, (soft - 0.5) * 2);
+}
+
+/** Weight of the far inverse-distance tail. */
+export function softTail(soft: number): number {
+  return soft < 0.5 ? mix(0.004, 0.05, soft * 2) : mix(0.05, 0.14, (soft - 0.5) * 2);
+}
+
+/** Core term of a node's weight (no tail); also the layer opacity before LAYER_K. */
+export function coreWeight(q: number, soft: number): number {
+  return Math.exp(-1.5 * Math.pow(Math.max(q, 1e-4), softP(soft)));
+}
+
+/** Layers: how much of its own colour a node's core paints over everything beneath it. */
+export const LAYER_K = 0.85;
+
+/**
+ * CPU twin of the shader's compositing (no domain warp). The normalised weighted OKLab average is the base;
+ * then, back → front (array order), each node's core is mixed over it. Returns the OKLab colour.
+ */
+export function sampleField(nodes: FieldSample[]): Lab {
   const acc: Lab = [0, 0, 0];
   let wsum = 0;
+  const cores: number[] = [];
   for (const n of nodes) {
-    const q = Math.hypot(px - n.x, py - n.y) / n.r;
-    const q2 = q * q;
-    const w = Math.exp(-q2 * 1.5) + 0.05 / (1 + q2 * q2);
+    const q2 = n.q * n.q;
+    const core = coreWeight(n.q, n.soft);
+    cores.push(core);
+    const w = core + softTail(n.soft) / (1 + q2 * q2);
     acc[0] += n.lab[0] * w;
     acc[1] += n.lab[1] * w;
     acc[2] += n.lab[2] * w;
     wsum += w;
   }
-  return wsum > 0 ? [acc[0] / wsum, acc[1] / wsum, acc[2] / wsum] : [0, 0, 0];
+  if (!(wsum > 0)) return [0, 0, 0];
+  const col: Lab = [acc[0] / wsum, acc[1] / wsum, acc[2] / wsum];
+  nodes.forEach((n, i) => {
+    const a = LAYER_K * cores[i];
+    col[0] = mix(col[0], n.lab[0], a);
+    col[1] = mix(col[1], n.lab[1], a);
+    col[2] = mix(col[2], n.lab[2], a);
+  });
+  return col;
 }
 
 export function labToHex(lab: Lab): string {

@@ -1,3 +1,14 @@
+import type { Shape } from './store';
+
+/** Optional per-node shape data (only CS-06 carries any). */
+export interface ShapeExtra {
+  shape?: Shape;
+  rot?: number;
+  pts?: [number, number][];
+  /** Softness, only when it differs from the shape's default. */
+  soft?: number;
+}
+
 export interface Preset {
   id: string;
   serial: string;
@@ -7,6 +18,7 @@ export interface Preset {
   positions: [number, number][];
   /** Influence radii as a fraction of the short side. */
   radii: number[];
+  shapes?: (ShapeExtra | undefined)[];
 }
 
 export const PRESETS: Preset[] = [
