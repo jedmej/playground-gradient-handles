@@ -9,7 +9,8 @@ import { Actions } from './actions';
 import { loadCustom } from './custom';
 import { createMetrics, Handles } from './handles';
 import { History } from './history';
-import { createStore, EASE, MAX_NODES } from './store';
+import { FieldBuffers, packField } from './field';
+import { createStore, EASE } from './store';
 import { drawRulers, UI } from './ui';
 
 const store = createStore();
@@ -36,9 +37,7 @@ try {
   document.getElementById('status')!.textContent = 'WebGL is unavailable in this browser. The field needs it.';
 }
 
-const positions = new Float32Array(MAX_NODES * 2);
-const radii = new Float32Array(MAX_NODES);
-const lab = new Float32Array(MAX_NODES * 3);
+const buffers = new FieldBuffers();
 
 const wordmark = document.querySelector('.wordmark') as HTMLElement;
 const wordmarkText = wordmark.firstElementChild as HTMLElement;
@@ -88,16 +87,8 @@ function tick(): void {
 
   handles.frame(dt);
 
-  const m = handles.metrics;
-  const count = store.nodes.length;
-  for (let i = 0; i < count; i++) {
-    const n = store.nodes[i];
-    positions[i * 2] = n.dx * m.w;
-    positions[i * 2 + 1] = n.dy * m.h;
-    radii[i] = n.dr * m.min;
-    lab.set(n.lab, i * 3);
-  }
-  renderer?.render({ positions, radii, lab, count, time: store.reducedMotion ? 0.5 : t / 1000, grain: 0.04 });
+  packField(store, handles.metrics, buffers);
+  renderer?.render({ ...buffers, time: store.reducedMotion ? 0.5 : t / 1000, grain: 0.04 });
 
   ui.frame();
   requestAnimationFrame(tick);

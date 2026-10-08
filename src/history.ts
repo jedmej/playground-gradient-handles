@@ -1,4 +1,4 @@
-import { CUSTOM_INDEX, emit, reconcile, snapshotIdentified, type NodeSpec, type Store } from './store';
+import { CUSTOM_INDEX, defaultSoft, emit, reconcile, snapshotIdentified, type NodeSpec, type Store } from './store';
 
 interface Snapshot {
   presetIndex: number;
@@ -22,8 +22,24 @@ function same(a: Snapshot, b: Snapshot): boolean {
   if (a.nodes.length !== b.nodes.length) return false;
   return a.nodes.every((n, i) => {
     const m = b.nodes[i];
-    return Math.abs(n.x - m.x) < EPS && Math.abs(n.y - m.y) < EPS && Math.abs(n.r - m.r) < EPS && n.hex === m.hex && n.uid === m.uid;
+    return (
+      Math.abs(n.x - m.x) < EPS && Math.abs(n.y - m.y) < EPS && Math.abs(n.r - m.r) < EPS &&
+      n.hex === m.hex && n.uid === m.uid &&
+      (n.shape ?? 'circle') === (m.shape ?? 'circle') &&
+      Math.abs((n.rot ?? 0) - (m.rot ?? 0)) < EPS &&
+      Math.abs((n.soft ?? defaultSoft(n.shape)) - (m.soft ?? defaultSoft(m.shape))) < EPS &&
+      samePts(n.pts, m.pts)
+    );
   });
+}
+
+function samePts(a: NodeSpec['pts'], b: NodeSpec['pts']): boolean {
+  const la = a?.length ?? 0;
+  if (la !== (b?.length ?? 0)) return false;
+  for (let i = 0; i < la; i++) {
+    if (Math.abs(a![i][0] - b![i][0]) >= EPS || Math.abs(a![i][1] - b![i][1]) >= EPS) return false;
+  }
+  return true;
 }
 
 /** Cheap snapshot stack: each entry is the state *before* an edit. */
@@ -48,6 +64,11 @@ export class History {
   /** Gesture start: remember the state, push nothing until `commit`. */
   begin(): void {
     this.pending = take(this.store);
+  }
+
+  /** Gesture abandoned: forget the remembered state without pushing anything. */
+  cancel(): void {
+    this.pending = null;
   }
 
   /** Gesture end: push the remembered state if anything changed (or `force`). */

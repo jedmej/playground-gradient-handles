@@ -175,10 +175,9 @@ Build to this revised plan.
   farthest point of a 9×9 grid. The new node takes the CPU-evaluated field colour under
   it, radius 0.28, is selected, and "acquires": brackets start at 22 and settle to 14
   while the ring eases in (snaps under reduced motion). At 16: `NODE LIMIT 16`.
-- **Remove.** Delete/Backspace, `[−] Remove node`, or on touch a 550 ms hold on a core.
-  Hold feedback is FLARE: brackets close in from 14 toward 6 while a FLARE arc fills
-  around the core (brackets also shrink more than a plain drag does, so the two are
-  distinguishable). Moving > 8 px cancels it and it stays a normal drag. At 2 nodes:
+- **Remove.** Delete/Backspace, `[−] Remove node`, or (touch, since round 4b) tap → hold → `DELETE` in the node
+  menu. The 550 ms hold on a selected core now opens that menu; its feedback is a SIGNAL arc, not FLARE (brackets
+  close in from 14 toward 6 while the arc fills around the core, so it reads differently from a plain drag). Moving > 6 px cancels it and it stays a normal drag. At 2 nodes:
   `MIN 2 NODES`. Selected/focused/armed indices are remapped on removal; hover and drag
   are cleared.
 - **Colour.** The panel edits `selected ?? focused`, never hover. `[■]` swatch (native
@@ -193,7 +192,7 @@ Build to this revised plan.
   Reset on CS-06 restores the saved state. Edited presets show a dim `MOD` tag.
 - **Undo.** `history.ts`: snapshot stack (cap 50) of `{presetIndex, nodes}`. Gestures
   snapshot at start and push on end only if something changed; colour edits are one step
-  per session; arrow/bracket nudges coalesce per 700 ms burst. ⌘/Ctrl+Z, ⇧⌘Z / ⌘Y redo,
+  per session; arrow / radius-key nudges coalesce per 700 ms burst. ⌘/Ctrl+Z, ⇧⌘Z / ⌘Y redo,
   ignored inside text inputs. `UNDO [↶]` button beside Reset.
 
 ## Round 3b — fixes
@@ -211,7 +210,7 @@ Build to this revised plan.
   removal arms only if the node was already selected before the press (tap selects,
   then press-and-hold removes); the FLARE arc shows only on that armed hold; movement
   > 6 px cancels. At 2 nodes the hold just reports `MIN 2 NODES` and the drag continues.
-  Hint copy: `TAP + HOLD` remove.
+  Hint copy: `TAP + HOLD` (round 4b: → menu).
 - **Undo by identity.** Snapshots carry each node's `uid`; restore matches by uid, so
   survivors keep their views and positions, a removed node returns at its original
   array index with its original uid/x/y/r/hex, and add/redo behave the same. Selection
@@ -230,3 +229,94 @@ Build to this revised plan.
   `gh.custom.v1` and returns the row to `CUSTOM — EMPTY`. Esc, blur or the timeout disarm
   it. The field is left untouched; if CS-06 was active it becomes CS-01 + `MOD`, and undo
   never re-activates an empty CS-06.
+
+## Round 4 — shapes + draw
+
+**Field math.** The weight is unchanged, `w = exp(-1.5 q²) + 0.05 / (1 + q⁴)`; only `q` is
+per shape, in canvas px on the warped point, with `l = rotate(p − c, −rot)` and `r` the reach:
+circle `|l|/r`; ellipse `|(l.x, l.y/0.45)|/r`; box `(|l.x|⁶+|l.y|⁶)^(1/6)/r` (a rounded
+square); capsule `|(max(|l.x|−0.6r,0), l.y)|/(0.35r)`; stroke `d/r` with `d` the distance to
+the polyline. `field.ts#nodeQ` is the CPU mirror (no warp) used for the colour of new nodes
+and for hit testing. `packField` fills every shader input for a target size and serves both
+the live tick and the 2048 px export (export reads settled targets, live reads the smoothed
+display values), so shapes and strokes appear in PNGs.
+
+**Stroke data texture.** 64 × 16 RGBA8, NEAREST, clamp, no mips, so no float-texture
+extension is needed. Row `i` is node `i`; each texel is an absolute canvas position over
+`[−0.5, 1.5] ×` the canvas CSS size as 16-bit fixed point (x in R/G, y in B/A). The renderer
+re-uploads with `texSubImage2D` only when the bytes differ. Points that leave that range
+(a big stroke dragged to an edge) clamp. The shader's stroke loop is bounded by `u_npts`.
+
+**Hit priority.** Core > ring band (revealed rings only) > body > empty field; nearest wins
+inside a class. Body = polyline distance ≤ max(16 px, 24 px coarse, 0.45 r) for strokes,
+`q ≤ 0.45` for ellipse / box / capsule; circles have none. A body drag is the ordinary node
+move drag (grab offset kept, one `MOVE` undo step). The ring stays a circle of radius `r`
+for every shape; a stroke's reticle sits at its centroid. Non-circle nodes show a dashed
+dual-stroke outline of their core (SIGNAL while the body is hovered or dragged).
+
+**Draw flow.** `D` / `DRAW` enters the tool (colour = the selected node's, else PAPER). Press
+creates the stroke node at once so the field reacts live; points are sampled at ≥ 2 px, the
+live preview is capped at 64 points by RDP, and a thin guide (`#draw-guide`) follows the
+pointer. Release simplifies, recentres (centroid → x/y, offsets → pts), selects, commits one
+`DRAW N-xx` undo step and leaves the tool. Under 12 px of path, or on `pointercancel`, the
+provisional node is removed with no undo step and the tool stays on.
+
+**Decisions.** Strokes cannot be converted to shapes and back (picker disabled, tag shows the
+point count). Shape and rotation sit on one row as square glyph buttons, with no 3-letter
+labels, because labels do not fit the 296 px column; on touch the row wraps to two lines at
+40 px. CS-06 round-trips shapes (`v:2`); the built-in presets have none, so applying one
+returns every node to a circle. Default stroke reach is 0.16.
+
+## Round 4b — reach by scroll, softness, layers
+
+**Softness.** Every node has `soft` ∈ [0, 1] (default 0.5; strokes 0.75 for a wide haze). With `q` the shape's
+normalised distance (unchanged), the weight is `w = exp(−1.5·max(q, 1e-4)^p) + tail / (1 + q⁴)` where
+`p = soft < .5 ? mix(8, 2, 2·soft) : mix(2, 1.15, 2·soft − 1)` and
+`tail = soft < .5 ? mix(.004, .05, 2·soft) : mix(.05, .14, 2·soft − 1)`. At 0.5 that is exactly the old
+`exp(−1.5q²) + .05/(1+q⁴)`; at 0 it is a near-flat plateau with a crisp edge, at 1 a very wide haze. The shader
+reads `u_soft[16]`, filled by `packField` (smoothed `dsoft` live, settled `soft` for export), and `color.ts`
+(`softP`, `softTail`, `coreWeight`, `sampleField`) is the CPU mirror.
+
+**Layers.** Layer order is `store.nodes` order (0 = back). The shader first computes the normalised weighted OKLab
+average (`base`, tails included), then in array order `col = mix(col, lab_i, 0.85·exp(−1.5·q_i^p_i))`: the core term
+only, no tail, so a higher node dominates where they overlap, edges stay soft and empty areas keep the average.
+Reordering (`moveNodeTo`) renumbers serials, palette strip, barcode and Tab order like a removal; views stay keyed by
+uid and selected / focused / armed are remapped by uid. A re-inserted focused reticle is re-focused so `[`/`]` can repeat.
+
+**SOFT gauge.** Inside the bezel, a 270° arc with the gap centred on 6 o'clock: 0 % at the lower left (screen angle
+135°), running clockwise over 9 and 12 to 100 % at the lower right (405° = 45°). Radius `ri = clamp(0.55·r, 22, r − 18)`;
+11 ticks (every 10 %, the 0/50/100 ticks longer); a SIGNAL fill arc from the start to the value (FLARE while dragged
+or wheeled); a radial knob at the value (white → SIGNAL on hover → FLARE dragging); the `SOFT 62` mono label sits in
+the gap while hovered / dragged. Dual-stroke like the bezel. It lives inside the ring group, so it is visible exactly
+when the bezel is; it is hidden under `r_px < 64` and in draw mode. Cursor stays the stage crosshair; the knob is the
+highlight. Hit band ±7 px (±11 coarse) around `ri`, on the visible arc plus a band-sized tolerance at the ends.
+Priority: **core > SOFT gauge > ring band > body > empty**; the gauge (≤ r − 11) and the ring band (≥ r − 10) barely meet.
+Dragging maps the pointer angle to 0–1; inside the gap the value sticks to the end it came from, and re-entering the
+arc on the far side is ignored until it is within 0.5 of the held value, so it never jumps across the gap.
+
+**Wheel.** A non-passive `wheel` listener on the stage. Targets: whatever `pick` hits (core, gauge, ring band, body), else
+the hovered / armed node while the pointer is within `r + 1.6·band` of it. Otherwise nothing happens and the event is not
+prevented. Deltas are normalised (`deltaMode` 1 → ×16, 2 → ×400). Plain: `r *= exp(−dy·0.0015)` clamped to
+[R_MIN, R_MAX]; `ctrlKey` (trackpad pinch) ×3 and always prevented; `shift` / `alt`: `soft −= (deltaY || deltaX)·0.0012`
+(Shift+wheel is deltaX in Chromium on macOS). A FLARE chip (`R 184PX` / `SOFT 62%`) and the bezel stay for 0.9 s; bursts
+coalesce into one undo step per 700 ms gap. Not in draw mode, not mid-drag. Touch pinch: two touches while a node is
+selected scale its reach by the distance ratio from the pinch start (one `RADIUS` step); a second finger cancels any
+one-finger drag, hold or stroke. Fingers rarely both land on the core: if the first finger touched empty field and so
+deselected the node, a second finger within 400 ms restores that selection and pinches it.
+
+**Node menu.** `contextmenu` on the stage is always prevented. A hit node is selected and a VOID plate (1 px GRAPHITE
+keyline, mono caps, key hints right-aligned, header `N-05 · LYR 03/07`) opens at the pointer, kept inside the stage:
+BRING TO FRONT `⇧]`, MOVE UP `]`, MOVE DOWN `[`, SEND TO BACK `⇧[`, DELETE `DEL` (FLARE on hover / focus). Hover / focus
+= SIGNAL on HULL; focus highlight only shows after the first arrow key, so a mouse-opened menu has no stray row.
+Disabled items dim. Touch: the 550 ms hold on an already-selected core opens it beside the node (rows 44 px); a hold on an
+unselected node does nothing and touch ignores the `contextmenu` event so Android's own long-press cannot open it early.
+The plate is `rgba(0,0,0,.995)`, not `#000`: a fully opaque plate over the WebGL canvas made Chrome cull a wrong canvas
+rectangle.
+
+**Keys.** Radius moved to `-` / `=` (`+`, numpad) with Shift = 16 px; `[` `]` are layers, matched on `e.code` so Shift and
+non-US layouts behave.
+
+**Decisions.** Softness is not part of the preset data (built-ins reset it); CS-06 stores it only when it differs from the
+shape default. SOFT shares the panel's R row (readout, 10-segment bar, `[−]` `[+]`), which costs no height; at 1280×800 the
+legend was also trimmed (SCROLL and `− =` share one radius chip) so nothing scrolls. `data-soft` reports the target value, `data-radius` the
+displayed one.
