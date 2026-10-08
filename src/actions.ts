@@ -7,22 +7,32 @@ import {
   CUSTOM_INDEX,
   DEFAULT_RADIUS,
   emit,
-  fieldHexAt,
   getPreset,
   MAX_NODES,
+  layerTarget,
   MIN_NODES,
+  moveNodeTo,
   nodeSerial,
+  PAPER_HEX,
+  R_MAX,
+  R_MIN,
   removeNodeAt,
   snapshotSpecs,
   tweenNodeTo,
+  type LayerMove,
+  type Shape,
   type Store,
 } from './store';
+import { fieldHexAt } from './field';
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 
 /** Every user edit goes through here, so history, status and index hygiene live in one place. */
 export class Actions {
   private lastNudge = -Infinity;
+  private lastRot = -Infinity;
+  private lastRadius = -Infinity;
+  private lastSoft = -Infinity;
 
   constructor(
     private store: Store,
@@ -117,6 +127,96 @@ export class Actions {
     this.store.modified = true;
   }
 
+  /** Radius from keys / wheel / pinch: `fn` computes the new radius (fraction of the short side). Bursts coalesce. */
+  resize(i: number, next: (r: number) => number): void {
+    const s = this.store;
+    const n = s.nodes[i];
+    if (!n) return;
+    const t = this.now();
+    if (t - this.lastRadius > 700) this.history.mark(`RADIUS ${nodeSerial(i)}`);
+    this.lastRadius = t;
+    n.r = Math.min(R_MAX, Math.max(R_MIN, next(n.r)));
+    s.modified = true;
+  }
+
+  /** Softness from wheel / buttons: `delta` is added and clamped to 0–1. Bursts coalesce into one `SOFT` step. */
+  softBy(i: number, delta: number): void {
+    const s = this.store;
+    const n = s.nodes[i];
+    if (!n) return;
+    const t = this.now();
+    if (t - this.lastSoft > 700) this.history.mark(`SOFT ${nodeSerial(i)}`);
+    this.lastSoft = t;
+    n.soft = Math.min(1, Math.max(0, Math.round((n.soft + delta) * 1e4) / 1e4));
+    s.modified = true;
+    emit(s);
+  }
+
+  /** Move node `i` through the layer stack. One undo step; the same node stays selected. */
+  moveLayer(i: number, move: LayerMove): boolean {
+    const s = this.store;
+    if (i < 0 || i >= s.nodes.length || s.drag.kind !== 'none' || s.drawing) return false;
+    const to = layerTarget(i, s.nodes.length, move);
+    const serial = nodeSerial(i);
+    if (to === i) {
+      s.say(`${serial} · ALREADY ${move === 'front' || move === 'up' ? 'FRONT' : 'BACK'}`);
+      return false;
+    }
+    this.history.mark(`LAYER ${serial}`);
+    moveNodeTo(s, i, to);
+    s.modified = true;
+    emit(s);
+    s.say(`${serial} → LYR ${pad(to + 1)}/${pad(s.nodes.length)}`);
+    return true;
+  }
+
+  /** Strokes cannot become shapes (and vice versa): the picker is for the four primitives. */
+  setShape(i: number, shape: Shape): void {
+    const s = this.store;
+    const n = s.nodes[i];
+    if (!n || n.shape === 'stroke' || shape === 'stroke' || n.shape === shape) return;
+    this.history.mark(`SHAPE ${nodeSerial(i)}`);
+    n.shape = shape;
+    s.modified = true;
+    emit(s);
+    s.say(`${nodeSerial(i)} · ${shape.toUpperCase()}`);
+  }
+
+  /** Rotate by `deg` degrees; bursts coalesce into one undo step like arrow nudges. */
+  rotate(i: number, deg: number): void {
+    const s = this.store;
+    const n = s.nodes[i];
+    if (!n || n.shape === 'circle' || n.shape === 'stroke') return;
+    const t = this.now();
+    if (t - this.lastRot > 700) this.history.mark(`ROTATE ${nodeSerial(i)}`);
+    this.lastRot = t;
+    const TAU = Math.PI * 2;
+    n.rot = (((n.rot + (deg * Math.PI) / 180) % TAU) + TAU) % TAU;
+    s.modified = true;
+    emit(s);
+  }
+
+  /** Enter / leave the DRAW tool. A stroke in progress is abandoned on exit. */
+  setDraw(on: boolean): void {
+    const s = this.store;
+    if (on === (s.tool === 'draw')) return;
+    if (!on && s.drawing) s.cancelDraw();
+    s.tool = on ? 'draw' : 'edit';
+    s.hover = { kind: 'idle', index: -1 };
+    if (on) {
+      const sel = this.target;
+      s.drawColor = sel >= 0 ? s.nodes[sel].hex : PAPER_HEX;
+      s.armed = null;
+      s.say('DRAW ON · drag on the field');
+    }
+    emit(s);
+  }
+
+  toggleDraw(): void {
+    if (this.store.drawing) return;
+    this.setDraw(this.store.tool !== 'draw');
+  }
+
   applyPresetAt(index: number): void {
     const s = this.store;
     const p = getPreset(s, index);
@@ -163,13 +263,13 @@ export class Actions {
   }
 
   undo(): void {
-    if (this.store.drag.kind !== 'none') return;
+    if (this.store.drag.kind !== 'none' || this.store.drawing) return;
     const label = this.history.undo();
     this.store.say(label ? `UNDO · ${label}` : 'NOTHING TO UNDO');
   }
 
   redo(): void {
-    if (this.store.drag.kind !== 'none') return;
+    if (this.store.drag.kind !== 'none' || this.store.drawing) return;
     const label = this.history.redo();
     this.store.say(label ? `REDO · ${label}` : 'NOTHING TO REDO');
   }
@@ -191,6 +291,43 @@ export class Actions {
         e.preventDefault();
         this.redo();
         return;
+      }
+      if (!mod && !e.altKey) {
+        const k = e.key;
+        if ((k === 'd' || k === 'D') && !e.repeat) {
+          e.preventDefault();
+          this.toggleDraw();
+          return;
+        }
+        if (k === 'Escape' && this.store.tool === 'draw') {
+          // Exit draw mode first; the usual deselect only happens on the next Esc.
+          e.preventDefault();
+          this.setDraw(false);
+          return;
+        }
+        if ((k === ',' || k === '.' || k === '<' || k === '>') && this.target >= 0) {
+          e.preventDefault();
+          this.rotate(this.target, (k === ',' || k === '<' ? -1 : 1) * (e.shiftKey ? 45 : 15));
+          return;
+        }
+        // Layers: ] up, [ down, ⇧] front, ⇧[ back. Matched on the physical key so layouts and Shift behave.
+        if ((e.code === 'BracketRight' || e.code === 'BracketLeft') && this.target >= 0) {
+          e.preventDefault();
+          const up = e.code === 'BracketRight';
+          this.moveLayer(this.target, e.shiftKey ? (up ? 'front' : 'back') : up ? 'up' : 'down');
+          return;
+        }
+        // Radius: − / = (+ and the numpad too), 4 px a press, ⇧ ×4.
+        const dir =
+          k === '-' || k === '_' || e.code === 'Minus' || e.code === 'NumpadSubtract' ? -1
+          : k === '=' || k === '+' || e.code === 'Equal' || e.code === 'NumpadAdd' ? 1
+          : 0;
+        if (dir !== 0 && this.target >= 0 && this.store.drag.kind === 'none') {
+          e.preventDefault();
+          const px = (e.shiftKey ? 16 : 4) / this.metrics.min;
+          this.resize(this.target, (r) => r + dir * px);
+          return;
+        }
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && !mod && !e.altKey && this.target >= 0) {
         e.preventDefault();
