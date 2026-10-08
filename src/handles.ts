@@ -1,4 +1,6 @@
-import { emit, nodeSerial, R_MAX, R_MIN, type Store } from './store';
+import type { Actions } from './actions';
+import type { History } from './history';
+import { emit, MIN_NODES, nodeSerial, R_MAX, R_MIN, type NodeState, type Store } from './store';
 
 const NS = 'http://www.w3.org/2000/svg';
 const TAU = Math.PI * 2;
@@ -11,7 +13,23 @@ export interface Metrics {
   min: number;
 }
 
+export function createMetrics(): Metrics {
+  return { left: 0, top: 0, w: 1, h: 1, min: 1 };
+}
+
+/** Touch long-press → remove node. */
+const HOLD_MS = 550;
+const HOLD_SLOP = 6;
+/** Double-tap window for adding a node (touch is more forgiving than a mouse double-click). */
+const TAP_MS = 380;
+const TAP_SLOP = 36;
+const CLICK_MS = 320;
+const CLICK_SLOP = 24;
+const HOLD_R = 19;
+const HOLD_C = TAU * HOLD_R;
+
 interface NodeView {
+  uid: number;
   g: SVGGElement;
   ring: SVGGElement;
   ringHalo: SVGCircleElement;
@@ -22,6 +40,9 @@ interface NodeView {
   retHalo: SVGPathElement;
   retInk: SVGPathElement;
   focus: SVGRectElement;
+  holdHalo: SVGCircleElement;
+  holdInk: SVGCircleElement;
+  holding: boolean;
   bracket: number;
   ringOp: number;
   lastR: number;
@@ -81,7 +102,6 @@ function shortestAngle(from: number, to: number): number {
 }
 
 export class Handles {
-  readonly metrics: Metrics = { left: 0, top: 0, w: 1, h: 1, min: 1 };
   private views: NodeView[] = [];
   private arcG: SVGGElement;
   private arcHalo: SVGPathElement;
@@ -91,6 +111,8 @@ export class Handles {
   private dragOffset = { x: 0, y: 0 };
   private pointerId: number | null = null;
   private lastPointer = { x: 0, y: 0 };
+  private hold: { start: number; x: number; y: number; uid: number } | null = null;
+  private lastTap: { t: number; x: number; y: number } | null = null;
   /** True while a pointer is over (or captured by) the stage. */
   pointerInside = false;
   private chipNodeText = '';
@@ -104,57 +126,22 @@ export class Handles {
     private svg: SVGSVGElement,
     private chipNode: HTMLElement,
     private chipRadius: HTMLElement,
+    readonly metrics: Metrics,
+    private actions: Actions,
+    private history: History,
   ) {
     this.gridHalo = el('path', { class: 'halo grid-cross' });
     this.grid = el('path', { class: 'ink grid-cross' });
     svg.append(this.gridHalo, this.grid);
-
-    store.nodes.forEach((_, i) => {
-      const g = el('g', {
-        class: 'node',
-        tabindex: 0,
-        role: 'button',
-        'data-node': i,
-        'aria-label': nodeSerial(i),
-      });
-      const ring = el('g', { class: 'ring' });
-      const ringHalo = el('circle', { class: 'halo ring-c' });
-      const ringInk = el('circle', { class: 'ink ring-c' });
-      const ticksHalo = el('path', { class: 'halo ticks' });
-      const ticksInk = el('path', { class: 'ink ticks' });
-      ring.append(ringHalo, ringInk, ticksHalo, ticksInk);
-      // Bearing labels at the cardinals: 000 is up, clockwise like a compass rose.
-      const bearings = ['000', '090', '180', '270'].map((label) => {
-        const t = el('text', { class: 'bearing', 'text-anchor': 'middle' });
-        t.textContent = label;
-        ring.appendChild(t);
-        return t;
-      });
-
-      const focusHalo = el('rect', { class: 'halo focus-rect', x: -21, y: -21, width: 42, height: 42 });
-      const focus = el('rect', { class: 'ink focus-rect', x: -21, y: -21, width: 42, height: 42 });
-      const retHalo = el('path', { class: 'halo ret' });
-      const retInk = el('path', { class: 'ink ret' });
-      const coreHalo = el('circle', { class: 'halo core', r: 3 });
-      const coreInk = el('circle', { class: 'ink core', r: 3 });
-      g.append(ring, focusHalo, focus, retHalo, retInk, coreHalo, coreInk);
-      svg.appendChild(g);
-
-      g.addEventListener('focus', () => this.onFocus(i));
-      g.addEventListener('blur', () => this.onBlur(i));
-      g.addEventListener('keydown', (e) => this.onKey(e, i));
-
-      this.views.push({
-        g, ring, ringHalo, ringInk, ticksHalo, ticksInk, bearings, retHalo, retInk, focus,
-        bracket: 11, ringOp: 0, lastR: -1, lastBracket: -1, cls: '',
-      });
-    });
 
     this.arcG = el('g', { class: 'arc' });
     this.arcHalo = el('path', { class: 'halo arc-p' });
     this.arcInk = el('path', { class: 'ink arc-p' });
     this.arcG.append(this.arcHalo, this.arcInk);
     svg.appendChild(this.arcG);
+
+    this.syncViews();
+    store.listeners.add(() => this.syncViews());
 
     // Focus ring only after keyboard interaction, never after a pointer grab that moved focus.
     window.addEventListener('keydown', (e) => {
@@ -168,6 +155,76 @@ export class Handles {
     stage.addEventListener('pointercancel', this.onUp);
     stage.addEventListener('pointerleave', this.onLeave);
     stage.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  // ----- views --------------------------------------------------------------
+
+  private createView(n: NodeState): NodeView {
+    const g = el('g', { class: 'node', tabindex: 0, role: 'button' });
+    const ring = el('g', { class: 'ring' });
+    const ringHalo = el('circle', { class: 'halo ring-c' });
+    const ringInk = el('circle', { class: 'ink ring-c' });
+    const ticksHalo = el('path', { class: 'halo ticks' });
+    const ticksInk = el('path', { class: 'ink ticks' });
+    ring.append(ringHalo, ringInk, ticksHalo, ticksInk);
+    // Bearing labels at the cardinals: 000 is up, clockwise like a compass rose.
+    const bearings = ['000', '090', '180', '270'].map((label) => {
+      const t = el('text', { class: 'bearing', 'text-anchor': 'middle' });
+      t.textContent = label;
+      ring.appendChild(t);
+      return t;
+    });
+
+    const focusHalo = el('rect', { class: 'halo focus-rect', x: -21, y: -21, width: 42, height: 42 });
+    const focus = el('rect', { class: 'ink focus-rect', x: -21, y: -21, width: 42, height: 42 });
+    const retHalo = el('path', { class: 'halo ret' });
+    const retInk = el('path', { class: 'ink ret' });
+    const holdAttrs = { r: HOLD_R, visibility: 'hidden', transform: 'rotate(-90)', 'stroke-dasharray': `0 ${HOLD_C}` };
+    const holdHalo = el('circle', { class: 'halo hold-arc', ...holdAttrs });
+    const holdInk = el('circle', { class: 'ink hold-arc', ...holdAttrs });
+    const coreHalo = el('circle', { class: 'halo core', r: 3 });
+    const coreInk = el('circle', { class: 'ink core', r: 3 });
+    g.append(ring, focusHalo, focus, holdHalo, holdInk, retHalo, retInk, coreHalo, coreInk);
+
+    const view: NodeView = {
+      uid: n.uid, g, ring, ringHalo, ringInk, ticksHalo, ticksInk, bearings, retHalo, retInk, focus,
+      holdHalo, holdInk, holding: false,
+      // Fresh nodes "acquire": brackets start wide and settle, the ring eases in.
+      bracket: n.fresh && !this.store.reducedMotion ? 22 : 11,
+      ringOp: 0, lastR: -1, lastBracket: -1, cls: '',
+    };
+    n.fresh = false;
+    // Listeners resolve the index at event time: indices shift whenever a node is added or removed.
+    g.addEventListener('focus', () => this.onFocus(this.views.indexOf(view)));
+    g.addEventListener('blur', () => this.onBlur(this.views.indexOf(view)));
+    g.addEventListener('keydown', (e) => this.onKey(e, this.views.indexOf(view)));
+    return view;
+  }
+
+  /** Make the `<g>` views match `store.nodes` (same order, same count, fresh `data-node` indices). */
+  syncViews(): void {
+    const nodes = this.store.nodes;
+    if (this.views.length === nodes.length && this.views.every((v, i) => v.uid === nodes[i].uid)) return;
+    const byUid = new Map(this.views.map((v) => [v.uid, v]));
+    const next = nodes.map((n) => {
+      const v = byUid.get(n.uid);
+      if (v) byUid.delete(n.uid);
+      return v ?? this.createView(n);
+    });
+    // Assign first: removing a focused <g> fires blur → emit → syncViews re-entrantly.
+    this.views = next;
+    byUid.forEach((v) => v.g.remove());
+    // Keep DOM order == array order (Tab order). Walk backwards so each view lands before its successor.
+    let ref: Node = this.arcG;
+    for (let i = next.length - 1; i >= 0; i--) {
+      const g = next[i].g;
+      if (g.nextSibling !== ref) this.svg.insertBefore(g, ref);
+      ref = g;
+    }
+    next.forEach((v, i) => {
+      v.g.setAttribute('data-node', String(i));
+      v.g.setAttribute('aria-label', nodeSerial(i));
+    });
   }
 
   // ----- geometry -----------------------------------------------------------
@@ -273,19 +330,28 @@ export class Handles {
     this.stage.setPointerCapture(e.pointerId);
     e.preventDefault();
 
+    const wasSelected = s.selected;
     if (res.kind === 'node') {
       const p = this.px(res.index);
       this.dragOffset = { x: p.x - x, y: p.y - y };
+      this.history.begin();
       s.drag = { kind: 'node', index: res.index };
       s.hover = { kind: 'node', index: res.index };
       s.selected = res.index;
       s.armed = res.index;
       this.views[res.index].g.focus({ preventScroll: true });
+      this.lastTap = null;
+      // Touch: first tap selects; pressing and holding an already-selected core removes it.
+      if (e.pointerType === 'touch' && wasSelected === res.index) {
+        this.hold = { start: performance.now(), x, y, uid: s.nodes[res.index].uid };
+      }
     } else if (res.kind === 'ring') {
+      this.history.begin();
       s.drag = { kind: 'ring', index: res.index };
       s.hover = { kind: 'ring', index: res.index };
       s.selected = res.index;
       s.armed = res.index;
+      this.lastTap = null;
       this.aimArc(res.index, x, y);
       this.applyRadius(res.index, x, y);
     } else {
@@ -293,6 +359,18 @@ export class Handles {
       s.armed = null;
       s.hover = { kind: 'idle', index: -1 };
       (document.activeElement as HTMLElement | null)?.blur?.();
+      // Double-click / double-tap on empty field drops a node (manual detection so touch behaves too).
+      const t = performance.now();
+      const prev = this.lastTap;
+      const touch = e.pointerType === 'touch';
+      const win = touch ? TAP_MS : CLICK_MS;
+      const slop = touch ? TAP_SLOP : CLICK_SLOP;
+      if (prev && t - prev.t < win && Math.hypot(x - prev.x, y - prev.y) < slop) {
+        this.lastTap = null;
+        this.actions.addAt(x / this.metrics.w, y / this.metrics.h);
+      } else {
+        this.lastTap = { t, x, y };
+      }
     }
     emit(s);
   };
@@ -303,8 +381,11 @@ export class Handles {
     this.lastPointer = { x, y };
     this.pointerInside = true;
 
+    if (this.hold && Math.hypot(x - this.hold.x, y - this.hold.y) > HOLD_SLOP) this.hold = null;
+
     if (s.drag.kind === 'node') {
       const n = s.nodes[s.drag.index];
+      if (!n) return;
       n.x = Math.min(1, Math.max(0, (x + this.dragOffset.x) / this.metrics.w));
       n.y = Math.min(1, Math.max(0, (y + this.dragOffset.y) / this.metrics.h));
       return;
@@ -350,7 +431,14 @@ export class Handles {
     const s = this.store;
     if (this.pointerId !== e.pointerId) return;
     this.pointerId = null;
+    this.hold = null;
     if (this.stage.hasPointerCapture(e.pointerId)) this.stage.releasePointerCapture(e.pointerId);
+    if (s.drag.kind !== 'none' && s.drag.index < s.nodes.length) {
+      const label = `${s.drag.kind === 'ring' ? 'RADIUS' : 'MOVE'} ${nodeSerial(s.drag.index)}`;
+      this.history.commit(label);
+    } else {
+      this.history.commit('');
+    }
     s.drag = { kind: 'none', index: -1 };
     if (e.pointerType === 'touch') {
       s.hover = { kind: 'idle', index: -1 };
@@ -373,9 +461,32 @@ export class Handles {
     emit(s);
   };
 
+  /** Long-press completed: remove the held node (at MIN_NODES it only reports the limit; the drag carries on). */
+  private fireHold(): void {
+    const s = this.store;
+    const h = this.hold;
+    this.hold = null;
+    if (!h) return;
+    const i = s.nodes.findIndex((n) => n.uid === h.uid);
+    if (i < 0) return;
+    if (s.nodes.length <= MIN_NODES) {
+      s.say(`MIN ${MIN_NODES} NODES`);
+      return;
+    }
+    if (this.pointerId !== null && this.stage.hasPointerCapture(this.pointerId)) {
+      this.stage.releasePointerCapture(this.pointerId);
+    }
+    this.pointerId = null;
+    this.pointerInside = false;
+    // The gesture's opening snapshot becomes the "remove" undo step.
+    s.drag = { kind: 'none', index: -1 };
+    this.actions.removeAt(i);
+  }
+
   // ----- keyboard -----------------------------------------------------------
 
   private onFocus(i: number): void {
+    if (i < 0) return;
     const s = this.store;
     s.focused = i;
     s.selected = i;
@@ -385,15 +496,19 @@ export class Handles {
 
   private onBlur(i: number): void {
     const s = this.store;
-    if (s.focused === i) s.focused = null;
+    if (i >= 0 && s.focused === i) s.focused = null;
     emit(s);
   }
 
   private onKey(e: KeyboardEvent, i: number): void {
     const s = this.store;
     const n = s.nodes[i];
+    if (!n) return;
     const m = this.metrics;
     const step = e.shiftKey ? 10 : 1;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const mutating = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '[', ']'].includes(e.key);
+    if (mutating) this.actions.nudge(i);
     let handled = true;
     switch (e.key) {
       case 'ArrowLeft': n.x = Math.max(0, n.x - step / m.w); break;
@@ -417,6 +532,22 @@ export class Handles {
     const s = this.store;
     const m = this.metrics;
     const snap = s.reducedMotion;
+    this.syncViews();
+
+    // Long-press clock.
+    let holdIndex = -1;
+    let holdP = 0;
+    if (this.hold) {
+      holdP = (performance.now() - this.hold.start) / HOLD_MS;
+      if (holdP >= 1) {
+        this.fireHold();
+        holdP = 0;
+      } else {
+        const h = this.hold;
+        holdIndex = s.nodes.findIndex((n) => n.uid === h.uid);
+      }
+    }
+
     const engagedRing = s.drag.kind === 'ring' ? s.drag.index : s.hover.kind === 'ring' ? s.hover.index : -1;
     const activeNode = s.drag.kind !== 'none' ? s.drag.index : s.hover.kind !== 'idle' ? s.hover.index : (s.selected ?? s.focused ?? -1);
     const hintArc = s.coarse && engagedRing < 0 && s.selected !== null && s.drag.kind === 'none';
@@ -433,9 +564,22 @@ export class Handles {
       const isRing = engagedRing === i;
       const isSel = s.selected === i;
       const isFocus = s.focused === i;
+      const isHold = holdIndex === i && holdP > 0.12;
       const bracketTarget = isDrag ? 9 : isRing ? 14 : isHover ? 13 : isSel || isFocus ? 14 : 11;
-      v.bracket = approach(v.bracket, bracketTarget, 30, dt, snap);
+      v.bracket = isHold ? 14 - 8 * holdP : approach(v.bracket, bracketTarget, 30, dt, snap);
       v.ringOp = approach(v.ringOp, this.revealed(i) ? 1 : 0, 22, dt, snap);
+
+      if (isHold !== v.holding) {
+        v.holding = isHold;
+        const vis = isHold ? 'visible' : 'hidden';
+        v.holdHalo.setAttribute('visibility', vis);
+        v.holdInk.setAttribute('visibility', vis);
+      }
+      if (isHold) {
+        const dash = `${(HOLD_C * Math.min(1, holdP)).toFixed(1)} ${HOLD_C.toFixed(1)}`;
+        v.holdHalo.setAttribute('stroke-dasharray', dash);
+        v.holdInk.setAttribute('stroke-dasharray', dash);
+      }
 
       const x = n.dx * m.w;
       const y = n.dy * m.h;
@@ -489,6 +633,7 @@ export class Handles {
         (isDrag ? ' is-drag' : '') +
         (isRing ? ' is-ring' : '') +
         (isSel ? ' is-selected' : '') +
+        (isHold ? ' is-hold' : '') +
         (s.drag.kind === 'ring' && s.drag.index === i ? ' is-ring-drag' : '');
       if (cls !== v.cls) {
         v.cls = cls;
@@ -503,7 +648,7 @@ export class Handles {
     s.arcAngle = approach(s.arcAngle, shortestAngle(s.arcAngle, s.arcTarget), 24, dt, snap);
     const arcNode = engagedRing >= 0 ? engagedRing : hintArc ? s.selected! : -1;
     if (arcNode >= 0 || s.arcOpacity > 0.005) {
-      const idx = arcNode >= 0 ? arcNode : (s.selected ?? 0);
+      const idx = Math.min(s.nodes.length - 1, arcNode >= 0 ? arcNode : (s.selected ?? 0));
       const p = this.px(idx);
       const span = (40 * Math.PI) / 180;
       const d = arcPath(p.x, p.y, p.r + 9, s.arcAngle, span);
@@ -535,7 +680,7 @@ export class Handles {
     }
 
     // Serial / coordinate readout near the active node.
-    if (activeNode >= 0) {
+    if (activeNode >= 0 && activeNode < s.nodes.length) {
       const n = s.nodes[activeNode];
       const text = `${nodeSerial(activeNode)} // X ${n.x.toFixed(3)} Y ${n.y.toFixed(3)}`;
       if (text !== this.chipNodeText) {
