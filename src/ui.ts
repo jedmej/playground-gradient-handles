@@ -1,7 +1,10 @@
+import type { Actions } from './actions';
+import { parseHex } from './color';
 import { GradientRenderer } from './gradient';
 import type { Metrics } from './handles';
-import { PRESETS } from './presets';
-import { applyPreset, currentPreset, emit, nodeSerial, type Store } from './store';
+import type { History } from './history';
+import { PRESETS, type Preset } from './presets';
+import { currentPreset, CUSTOM_INDEX, emit, MAX_NODES, MIN_NODES, nodeSerial, type Store } from './store';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -9,11 +12,19 @@ function setText(el: HTMLElement, text: string): void {
   if (el.textContent !== text) el.textContent = text;
 }
 
+const pad2 = (n: number): string => String(n).padStart(2, '0');
+
 export class UI {
   private presetButtons: HTMLButtonElement[] = [];
   private bars: HTMLElement[] = [];
+  private chips: HTMLButtonElement[] = [];
+  private chipSel = -2;
   private statusTimer = 0;
   private exportCount = 0;
+  /** Colour-editing session: one undo step from first change until blur / commit / retarget. */
+  private colorSession: number | null = null;
+  private lastTargetUid = -1;
+  private lastCount = -1;
 
   private stateV = $('state-readout');
   private stateGlyph = $('state-glyph');
@@ -24,8 +35,18 @@ export class UI {
   private nsX = $('ns-x');
   private nsY = $('ns-y');
   private nsR = $('ns-r');
-  private nsHexV = $('ns-hex-v');
   private nsSwatch = $('ns-swatch');
+  private colorInput = $<HTMLInputElement>('node-color');
+  private hexInput = $<HTMLInputElement>('node-hex');
+  private hexField = $('hex-field');
+  private swatchBtn = $('swatch-btn');
+  private palette = $('palette');
+  private addBtn = $<HTMLButtonElement>('add-node');
+  private removeBtn = $<HTMLButtonElement>('remove-node');
+  private undoBtn = $<HTMLButtonElement>('undo');
+  private saveBtn = document.querySelector<HTMLButtonElement>('[data-action=save-custom]')!;
+  private eyebrowCount = $('eyebrow-count');
+  private railCount = $('rail-count');
   private railNode = $('rail-node');
   private railPreset = $('rail-preset');
   private status = $('status');
@@ -37,61 +58,242 @@ export class UI {
     private metrics: Metrics,
     private now: () => number,
     private pointer: () => { x: number; y: number; inside: boolean },
+    private actions: Actions,
+    private history: History,
   ) {
+    store.say = (t) => this.say(t);
     this.buildPresets();
-    this.buildBarcode();
     this.exportBtn.addEventListener('click', () => void this.exportPng());
-    this.resetBtn.addEventListener('click', () => {
-      applyPreset(store, store.presetIndex, now(), true);
-      this.say('Reset to ' + currentPreset(store).serial);
-    });
+    this.resetBtn.addEventListener('click', () => actions.reset());
+    this.undoBtn.addEventListener('click', () => actions.undo());
+    this.addBtn.addEventListener('click', () => actions.addAuto());
+    this.removeBtn.addEventListener('click', () => actions.removeSelected());
+    this.saveBtn.addEventListener('click', () => actions.saveCustom());
+    this.bindColor();
     store.listeners.add(() => this.sync());
     this.sync();
   }
 
+  private presetHtml(p: Preset | null): string {
+    const chips = p ? p.colors.map((c) => `<i style="background:${c}"></i>`).join('') : '';
+    const name = p ? p.name : 'CUSTOM — EMPTY';
+    return (
+      `<span class="chips" aria-hidden="true">${chips}</span>` +
+      `<span class="preset-serial">${p ? p.serial : 'CS-06'}</span>` +
+      `<span class="preset-name"><span class="nm">${name}</span><em class="preset-mod" hidden>MOD</em></span>` +
+      `<b class="preset-glyph">[>]</b>`
+    );
+  }
+
   private buildPresets(): void {
     const host = $('presets');
-    PRESETS.forEach((p, i) => {
+    const rows: (Preset | null)[] = [...PRESETS, this.store.custom];
+    rows.forEach((p, i) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'preset';
-      b.dataset.preset = p.id;
+      b.dataset.preset = i === CUSTOM_INDEX ? 'cs06' : PRESETS[i].id;
       b.setAttribute('role', 'radio');
-      b.innerHTML =
-        `<span class="chips" aria-hidden="true">${p.colors.map((c) => `<i style="background:${c}"></i>`).join('')}</span>` +
-        `<span class="preset-serial">${p.serial}</span>` +
-        `<span class="preset-name">${p.name}</span>` +
-        `<b class="preset-glyph">[>]</b>`;
+      b.innerHTML = this.presetHtml(p);
       b.addEventListener('click', () => {
-        if (this.store.presetIndex === i) return;
-        applyPreset(this.store, i, this.now(), true);
+        const s = this.store;
+        if (s.presetIndex === i && !s.modified) return;
+        this.actions.applyPresetAt(i);
       });
       host.appendChild(b);
       this.presetButtons.push(b);
     });
+    this.refreshCustomRow();
   }
 
-  private buildBarcode(): void {
+  private customKey = '\0';
+
+  /** CS-06 row: empty/dimmed until a custom set has been saved; chips follow the saved colours. */
+  private refreshCustomRow(): void {
+    const c = this.store.custom;
+    const key = c ? c.colors.join() : '';
+    if (key === this.customKey) return;
+    this.customKey = key;
+    const b = this.presetButtons[CUSTOM_INDEX];
+    b.innerHTML = this.presetHtml(c);
+    b.classList.toggle('is-empty', !c);
+  }
+
+  private rebuildBarcode(): void {
     const host = $('barcode');
-    for (let i = 0; i < 9; i++) {
+    const n = this.store.nodes.length;
+    while (this.bars.length < n) {
       const bar = document.createElement('i');
       host.appendChild(bar);
       this.bars.push(bar);
+    }
+    while (this.bars.length > n) this.bars.pop()!.remove();
+  }
+
+  private rebuildPalette(): void {
+    const s = this.store;
+    while (this.chips.length < s.nodes.length) {
+      const i = this.chips.length;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip-btn';
+      b.dataset.chip = String(i);
+      b.addEventListener('click', () => {
+        const st = this.store;
+        const idx = Number(b.dataset.chip);
+        if (idx >= st.nodes.length) return;
+        st.selected = idx;
+        st.armed = idx;
+        emit(st);
+      });
+      this.palette.appendChild(b);
+      this.chips.push(b);
+    }
+    while (this.chips.length > s.nodes.length) this.chips.pop()!.remove();
+    s.nodes.forEach((n, i) => {
+      const b = this.chips[i];
+      if (b.dataset.hex !== n.hex) {
+        b.dataset.hex = n.hex;
+        b.style.setProperty('--c', n.hex);
+      }
+      const label = `${nodeSerial(i)} ${n.hex}`;
+      if (b.getAttribute('aria-label') !== label) b.setAttribute('aria-label', label);
+    });
+    this.chipSel = -2;
+  }
+
+  // ----- colour field ---------------------------------------------------------
+
+  private endColorSession(): void {
+    this.colorSession = null;
+  }
+
+  /** Apply a colour to the edit target, opening one undo step per session. */
+  private commitColor(hex: string): void {
+    const i = this.actions.target;
+    if (i < 0 || this.store.nodes[i].hex === hex) return;
+    if (this.colorSession !== this.store.nodes[i].uid) {
+      this.actions.beginColor(i);
+      this.colorSession = this.store.nodes[i].uid;
+    }
+    this.actions.setColor(i, hex);
+  }
+
+  private setInvalid(on: boolean): void {
+    this.hexField.classList.toggle('is-invalid', on);
+    this.hexInput.setAttribute('aria-invalid', String(on));
+  }
+
+  private revertHex(): void {
+    const i = this.actions.target;
+    this.hexInput.value = i >= 0 ? this.store.nodes[i].hex.slice(1) : '';
+    this.setInvalid(false);
+  }
+
+  private bindColor(): void {
+    const hex = this.hexInput;
+    hex.addEventListener('input', () => {
+      const raw = hex.value.trim();
+      const parsed = raw.length === 0 ? null : parseHex(raw);
+      const six = raw.replace(/^#/, '').length === 6;
+      this.setInvalid(parsed === null);
+      // Live-commit only complete 6-digit values so "fff" typed on the way to "ffee00" doesn't fire early.
+      if (parsed && six) this.commitColor(parsed);
+    });
+    hex.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const parsed = parseHex(hex.value);
+        if (parsed) {
+          this.commitColor(parsed);
+          hex.value = parsed.slice(1);
+          this.setInvalid(false);
+        } else {
+          this.setInvalid(true);
+        }
+        this.endColorSession();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.revertHex();
+        this.endColorSession();
+        hex.blur();
+      }
+    });
+    hex.addEventListener('blur', () => {
+      const parsed = parseHex(hex.value);
+      if (parsed) this.commitColor(parsed);
+      this.revertHex();
+      this.endColorSession();
+    });
+    this.colorInput.addEventListener('input', () => {
+      const parsed = parseHex(this.colorInput.value);
+      if (parsed) {
+        this.commitColor(parsed);
+        this.hexInput.value = parsed.slice(1);
+        this.setInvalid(false);
+      }
+    });
+    this.colorInput.addEventListener('change', () => this.endColorSession());
+    this.colorInput.addEventListener('blur', () => this.endColorSession());
+  }
+
+  /** Mirror the edit target into the colour controls (never while the user is typing in them). */
+  private syncColor(): void {
+    const s = this.store;
+    const i = this.actions.target;
+    const n = i >= 0 ? s.nodes[i] : null;
+    const uid = n ? n.uid : -1;
+    if (uid !== this.lastTargetUid) {
+      this.lastTargetUid = uid;
+      this.endColorSession();
+      this.setInvalid(false);
+    }
+    const on = !!n;
+    for (const el of [this.colorInput, this.hexInput]) if (el.disabled === on) el.disabled = !on;
+    this.swatchBtn.classList.toggle('is-disabled', !on);
+    this.hexField.classList.toggle('is-disabled', !on);
+    this.nsSwatch.style.background = n ? n.hex : 'transparent';
+    if (document.activeElement !== this.hexInput) {
+      const want = n ? n.hex.slice(1) : '';
+      if (this.hexInput.value !== want) this.hexInput.value = want;
+      if (this.hexField.classList.contains('is-invalid')) this.setInvalid(false);
+    }
+    if (n && document.activeElement !== this.colorInput) {
+      const want = n.hex.toLowerCase();
+      if (this.colorInput.value !== want) this.colorInput.value = want;
     }
   }
 
   /** Called on store events: things that change rarely. */
   sync(): void {
     const s = this.store;
+    this.refreshCustomRow();
     this.presetButtons.forEach((b, i) => {
       const on = i === s.presetIndex;
       b.classList.toggle('is-active', on);
       b.setAttribute('aria-checked', String(on));
+      const mod = b.querySelector<HTMLElement>('.preset-mod');
+      if (mod) mod.hidden = !(on && s.modified);
     });
-    setText(this.railPreset, String(s.presetIndex + 1).padStart(2, '0'));
+    setText(this.railPreset, pad2(s.presetIndex + 1));
+    const count = s.nodes.length;
+    if (count !== this.lastCount) {
+      this.lastCount = count;
+      setText(this.eyebrowCount, pad2(count));
+      setText(this.railCount, pad2(count));
+      this.rebuildBarcode();
+    }
+    this.rebuildPalette();
     const active = this.activeNode();
-    setText(this.railNode, active >= 0 ? String(active + 1).padStart(2, '0') : '——');
+    setText(this.railNode, active >= 0 ? pad2(active + 1) : '——');
     this.nodeHint.hidden = active >= 0;
+    const target = this.actions.target;
+    this.addBtn.disabled = count >= MAX_NODES;
+    this.removeBtn.disabled = target < 0 || count <= MIN_NODES;
+    this.undoBtn.disabled = !this.history.canUndo;
+    this.saveBtn.classList.toggle('is-dirty', s.modified || s.presetIndex !== CUSTOM_INDEX);
+    this.syncColor();
     s.nodes.forEach((n, i) => {
       const g = document.querySelector<SVGGElement>(`[data-node="${i}"]`);
       g?.setAttribute(
@@ -103,9 +305,8 @@ export class UI {
 
   private activeNode(): number {
     const s = this.store;
-    if (s.drag.kind !== 'none') return s.drag.index;
-    if (s.hover.kind !== 'idle') return s.hover.index;
-    return s.selected ?? s.focused ?? -1;
+    const i = s.drag.kind !== 'none' ? s.drag.index : s.hover.kind !== 'idle' ? s.hover.index : (s.selected ?? s.focused ?? -1);
+    return i < s.nodes.length ? i : -1;
   }
 
   /** Called every frame: live readouts. Cheap string compares keep DOM writes rare. */
@@ -152,8 +353,6 @@ export class UI {
       setText(this.nsX, n.x.toFixed(3));
       setText(this.nsY, n.y.toFixed(3));
       setText(this.nsR, `${rpx} PX`);
-      setText(this.nsHexV, n.hex.toUpperCase());
-      this.nsSwatch.style.background = n.hex;
       const rn = String(active + 1).padStart(2, '0');
       setText(this.railNode, rn);
     } else {
@@ -161,13 +360,29 @@ export class UI {
       setText(this.nsX, '—');
       setText(this.nsY, '—');
       setText(this.nsR, '—');
-      setText(this.nsHexV, '—');
-      this.nsSwatch.style.background = 'transparent';
       setText(this.railNode, '——');
     }
     this.nodeHint.hidden = active >= 0;
 
-    for (let i = 0; i < 9; i++) {
+    // Mirror selection onto the palette strip and the test hooks.
+    const sel = this.actions.target;
+    if (sel !== this.chipSel) {
+      this.chipSel = sel;
+      this.chips.forEach((b, i) => {
+        b.classList.toggle('is-selected', i === sel);
+        b.setAttribute('aria-pressed', String(i === sel));
+      });
+    }
+    const count = String(s.nodes.length);
+    const selected = sel >= 0 ? String(sel) : '';
+    if (root.dataset.nodeCount !== count || root.dataset.selected !== selected) {
+      root.dataset.nodeCount = document.body.dataset.nodeCount = count;
+      root.dataset.selected = document.body.dataset.selected = selected;
+    }
+    this.removeBtn.disabled = sel < 0 || s.nodes.length <= MIN_NODES;
+    this.undoBtn.disabled = !this.history.canUndo;
+
+    for (let i = 0; i < s.nodes.length && i < this.bars.length; i++) {
       const len = `${Math.round(10 + s.nodes[i].dr * 36)}px`;
       const bar = this.bars[i];
       if (bar.style.getPropertyValue('--len') !== len) bar.style.setProperty('--len', len);
@@ -198,9 +413,9 @@ export class UI {
     try {
       renderer = new GradientRenderer(canvas, { preserveDrawingBuffer: true });
       renderer.resize(ew, eh, 1);
-      const positions = new Float32Array(18);
-      const radii = new Float32Array(9);
-      const lab = new Float32Array(27);
+      const positions = new Float32Array(MAX_NODES * 2);
+      const radii = new Float32Array(MAX_NODES);
+      const lab = new Float32Array(MAX_NODES * 3);
       const min = Math.min(ew, eh);
       s.nodes.forEach((n, i) => {
         positions[i * 2] = n.x * ew;
@@ -209,7 +424,7 @@ export class UI {
         lab.set(n.labTo, i * 3);
       });
       // Same clock as the live field, so the export carries the warp you are looking at.
-      renderer.render({ positions, radii, lab, time: s.reducedMotion ? 0.5 : this.now() / 1000, grain: 0.05 });
+      renderer.render({ positions, radii, lab, count: s.nodes.length, time: s.reducedMotion ? 0.5 : this.now() / 1000, grain: 0.05 });
       const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'));
       if (!blob) throw new Error('toBlob failed');
 
