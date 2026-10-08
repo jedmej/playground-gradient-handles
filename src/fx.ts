@@ -1,4 +1,4 @@
-import { parseWallpaper, type WallpaperId } from './wallpaper';
+import { parseCustomSize, parseWallpaper, type CustomSize, type WallpaperId } from './wallpaper';
 
 export type GrainSize = 'fine' | 'coarse';
 export type DitherMode = 'bayer' | 'blue';
@@ -72,7 +72,8 @@ export const fxFromPos = (id: FxId, p: number): number => (id === 'dither' ? (p 
 // ----- on-values -------------------------------------------------------------
 
 /** What an effect jumps to when toggled on from 0 (until the user has had a value of their own). */
-const ON_VALUES: Record<FxId, number> = { grain: 35, dither: 8, chroma: 40, scan: 45, vig: 40 };
+/** Half way round the knob: 50 for the 0–100 effects, dither knob position 8 of 15 = 9 levels. */
+const ON_VALUES: Record<FxId, number> = { grain: 50, dither: 9, chroma: 50, scan: 50, vig: 50 };
 const lastOn: Partial<Record<FxId, number>> = {};
 
 export function rememberFx(fx: FxState): void {
@@ -100,21 +101,21 @@ export function fxStatus(id: FxId, fx: FxState): string {
 
 export const FX_KEY = 'gh.fx.v1';
 
-export function loadFxStorage(): { fx: FxState; wp: WallpaperId } | null {
+export function loadFxStorage(): { fx: FxState; wp: WallpaperId; cs: CustomSize } | null {
   try {
     const raw = localStorage.getItem(FX_KEY);
     if (!raw) return null;
-    const d = JSON.parse(raw) as { v?: unknown; fx?: unknown; wp?: unknown } | null;
+    const d = JSON.parse(raw) as { v?: unknown; fx?: unknown; wp?: unknown; cs?: unknown } | null;
     if (!d || typeof d !== 'object' || d.v !== 1) return null;
-    return { fx: parseFx(d.fx), wp: parseWallpaper(d.wp) };
+    return { fx: parseFx(d.fx), wp: parseWallpaper(d.wp), cs: parseCustomSize(d.cs) };
   } catch {
     return null;
   }
 }
 
-export function saveFxStorage(fx: FxState, wp: WallpaperId): boolean {
+export function saveFxStorage(fx: FxState, wp: WallpaperId, cs: CustomSize): boolean {
   try {
-    localStorage.setItem(FX_KEY, JSON.stringify({ v: 1, fx, wp }));
+    localStorage.setItem(FX_KEY, JSON.stringify({ v: 1, fx, wp, cs }));
     return true;
   } catch {
     return false;
@@ -122,15 +123,21 @@ export function saveFxStorage(fx: FxState, wp: WallpaperId): boolean {
 }
 
 /** Debounced (~150 ms) auto-persist. Call the returned function every frame; it saves when fx or the target changed. */
-export function createFxPersist(initFx: FxState, initWp: WallpaperId): (fx: FxState, wp: WallpaperId) => void {
+export function createFxPersist(
+  initFx: FxState,
+  initWp: WallpaperId,
+  initCs: CustomSize,
+): (fx: FxState, wp: WallpaperId, cs: CustomSize) => void {
   let savedFx = copyFx(initFx);
   let savedWp = initWp;
+  let savedCs = { ...initCs };
   let timer = 0;
-  return (fx, wp) => {
-    if (sameFx(fx, savedFx) && wp === savedWp) return;
+  return (fx, wp, cs) => {
+    if (sameFx(fx, savedFx) && wp === savedWp && cs.w === savedCs.w && cs.h === savedCs.h) return;
     savedFx = copyFx(fx);
     savedWp = wp;
+    savedCs = { ...cs };
     window.clearTimeout(timer);
-    timer = window.setTimeout(() => saveFxStorage(savedFx, savedWp), 150);
+    timer = window.setTimeout(() => saveFxStorage(savedFx, savedWp, savedCs), 150);
   };
 }

@@ -30,6 +30,7 @@ function same(a: Snapshot, b: Snapshot): boolean {
       (n.shape ?? 'circle') === (m.shape ?? 'circle') &&
       Math.abs((n.rot ?? 0) - (m.rot ?? 0)) < EPS &&
       Math.abs((n.soft ?? defaultSoft(n.shape)) - (m.soft ?? defaultSoft(m.shape))) < EPS &&
+      Math.abs((n.opac ?? 1) - (m.opac ?? 1)) < EPS &&
       samePts(n.pts, m.pts)
     );
   });

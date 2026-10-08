@@ -17,6 +17,7 @@ uniform vec3  u_lab[16];
 uniform float u_shape[16];   // 0 circle · 1 ellipse · 2 box · 3 capsule · 4 stroke
 uniform float u_rot[16];
 uniform float u_npts[16];
+uniform float u_opac[16];    // node opacity 0–1: scales its pull on the field
 uniform float u_soft[16];    // 0 crisp plateau · 0.5 gaussian · 1 wide haze
 uniform sampler2D u_pts;     // 64 x 16 RGBA8: row i = stroke points of node i (16-bit x in RG, y in BA)
 uniform vec2  u_css;         // canvas size in CSS px (the unit the points are packed against)
@@ -135,15 +136,15 @@ void main() {
     }
     qs[i] = qd;
     float q2 = qd * qd;
-    float w = coreW(qd, u_soft[i]) + softTail(u_soft[i]) / (1.0 + q2 * q2);
+    float w = (coreW(qd, u_soft[i]) + softTail(u_soft[i]) / (1.0 + q2 * q2)) * u_opac[i];
     acc += u_lab[i] * w;
     wsum += w;
   }
   // Layers: the soft weighted average is the base; each core is then mixed over it, back (0) to front.
-  vec3 col = acc / wsum;
+  vec3 col = acc / max(wsum, 1e-5);
   for (int i = 0; i < 16; i++) {
     if (i >= u_count) break;
-    col = mix(col, u_lab[i], 0.85 * coreW(qs[i], u_soft[i]));
+    col = mix(col, u_lab[i], 0.85 * coreW(qs[i], u_soft[i]) * u_opac[i]);
   }
   vec3 rgb = linearToSrgb(oklabToLinear(col));
 
@@ -172,6 +173,8 @@ export interface FieldParams {
   npts: Float32Array;
   /** Softness 0–1, 16 entries. */
   soft: Float32Array;
+  /** Opacity 0–1, 16 entries. */
+  opac: Float32Array;
   /** Stroke point texture bytes, 64 × 16 RGBA8. Re-uploaded only when they change. */
   points: Uint8Array;
   /** Live node count (2–16); entries past it are ignored. */
@@ -228,7 +231,7 @@ export class GradientRenderer {
 
     for (const name of [
       'u_res', 'u_scale', 'u_count', 'u_pos', 'u_rad', 'u_lab', 'u_time', 'u_grain', 'u_min', 'u_warp',
-      'u_shape', 'u_rot', 'u_npts', 'u_soft', 'u_pts', 'u_css',
+      'u_shape', 'u_rot', 'u_npts', 'u_soft', 'u_opac', 'u_pts', 'u_css',
     ]) {
       this.u[name] = gl.getUniformLocation(this.program, name);
     }
@@ -281,6 +284,7 @@ export class GradientRenderer {
     gl.uniform1fv(this.u.u_rot, p.rot);
     gl.uniform1fv(this.u.u_npts, p.npts);
     gl.uniform1fv(this.u.u_soft, p.soft);
+    gl.uniform1fv(this.u.u_opac, p.opac);
     gl.uniform2f(this.u.u_css, this.cssW, this.cssH);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);

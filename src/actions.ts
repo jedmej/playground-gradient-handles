@@ -32,6 +32,7 @@ const pad = (n: number): string => String(n).padStart(2, '0');
 export class Actions {
   private lastNudge = -Infinity;
   private lastRot = -Infinity;
+  private lastOpac = -Infinity;
   private lastRadius = -Infinity;
   private lastSoft = -Infinity;
   private lastFx = -Infinity;
@@ -157,6 +158,29 @@ export class Actions {
     emit(s);
   }
 
+  /** Opacity from wheel / buttons: `delta` is added and clamped to 0–1. Bursts coalesce into one `OPAC` step. */
+  opacBy(i: number, delta: number): void {
+    const s = this.store;
+    const n = s.nodes[i];
+    if (!n) return;
+    const t = this.now();
+    if (t - this.lastOpac > 700) this.history.mark(`OPAC ${nodeSerial(i)}`);
+    this.lastOpac = t;
+    n.opac = Math.min(1, Math.max(0, Math.round((n.opac + delta) * 1e4) / 1e4));
+    s.modified = true;
+    emit(s);
+  }
+
+  private lastColorBurst = -Infinity;
+
+  /** Wheel burst on a COLOUR-page gauge: one undo step (`HUE N-02`, `SAT …`, `LUM …`) per burst. Call before mutating. */
+  colorBurst(i: number, axis: string): void {
+    const t = this.now();
+    if (t - this.lastColorBurst > 700) this.history.mark(`${axis.toUpperCase()} ${nodeSerial(i)}`);
+    this.lastColorBurst = t;
+    this.store.modified = true;
+  }
+
   // ----- FX -----------------------------------------------------------------------------
 
   private fxChanged(id: FxId | null): void {
@@ -190,7 +214,7 @@ export class Actions {
     this.fxGoto(id, fxPos(id, this.store.fx[id]) + steps);
   }
 
-  /** Double-click / double-tap: OFF ↔ last non-zero value (or the on-value). */
+  /** Double-click / double-tap / the FX checkbox: OFF ↔ last non-zero value (or the on-value). */
   fxToggle(id: FxId): void {
     const s = this.store;
     this.history.mark(`FX ${id.toUpperCase()}`);
@@ -354,11 +378,11 @@ export class Actions {
   bindKeys(): void {
     window.addEventListener('keydown', (e) => {
       const t = e.target as HTMLElement | null;
-      const typing = !!t?.closest?.('input:not([type=color]), textarea, select, [contenteditable=""], [contenteditable="true"]');
+      const typing = !!t?.closest?.('input:not([type=color]):not([type=checkbox]), textarea, select, [contenteditable=""], [contenteditable="true"]');
       if (typing) return;
       const mod = e.metaKey || e.ctrlKey;
       // An FX knob owns its keys (arrows, PageUp/Down, Home/End); the node shortcuts must not fire from it either.
-      if (!mod && t?.closest?.('[data-fx-knob]')) return;
+      if (!mod && t?.closest?.('[data-fx-knob], [data-fx-ring]')) return;
       if (mod && !e.altKey && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) this.redo();

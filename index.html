@@ -46,9 +46,15 @@
             <div class="chip chip-node" id="chip-node" aria-hidden="true"></div>
             <div class="chip chip-radius" id="chip-radius" aria-hidden="true"></div>
           </div>
+          <button class="mini foot-fx foot-preview" type="button" data-action="preview" aria-pressed="false" title="Preview: hide every control and see the bare wallpaper (P, Esc exits)">
+            <span class="mini-l">PREVIEW</span> <b>[P]</b>
+          </button>
           <div class="stage-foot">
             <span class="foot-l" id="foot-serial">CUR // X —.——— Y —.———</span>
             <span class="foot-rr">
+              <button class="mini foot-fx" type="button" data-action="fx-dial" title="FX dial: hold ⌥ and scroll on empty field, or press F">
+                <span class="mini-l">FX DIAL</span> <b>[F]</b>
+              </button>
               <button class="mini mini-draw foot-draw" type="button" data-action="draw-mode" aria-pressed="false" title="Draw a stroke of colour">
                 <span class="mini-l">DRAW</span> <b>[D]</b>
               </button>
@@ -106,6 +112,15 @@
                 <span class="soft-bar" id="soft-bar" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
                 <button type="button" class="mini mini-soft" data-action="soft-minus" aria-label="Crisper, softness −10%" title="Crisper −10% (⇧ scroll)" disabled>[−]</button>
                 <button type="button" class="mini mini-soft" data-action="soft-plus" aria-label="Softer, softness +10%" title="Softer +10% (⇧ scroll)" disabled>[+]</button>
+              </dd>
+            </div>
+            <div class="full soft-row opac-row">
+              <dt class="soft-dt">OPAC</dt>
+              <dd class="soft-dd">
+                <span id="ns-opac">—</span>
+                <span class="soft-bar" id="opac-bar" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                <button type="button" class="mini mini-soft" data-action="opac-minus" aria-label="More transparent, opacity −10%" title="Fade −10%" disabled>[−]</button>
+                <button type="button" class="mini mini-soft" data-action="opac-plus" aria-label="More opaque, opacity +10%" title="Solid +10%" disabled>[+]</button>
               </dd>
             </div>
             <div class="full shape-row">
@@ -181,6 +196,7 @@
           </div>
           <dl class="fx-spec" id="fx-spec">
             <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="grain" aria-label="Grain on"></dd>
               <dt>GRAIN</dt>
               <dd class="fx-ctl">
                 <span class="fx-knob" data-fx-knob="grain" role="slider" tabindex="0" aria-label="Grain" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
@@ -194,6 +210,7 @@
               </dd>
             </div>
             <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="dither" aria-label="Dither on"></dd>
               <dt>DITHER</dt>
               <dd class="fx-ctl">
                 <span class="fx-knob" data-fx-knob="dither" role="slider" tabindex="0" aria-label="Dither levels" aria-valuemin="0" aria-valuemax="16" aria-valuenow="0" aria-valuetext="off"></span>
@@ -207,19 +224,24 @@
               </dd>
             </div>
             <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="chroma" aria-label="Chroma on"></dd>
               <dt>CHROMA</dt>
               <dd class="fx-ctl">
                 <span class="fx-knob" data-fx-knob="chroma" role="slider" tabindex="0" aria-label="Chromatic aberration" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
                 <span class="fx-read dim" data-fx-read="chroma">OFF</span>
               </dd>
             </div>
-            <div class="fx-row last">
+            <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="scan" aria-label="Scan on"></dd>
               <dt>SCAN</dt>
               <dd class="fx-ctl">
                 <span class="fx-knob" data-fx-knob="scan" role="slider" tabindex="0" aria-label="Scanlines" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
                 <span class="fx-read dim" data-fx-read="scan">OFF</span>
               </dd>
-              <dt class="fx-dt2">VIG</dt>
+            </div>
+            <div class="fx-row last">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="vig" aria-label="Vignette on"></dd>
+              <dt>VIG</dt>
               <dd class="fx-ctl">
                 <span class="fx-knob" data-fx-knob="vig" role="slider" tabindex="0" aria-label="Vignette" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
                 <span class="fx-read dim" data-fx-read="vig">OFF</span>
@@ -238,6 +260,14 @@
             <button type="button" class="wp-btn" role="radio" aria-checked="true" data-wp="4k" title="4K 3840×2160"><i class="wp-glyph" aria-hidden="true"></i><span>4K</span></button>
             <button type="button" class="wp-btn" role="radio" aria-checked="false" data-wp="ultra" title="Ultrawide 5120×2160"><i class="wp-glyph" aria-hidden="true"></i><span>ULTRA</span></button>
             <button type="button" class="wp-btn" role="radio" aria-checked="false" data-wp="square" title="Square 2048×2048"><i class="wp-glyph" aria-hidden="true"></i><span>SQUARE</span></button>
+            <button type="button" class="wp-btn" role="radio" aria-checked="false" data-wp="custom" title="Custom size"><i class="wp-glyph wp-glyph-custom" aria-hidden="true"></i><span>CUSTOM</span></button>
+          </div>
+          <div class="wp-custom" id="wp-custom" hidden>
+            <label class="wp-dim"><span class="dim">W</span><input id="wp-w" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" spellcheck="false" maxlength="5" aria-label="Custom width in pixels" /></label>
+            <span class="wp-x" aria-hidden="true">×</span>
+            <label class="wp-dim"><span class="dim">H</span><input id="wp-h" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" spellcheck="false" maxlength="5" aria-label="Custom height in pixels" /></label>
+            <button type="button" class="wp-swap" id="wp-swap" title="Swap width and height" aria-label="Swap width and height">⇄</button>
+            <span class="wp-range dim" id="wp-range">16–16384 PX</span>
           </div>
           <button class="btn btn-ghost wp-export" id="export-wallpaper" data-action="export-wallpaper" type="button">
             <span class="btn-label">Export wallpaper</span><b>[↓]</b>

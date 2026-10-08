@@ -45,6 +45,8 @@ export interface FieldSample {
   lab: Lab;
   /** Softness 0–1. */
   soft: number;
+  /** Opacity 0–1 (default 1). */
+  opac?: number;
 }
 
 const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
@@ -79,16 +81,16 @@ export function sampleField(nodes: FieldSample[]): Lab {
     const q2 = n.q * n.q;
     const core = coreWeight(n.q, n.soft);
     cores.push(core);
-    const w = core + softTail(n.soft) / (1 + q2 * q2);
+    const w = (core + softTail(n.soft) / (1 + q2 * q2)) * (n.opac ?? 1);
     acc[0] += n.lab[0] * w;
     acc[1] += n.lab[1] * w;
     acc[2] += n.lab[2] * w;
     wsum += w;
   }
-  if (!(wsum > 0)) return [0, 0, 0];
+  if (!(wsum > 1e-5)) return [0, 0, 0];
   const col: Lab = [acc[0] / wsum, acc[1] / wsum, acc[2] / wsum];
   nodes.forEach((n, i) => {
-    const a = LAYER_K * cores[i];
+    const a = LAYER_K * cores[i] * (n.opac ?? 1);
     col[0] = mix(col[0], n.lab[0], a);
     col[1] = mix(col[1], n.lab[1], a);
     col[2] = mix(col[2], n.lab[2], a);
@@ -112,4 +114,51 @@ export function labToHex(lab: Lab): string {
       .toString(16)
       .padStart(2, '0');
   return `#${to(r)}${to(g)}${to(bb)}`.toUpperCase();
+}
+
+// ----- OKLCH helpers for the COLOUR page on a node's bezel ---------------------------------------------------------
+
+/** Unclamped linear sRGB of an OKLab colour (components outside 0…1 mean out of gamut). */
+function labToLinear(L: number, a: number, b: number): [number, number, number] {
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.291485548 * b;
+  const l = l_ ** 3;
+  const m = m_ ** 3;
+  const s = s_ ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ];
+}
+
+/** Largest OKLCH chroma that still fits sRGB at lightness `L` (0…1) and hue `h` (degrees). 0 at pure black / white. */
+export function maxChroma(L: number, h: number): number {
+  if (L <= 0.0005 || L >= 0.9995) return 0;
+  const hr = (h * Math.PI) / 180;
+  const ca = Math.cos(hr);
+  const sa = Math.sin(hr);
+  let lo = 0;
+  let hi = 0.4;
+  for (let k = 0; k < 14; k++) {
+    const c = (lo + hi) / 2;
+    const [r, g, b] = labToLinear(L, c * ca, c * sa);
+    if (r >= -1e-4 && r <= 1.0001 && g >= -1e-4 && g <= 1.0001 && b >= -1e-4 && b <= 1.0001) lo = c;
+    else hi = c;
+  }
+  return lo;
+}
+
+/** OKLCH (L 0…1, chroma, hue in degrees) → `#RRGGBB`. */
+export function oklchToHex(L: number, C: number, h: number): string {
+  const hr = (h * Math.PI) / 180;
+  return labToHex([L, C * Math.cos(hr), C * Math.sin(hr)]);
+}
+
+/** `#RRGGBB` → [L, C, h°] (h in 0…360, meaningless when C is ~0). */
+export function hexToOklch(hex: string): [number, number, number] {
+  const [L, a, b] = hexToLab(hex);
+  const h = (Math.atan2(b, a) * 180) / Math.PI;
+  return [L, Math.hypot(a, b), (h + 360) % 360];
 }

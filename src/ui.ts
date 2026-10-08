@@ -19,6 +19,7 @@ export class UI {
   private bars: HTMLElement[] = [];
   private chips: HTMLButtonElement[] = [];
   private chipSel = -2;
+  private chipHov = -1;
   private statusTimer = 0;
   private exportCount = 0;
   /** Colour-editing session: one undo step from first change until blur / commit / retarget. */
@@ -55,7 +56,11 @@ export class UI {
   private nsSoft = $('ns-soft');
   private nsLayer = $('ns-layer');
   private softSegs = [...document.querySelectorAll<HTMLElement>('#soft-bar i')];
-  private softBtns = [...document.querySelectorAll<HTMLButtonElement>('.mini-soft')];
+  private softBtns = [...document.querySelectorAll<HTMLButtonElement>('.mini-soft[data-action^=soft]')];
+  private opacBtns = [...document.querySelectorAll<HTMLButtonElement>('.mini-soft[data-action^=opac]')];
+  private nsOpac = $('ns-opac');
+  private opacSegs = [...document.querySelectorAll<HTMLElement>('#opac-bar i')];
+  private opacFill = -1;
   private softFill = -1;
   private shapeTag = $('shape-tag');
   private shapeGroup = $('shape-group');
@@ -105,6 +110,12 @@ export class UI {
       b.addEventListener('click', () => {
         const i = actions.target;
         if (i >= 0) actions.softBy(i, b.dataset.action === 'soft-minus' ? -0.1 : 0.1);
+      });
+    }
+    for (const b of this.opacBtns) {
+      b.addEventListener('click', () => {
+        const i = actions.target;
+        if (i >= 0) actions.opacBy(i, b.dataset.action === 'opac-minus' ? -0.1 : 0.1);
       });
     }
     store.listeners.add(() => this.sync());
@@ -235,6 +246,7 @@ export class UI {
       if (b.getAttribute('aria-label') !== label) b.setAttribute('aria-label', label);
     });
     this.chipSel = -2;
+    this.chipHov = -2;
   }
 
   // ----- colour field ---------------------------------------------------------
@@ -360,6 +372,10 @@ export class UI {
       const dis = !n || (b.dataset.action === 'soft-minus' ? n.soft <= 0.0001 : n.soft >= 0.9999);
       if (b.disabled !== dis) b.disabled = dis;
     }
+    for (const b of this.opacBtns) {
+      const dis = !n || (b.dataset.action === 'opac-minus' ? n.opac <= 0.0001 : n.opac >= 0.9999);
+      if (b.disabled !== dis) b.disabled = dis;
+    }
     const draw = s.tool === 'draw';
     for (const b of this.drawBtns) {
       b.setAttribute('aria-pressed', String(draw));
@@ -427,9 +443,19 @@ export class UI {
     else if (s.drag.kind === 'node') { state = `MOVE ${nodeSerial(s.drag.index)}`; glyph = '[✕]'; }
     else if (s.drag.kind === 'ring') { state = `RADIUS ${nodeSerial(s.drag.index)}`; glyph = '[○]'; }
     else if (s.drag.kind === 'soft') { state = `SOFT ${nodeSerial(s.drag.index)}`; glyph = '[◐]'; }
+    else if (s.drag.kind === 'opac') { state = `OPAC ${nodeSerial(s.drag.index)}`; glyph = '[◑]'; }
+    else if (s.drag.kind === 'hue') { state = `HUE ${nodeSerial(s.drag.index)}`; glyph = '[◍]'; }
+    else if (s.drag.kind === 'sat') { state = `SAT ${nodeSerial(s.drag.index)}`; glyph = '[◍]'; }
+    else if (s.drag.kind === 'lum') { state = `LUM ${nodeSerial(s.drag.index)}`; glyph = '[◍]'; }
+    else if (s.drag.kind === 'rot') { state = `ROT ${nodeSerial(s.drag.index)}`; glyph = '[↻]'; }
     else if (s.hover.kind === 'node') { state = `NODE ${nodeSerial(s.hover.index)}`; glyph = '[+]'; }
     else if (s.hover.kind === 'ring') { state = `RING ${nodeSerial(s.hover.index)}`; glyph = '[○]'; }
     else if (s.hover.kind === 'soft') { state = `SOFT ${nodeSerial(s.hover.index)}`; glyph = '[◐]'; }
+    else if (s.hover.kind === 'opac') { state = `OPAC ${nodeSerial(s.hover.index)}`; glyph = '[◑]'; }
+    else if (s.hover.kind === 'rot') { state = `ROT ${nodeSerial(s.hover.index)}`; glyph = '[↻]'; }
+    else if (s.hover.kind === 'hue') { state = `HUE ${nodeSerial(s.hover.index)}`; glyph = '[◍]'; }
+    else if (s.hover.kind === 'sat') { state = `SAT ${nodeSerial(s.hover.index)}`; glyph = '[◍]'; }
+    else if (s.hover.kind === 'lum') { state = `LUM ${nodeSerial(s.hover.index)}`; glyph = '[◍]'; }
     else if (s.hover.kind === 'body') { state = `BODY ${nodeSerial(s.hover.index)}`; glyph = '[◇]'; }
     else if (s.selected !== null) { state = `SEL ${nodeSerial(s.selected)}`; glyph = '[▪]'; }
     setText(this.stateV, state);
@@ -470,6 +496,12 @@ export class UI {
       setText(this.nsRot, `${String(Math.round(((n.rot * 180) / Math.PI) % 360)).padStart(3, '0')}°`);
       const pct = Math.round(n.soft * 100);
       setText(this.nsSoft, `${pct}%`);
+      setText(this.nsOpac, `${Math.round(n.opac * 100)}%`);
+      const ofill = Math.round(n.opac * 10);
+      if (ofill !== this.opacFill) {
+        this.opacFill = ofill;
+        this.opacSegs.forEach((seg, k) => seg.classList.toggle('is-on', k < ofill));
+      }
       setText(this.nsLayer, `LYR ${pad2(active + 1)}/${pad2(s.nodes.length)}`);
       const fill = Math.round(n.soft * 10);
       if (fill !== this.softFill) {
@@ -485,6 +517,11 @@ export class UI {
       setText(this.nsR, '—');
       setText(this.nsRot, '—');
       setText(this.nsSoft, '—');
+      setText(this.nsOpac, '—');
+      if (this.opacFill !== 0) {
+        this.opacFill = 0;
+        for (const seg of this.opacSegs) seg.classList.remove('is-on');
+      }
       setText(this.nsLayer, '—');
       if (this.softFill !== 0) {
         this.softFill = 0;
@@ -502,6 +539,12 @@ export class UI {
         b.classList.toggle('is-selected', i === sel);
         b.setAttribute('aria-pressed', String(i === sel));
       });
+    }
+    // Reverse hint: the chip of the node under the board pointer gets a keyline.
+    const hov = s.hover.kind !== 'idle' ? s.hover.index : -1;
+    if (hov !== this.chipHov) {
+      this.chipHov = hov;
+      this.chips.forEach((b, i) => b.classList.toggle('is-board-hover', i === hov));
     }
     const count = String(s.nodes.length);
     const selected = sel >= 0 ? String(sel) : '';

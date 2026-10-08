@@ -8,6 +8,8 @@ export interface ShapeExtra {
   pts?: [number, number][];
   /** Softness, only when it differs from the shape's default. */
   soft?: number;
+  /** Opacity, only when below 100 %. */
+  opac?: number;
 }
 
 export interface Preset {

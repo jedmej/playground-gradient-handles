@@ -1,12 +1,12 @@
 import { hexToLab, type Lab } from './color';
 import { copyFx, FX_DEFAULT, type FxState } from './fx';
 import { PRESETS, type Preset } from './presets';
-import { DEFAULT_WALLPAPER, type WallpaperId } from './wallpaper';
+import { DEFAULT_CUSTOM, DEFAULT_WALLPAPER, type CustomSize, type WallpaperId } from './wallpaper';
 
 export type Shape = 'circle' | 'ellipse' | 'box' | 'capsule' | 'stroke';
 export type Tool = 'edit' | 'draw';
-export type HoverKind = 'idle' | 'node' | 'ring' | 'body' | 'soft';
-export type DragKind = 'none' | 'node' | 'ring' | 'soft';
+export type HoverKind = 'idle' | 'node' | 'ring' | 'body' | 'soft' | 'rot' | 'opac' | 'hue' | 'sat' | 'lum';
+export type DragKind = 'none' | 'node' | 'ring' | 'soft' | 'rot' | 'opac' | 'hue' | 'sat' | 'lum';
 
 export const MAX_NODES = 16;
 export const MIN_NODES = 2;
@@ -36,6 +36,9 @@ export interface NodeState {
   /** Softness 0–1 (target) and its smoothed display value. */
   soft: number;
   dsoft: number;
+  /** Opacity 0–1 (default 1): scales the node's pull on the field, so it fades toward its neighbours. */
+  opac: number;
+  dopac: number;
   /** Colour tween in OKLab. Three distinct arrays; `lab` is what the shader sees. */
   lab: Lab;
   labFrom: Lab;
@@ -66,6 +69,7 @@ export interface NodeSpec {
   rot?: number;
   pts?: [number, number][];
   soft?: number;
+  opac?: number;
 }
 
 export interface Dim {
@@ -111,6 +115,8 @@ export interface Store {
   fx: FxState;
   /** Selected wallpaper export target (persisted, not composition: no undo). */
   wallpaper: WallpaperId;
+  /** Last custom wallpaper size in px (persisted with the target, not undoable). */
+  wpCustom: CustomSize;
   listeners: Set<() => void>;
   /** Status line hook; the UI installs it. */
   say: (text: string) => void;
@@ -123,6 +129,8 @@ let uidSeq = 0;
 export const copyPts = (pts: [number, number][] | undefined): [number, number][] =>
   pts ? pts.map((p) => [p[0], p[1]]) : [];
 
+const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
+
 export function makeNode(spec: NodeSpec, fresh = false): NodeState {
   const { x, y, r, hex } = spec;
   const soft = Math.min(1, Math.max(0, spec.soft ?? defaultSoft(spec.shape)));
@@ -133,6 +141,8 @@ export function makeNode(spec: NodeSpec, fresh = false): NodeState {
     dx: x, dy: y, dr: r,
     soft,
     dsoft: soft,
+    opac: clamp01(spec.opac ?? 1),
+    dopac: clamp01(spec.opac ?? 1),
     lab: hexToLab(hex),
     labFrom: hexToLab(hex),
     labTo: hexToLab(hex),
@@ -170,6 +180,7 @@ export function createStore(): Store {
     reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
     fx: copyFx(FX_DEFAULT),
     wallpaper: DEFAULT_WALLPAPER,
+    wpCustom: { ...DEFAULT_CUSTOM },
     listeners: new Set(),
     say: () => {},
     cancelDraw: () => {},
@@ -190,6 +201,7 @@ export function presetSpecs(p: Preset): NodeSpec[] {
       if (ex.pts) spec.pts = copyPts(ex.pts);
     }
     if (ex?.soft !== undefined) spec.soft = ex.soft;
+    if (ex?.opac !== undefined) spec.opac = ex.opac;
     return spec;
   });
 }
@@ -203,13 +215,13 @@ export function currentPreset(store: Store): Preset {
 }
 
 export function snapshotSpecs(store: Store): NodeSpec[] {
-  return store.nodes.map((n) => ({ x: n.x, y: n.y, r: n.r, hex: n.hex, shape: n.shape, rot: n.rot, pts: copyPts(n.pts), soft: n.soft }));
+  return store.nodes.map((n) => ({ x: n.x, y: n.y, r: n.r, hex: n.hex, shape: n.shape, rot: n.rot, pts: copyPts(n.pts), soft: n.soft, opac: n.opac }));
 }
 
 /** Like `snapshotSpecs`, but carrying per-node identity (for undo/redo). */
 export function snapshotIdentified(store: Store): NodeSpec[] {
   return store.nodes.map((n) => ({
-    uid: n.uid, x: n.x, y: n.y, r: n.r, hex: n.hex, shape: n.shape, rot: n.rot, pts: copyPts(n.pts), soft: n.soft,
+    uid: n.uid, x: n.x, y: n.y, r: n.r, hex: n.hex, shape: n.shape, rot: n.rot, pts: copyPts(n.pts), soft: n.soft, opac: n.opac,
   }));
 }
 
@@ -229,6 +241,7 @@ function applyShape(n: NodeState, s: NodeSpec): void {
   n.rot = s.rot ?? 0;
   n.pts = n.shape === 'stroke' ? copyPts(s.pts) : [];
   n.soft = Math.min(1, Math.max(0, s.soft ?? defaultSoft(n.shape)));
+  n.opac = clamp01(s.opac ?? 1);
 }
 
 /** Drop every index that no longer points at a node. */

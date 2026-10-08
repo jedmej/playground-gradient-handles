@@ -1,3 +1,4 @@
+import { wheelUp } from './wheel';
 const NS = 'http://www.w3.org/2000/svg';
 const TICKS = 21;
 /** 270° sweep, gap centred at 6 o'clock: 0 sits lower-left, max lower-right, clockwise through the top. */
@@ -153,11 +154,10 @@ export class Knob {
   private onWheel = (e: WheelEvent): void => {
     e.preventDefault();
     if (this.drag) return;
-    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
-    const dy = (e.deltaY || e.deltaX) * unit;
+    const dy = wheelUp(e, true);
     if (dy === 0) return;
     // ~1 step per 12 px, wheel up = more; carry the remainder so slow trackpads still move.
-    this.wheelAcc += -dy / 12;
+    this.wheelAcc += dy / 12;
     const steps = Math.trunc(this.wheelAcc);
     if (steps === 0) return;
     this.wheelAcc -= steps;

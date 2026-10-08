@@ -55,7 +55,7 @@ export function nodeQ(n: NodeState, px: number, py: number, dim: Dim, target = f
 export function fieldHexAt(store: Store, nx: number, ny: number, dim: Dim): string {
   const px = nx * dim.w;
   const py = ny * dim.h;
-  return labToHex(sampleField(store.nodes.map((n) => ({ q: nodeQ(n, px, py, dim), lab: n.lab, soft: n.dsoft }))));
+  return labToHex(sampleField(store.nodes.map((n) => ({ q: nodeQ(n, px, py, dim), lab: n.lab, soft: n.dsoft, opac: n.dopac }))));
 }
 
 /** Rotate local offset (x, y) by `rot` (y-down screen space, positive = clockwise). */
@@ -114,6 +114,7 @@ export class FieldBuffers {
   readonly rot = new Float32Array(MAX_NODES);
   readonly npts = new Float32Array(MAX_NODES);
   readonly soft = new Float32Array(MAX_NODES);
+  readonly opac = new Float32Array(MAX_NODES).fill(1);
   /** 64 × 16 RGBA8, row i = node i. */
   readonly points = new Uint8Array(MAX_PTS * MAX_NODES * 4);
   count = 0;
@@ -141,6 +142,7 @@ export function packField(store: Store, dim: Dim, buf: FieldBuffers, target = fa
     buf.shape[i] = SHAPE_ID[n.shape];
     buf.rot[i] = target ? n.rot : n.drot;
     buf.soft[i] = target ? n.soft : n.dsoft;
+    buf.opac[i] = target ? n.opac : n.dopac;
     const np = n.shape === 'stroke' ? Math.min(MAX_PTS, n.pts.length) : 0;
     buf.npts[i] = np;
     for (let k = 0; k < np; k++) {
