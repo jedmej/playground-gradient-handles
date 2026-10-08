@@ -1,0 +1,227 @@
+import type { Actions } from './actions';
+import { MIN_NODES, nodeSerial, type LayerMove, type Store } from './store';
+
+interface Item {
+  action: string;
+  label: string;
+  key: string;
+}
+
+const ITEMS: (Item | null)[] = [
+  { action: 'layer-front', label: 'BRING TO FRONT', key: '⇧]' },
+  { action: 'layer-up', label: 'MOVE UP', key: ']' },
+  { action: 'layer-down', label: 'MOVE DOWN', key: '[' },
+  { action: 'layer-back', label: 'SEND TO BACK', key: '⇧[' },
+  null,
+  { action: 'menu-delete', label: 'DELETE', key: 'DEL' },
+];
+
+const MOVES: Record<string, LayerMove> = {
+  'layer-front': 'front',
+  'layer-up': 'up',
+  'layer-down': 'down',
+  'layer-back': 'back',
+};
+
+const pad2 = (n: number): string => String(n).padStart(2, '0');
+
+/**
+ * Node context menu: a small VOID plate over the stage with the layer commands and DELETE. It follows
+ * one node by uid, so any reorder / removal underneath it refreshes (or closes) it.
+ */
+export class NodeMenu {
+  readonly el: HTMLDivElement;
+  private head: HTMLElement;
+  private buttons: HTMLButtonElement[] = [];
+  private uid = -1;
+  private openedAt = -Infinity;
+  /** Clicks this soon after opening are the opening gesture itself: long for a touch hold, short for a right-click. */
+  private guardMs = 450;
+  /** True from a hold-open until shortly after that finger lifts. */
+  private holding = false;
+
+  constructor(
+    private store: Store,
+    private stage: HTMLElement,
+    private actions: Actions,
+    /** Put keyboard focus back on a node's reticle (after a keyboard-driven command). */
+    private focusNode: (i: number) => void,
+  ) {
+    const el = document.createElement('div');
+    el.className = 'node-menu';
+    el.setAttribute('role', 'menu');
+    el.setAttribute('aria-label', 'Node layer');
+    el.dataset.testid = 'node-menu';
+    el.hidden = true;
+    this.head = document.createElement('div');
+    this.head.className = 'menu-head';
+    this.head.setAttribute('role', 'presentation');
+    el.appendChild(this.head);
+    for (const it of ITEMS) {
+      if (!it) {
+        const hr = document.createElement('div');
+        hr.className = 'menu-sep';
+        hr.setAttribute('role', 'separator');
+        el.appendChild(hr);
+        continue;
+      }
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'menu-item' + (it.action === 'menu-delete' ? ' is-danger' : '');
+      b.setAttribute('role', 'menuitem');
+      b.dataset.action = it.action;
+      b.innerHTML = `<span class="mi-l">${it.label}</span><kbd>${it.key}</kbd>`;
+      b.addEventListener('click', () => {
+        // The finger / button that opened the menu is still coming up over it: that release is not a choice.
+        if (this.holding || (performance.now() - this.openedAt < this.guardMs && !this.el.classList.contains('is-kb'))) return;
+        this.activate(it.action);
+      });
+      el.appendChild(b);
+      this.buttons.push(b);
+    }
+    this.el = el;
+    stage.appendChild(el);
+
+    // The menu is a child of the stage: keep its gestures away from the stage's pointer handling.
+    for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'dblclick']) {
+      el.addEventListener(t, (e) => e.stopPropagation());
+    }
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    el.addEventListener('wheel', (e) => {
+      e.stopPropagation();
+      this.close();
+    }, { passive: true });
+    el.addEventListener('keydown', (e) => this.onKey(e));
+
+    window.addEventListener('pointerdown', (e) => {
+      if (this.isOpen && !el.contains(e.target as Node)) this.close();
+    }, { capture: true });
+    const release = (): void => {
+      if (this.holding) window.setTimeout(() => (this.holding = false), 350);
+    };
+    window.addEventListener('pointerup', release, { capture: true });
+    window.addEventListener('pointercancel', release, { capture: true });
+    window.addEventListener('blur', () => this.close());
+    window.addEventListener('scroll', () => this.close(), { passive: true });
+    window.addEventListener('resize', () => this.close());
+    store.listeners.add(() => this.refresh());
+  }
+
+  get isOpen(): boolean {
+    return !this.el.hidden;
+  }
+
+  private index(): number {
+    return this.store.nodes.findIndex((n) => n.uid === this.uid);
+  }
+
+  /** Header text and enabled state follow the node's current layer. Closes if the node is gone. */
+  private refresh(): void {
+    if (!this.isOpen) return;
+    const i = this.index();
+    if (i < 0) {
+      this.close();
+      return;
+    }
+    const count = this.store.nodes.length;
+    this.head.textContent = `${nodeSerial(i)} · LYR ${pad2(i + 1)}/${pad2(count)}`;
+    const off: Record<string, boolean> = {
+      'layer-front': i === count - 1,
+      'layer-up': i === count - 1,
+      'layer-down': i === 0,
+      'layer-back': i === 0,
+      'menu-delete': count <= MIN_NODES,
+    };
+    for (const b of this.buttons) {
+      const dis = !!off[b.dataset.action!];
+      if (b.disabled !== dis) b.disabled = dis;
+    }
+  }
+
+  /** Open at stage-local (x, y) for node `i`. Focus lands on the first enabled item. */
+  open(i: number, x: number, y: number, viaKey = false, holding = false): void {
+    const n = this.store.nodes[i];
+    if (!n) return;
+    this.holding = holding;
+    this.guardMs = holding ? 450 : 120;
+    this.uid = n.uid;
+    this.openedAt = performance.now();
+    this.el.classList.toggle('is-kb', viaKey);
+    this.el.hidden = false;
+    this.refresh();
+    const w = this.stage.clientWidth;
+    const h = this.stage.clientHeight;
+    const mw = this.el.offsetWidth;
+    const mh = this.el.offsetHeight;
+    let left = x + 2;
+    let top = y + 2;
+    if (left + mw > w - 4) left = x - mw - 2;
+    if (top + mh > h - 4) top = y - mh - 2;
+    left = Math.max(4, Math.min(left, w - mw - 4));
+    top = Math.max(4, Math.min(top, h - mh - 4));
+    this.el.style.left = `${Math.round(left)}px`;
+    this.el.style.top = `${Math.round(top)}px`;
+    this.enabled()[0]?.focus({ preventScroll: true });
+    this.store.say(`${nodeSerial(this.index())} · MENU`);
+  }
+
+  close(restoreFocus = false): void {
+    if (!this.isOpen) return;
+    const i = this.index();
+    this.el.hidden = true;
+    this.el.classList.remove('is-kb');
+    this.uid = -1;
+    if (this.el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+    if (restoreFocus && i >= 0) this.focusNode(i);
+  }
+
+  private enabled(): HTMLButtonElement[] {
+    return this.buttons.filter((b) => !b.disabled);
+  }
+
+  private activate(action: string): void {
+    const i = this.index();
+    const viaKey = this.el.classList.contains('is-kb');
+    this.close();
+    if (i < 0) return;
+    if (action === 'menu-delete') {
+      this.actions.removeAt(i);
+      return;
+    }
+    const move = MOVES[action];
+    if (!move) return;
+    this.actions.moveLayer(i, move);
+    if (viaKey && this.store.selected !== null) this.focusNode(this.store.selected);
+  }
+
+  private onKey(e: KeyboardEvent): void {
+    const items = this.enabled();
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    const go = (k: number): void => {
+      e.preventDefault();
+      this.el.classList.add('is-kb');
+      items[(k + items.length) % items.length]?.focus({ preventScroll: true });
+    };
+    switch (e.key) {
+      case 'ArrowDown': go(at + 1); break;
+      case 'ArrowUp': go(at < 0 ? items.length - 1 : at - 1); break;
+      case 'Home': go(0); break;
+      case 'End': go(items.length - 1); break;
+      case 'Escape':
+        e.preventDefault();
+        e.stopPropagation();
+        this.close(true);
+        break;
+      case 'Tab':
+        this.close();
+        break;
+      default:
+        // Layer / radius shortcuts keep working with the menu open (they act on the selected node).
+        return;
+    }
+    e.stopPropagation();
+  }
+}

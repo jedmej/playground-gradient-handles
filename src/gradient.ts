@@ -11,6 +11,12 @@ uniform int   u_count;
 uniform vec2  u_pos[16];
 uniform float u_rad[16];
 uniform vec3  u_lab[16];
+uniform float u_shape[16];   // 0 circle · 1 ellipse · 2 box · 3 capsule · 4 stroke
+uniform float u_rot[16];
+uniform float u_npts[16];
+uniform float u_soft[16];    // 0 crisp plateau · 0.5 gaussian · 1 wide haze
+uniform sampler2D u_pts;     // 64 x 16 RGBA8: row i = stroke points of node i (16-bit x in RG, y in BA)
+uniform vec2  u_css;         // canvas size in CSS px (the unit the points are packed against)
 uniform float u_time;
 uniform float u_grain;
 uniform float u_min;
@@ -65,6 +71,16 @@ float fbm(vec2 p) {
   return v;
 }
 
+vec2 fetchPt(float row, float k) {
+  vec4 c = texture2D(u_pts, vec2((k + 0.5) / 64.0, (row + 0.5) / 16.0)) * 255.0;
+  vec2 u = vec2(c.r * 256.0 + c.g, c.b * 256.0 + c.a) / 65535.0;
+  return (u * 2.0 - 0.5) * u_css;
+}
+
+float softP(float s) { return s < 0.5 ? mix(8.0, 2.0, s * 2.0) : mix(2.0, 1.15, (s - 0.5) * 2.0); }
+float softTail(float s) { return s < 0.5 ? mix(0.004, 0.05, s * 2.0) : mix(0.05, 0.14, (s - 0.5) * 2.0); }
+float coreW(float q, float s) { return exp(-1.5 * pow(max(q, 1e-4), softP(s))); }
+
 void main() {
   vec2 p = gl_FragCoord.xy / u_scale;
   p.y = u_res.y / u_scale - p.y;
@@ -79,14 +95,54 @@ void main() {
 
   vec3 acc = vec3(0.0);
   float wsum = 0.0;
+  float qs[16];
   for (int i = 0; i < 16; i++) {
     if (i >= u_count) break;
-    float q2 = distance(pw, u_pos[i]) / u_rad[i];
-    float w = exp(-q2 * q2 * 1.5) + 0.05 / (1.0 + q2 * q2 * q2 * q2);
+    float r = u_rad[i];
+    float sh = u_shape[i];
+    vec2 d0 = pw - u_pos[i];
+    float qd;
+    if (sh < 0.5) {
+      qd = length(d0) / r;
+    } else if (sh > 3.5) {
+      vec2 prev = fetchPt(float(i), 0.0);
+      float dm = length(pw - prev);
+      for (int k = 1; k < 64; k++) {
+        if (float(k) >= u_npts[i]) break;
+        vec2 cur = fetchPt(float(i), float(k));
+        vec2 ab = cur - prev;
+        vec2 ap = pw - prev;
+        float t = clamp(dot(ap, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+        dm = min(dm, length(ap - ab * t));
+        prev = cur;
+      }
+      qd = dm / r;
+    } else {
+      float cs = cos(u_rot[i]);
+      float sn = sin(u_rot[i]);
+      vec2 l = vec2(cs * d0.x + sn * d0.y, -sn * d0.x + cs * d0.y);
+      if (sh < 1.5) {
+        qd = length(vec2(l.x, l.y / 0.45)) / r;
+      } else if (sh < 2.5) {
+        vec2 a = pow(max(abs(l), vec2(1e-4)), vec2(6.0));
+        qd = pow(a.x + a.y, 1.0 / 6.0) / r;
+      } else {
+        qd = length(vec2(max(abs(l.x) - 0.6 * r, 0.0), l.y)) / (0.35 * r);
+      }
+    }
+    qs[i] = qd;
+    float q2 = qd * qd;
+    float w = coreW(qd, u_soft[i]) + softTail(u_soft[i]) / (1.0 + q2 * q2);
     acc += u_lab[i] * w;
     wsum += w;
   }
-  vec3 rgb = linearToSrgb(oklabToLinear(acc / wsum));
+  // Layers: the soft weighted average is the base; each core is then mixed over it, back (0) to front.
+  vec3 col = acc / wsum;
+  for (int i = 0; i < 16; i++) {
+    if (i >= u_count) break;
+    col = mix(col, u_lab[i], 0.85 * coreW(qs[i], u_soft[i]));
+  }
+  vec3 rgb = linearToSrgb(oklabToLinear(col));
 
   float gt = floor(u_time * 24.0);
   float g1 = hash(gl_FragCoord.xy + vec2(gt * 7.13, gt * 3.71)) - 0.5;
@@ -107,10 +163,24 @@ export interface FieldParams {
   radii: Float32Array;
   /** OKLab colours, 16 × 3. */
   lab: Float32Array;
+  /** Shape ids (see SHAPE_ID), rotations (rad) and stroke point counts, 16 each. */
+  shape: Float32Array;
+  rot: Float32Array;
+  npts: Float32Array;
+  /** Softness 0–1, 16 entries. */
+  soft: Float32Array;
+  /** Stroke point texture bytes, 64 × 16 RGBA8. Re-uploaded only when they change. */
+  points: Uint8Array;
   /** Live node count (2–16); entries past it are ignored. */
   count: number;
   time: number;
   grain: number;
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 export class GradientRenderer {
@@ -120,6 +190,10 @@ export class GradientRenderer {
   private cssW = 1;
   private cssH = 1;
   private scale = 1;
+  private tex: WebGLTexture;
+  /** Last bytes uploaded to the point texture. */
+  private uploaded = new Uint8Array(64 * 16 * 4);
+  private texDirty = false;
 
   constructor(
     readonly canvas: HTMLCanvasElement,
@@ -146,9 +220,24 @@ export class GradientRenderer {
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 
-    for (const name of ['u_res', 'u_scale', 'u_count', 'u_pos', 'u_rad', 'u_lab', 'u_time', 'u_grain', 'u_min', 'u_warp']) {
+    for (const name of [
+      'u_res', 'u_scale', 'u_count', 'u_pos', 'u_rad', 'u_lab', 'u_time', 'u_grain', 'u_min', 'u_warp',
+      'u_shape', 'u_rot', 'u_npts', 'u_soft', 'u_pts', 'u_css',
+    ]) {
       this.u[name] = gl.getUniformLocation(this.program, name);
     }
+
+    // Stroke points ride in a data texture: no float-texture extension, exact bytes (NEAREST, no mips).
+    this.tex = gl.createTexture()!;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.tex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 16, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(64 * 16 * 4));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.uniform1i(this.u.u_pts, 0);
   }
 
   private compile(type: number, src: string): WebGLShader {
@@ -197,6 +286,19 @@ export class GradientRenderer {
     gl.uniform2fv(this.u.u_pos, p.positions);
     gl.uniform1fv(this.u.u_rad, p.radii);
     gl.uniform3fv(this.u.u_lab, p.lab);
+    gl.uniform1fv(this.u.u_shape, p.shape);
+    gl.uniform1fv(this.u.u_rot, p.rot);
+    gl.uniform1fv(this.u.u_npts, p.npts);
+    gl.uniform1fv(this.u.u_soft, p.soft);
+    gl.uniform2f(this.u.u_css, this.cssW, this.cssH);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.tex);
+    if (this.texDirty || !bytesEqual(this.uploaded, p.points)) {
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 64, 16, gl.RGBA, gl.UNSIGNED_BYTE, p.points);
+      this.uploaded.set(p.points);
+      this.texDirty = false;
+    }
     gl.uniform1f(this.u.u_time, p.time);
     gl.uniform1f(this.u.u_grain, p.grain);
     const min = Math.min(this.cssW, this.cssH);
