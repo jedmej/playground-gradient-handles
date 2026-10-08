@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#000000" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Cpath d='M6 12V6h6M20 6h6v6M26 20v6h-6M12 26H6v-6' fill='none' stroke='%23C0FE04' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23C0FE04'/%3E%3C/svg%3E"
+    />
+    <title>Gradient handles — a mesh-gradient handle study · NEWFRAME</title>
+    <meta
+      name="description"
+      content="A mesh-gradient handle study: nine colour nodes on a shader field, with separate grab zones for moving a node and resizing its influence ring."
+    />
+  </head>
+  <body data-hover-state="idle" data-drag="none">
+    <header class="topbar">
+      <a class="mark" href="#top" aria-label="NEWFRAME">
+        <span class="mark-glyph" aria-hidden="true"></span>NEWFRAME
+      </a>
+      <nav class="topnav" aria-label="Page">
+        <span class="nav-item nav-title">GRADIENT HANDLES <b>[>]</b></span>
+        <a class="nav-item" href="#spec">SPEC <b>[↓]</b></a>
+      </nav>
+      <div class="state-readout" aria-live="off">
+        <span class="state-k">STATE</span>
+        <span class="state-v" id="state-readout">IDLE</span>
+        <b id="state-glyph">[—]</b>
+      </div>
+    </header>
+
+    <main class="body" id="top">
+      <section class="stage-col" aria-label="Gradient field">
+        <div class="stage-frame">
+          <span class="reg reg-tl" aria-hidden="true"></span>
+          <span class="reg reg-tr" aria-hidden="true"></span>
+          <span class="reg reg-bl" aria-hidden="true"></span>
+          <span class="reg reg-br" aria-hidden="true"></span>
+          <svg class="ruler ruler-x" id="ruler-x" aria-hidden="true"></svg>
+          <svg class="ruler ruler-y" id="ruler-y" aria-hidden="true"></svg>
+          <div class="stage" id="stage" data-testid="stage">
+            <canvas class="field" id="field" aria-hidden="true"></canvas>
+            <svg class="handles" id="handles" aria-label="Gradient nodes" role="group"></svg>
+            <div class="chip chip-node" id="chip-node" aria-hidden="true"></div>
+            <div class="chip chip-radius" id="chip-radius" aria-hidden="true"></div>
+          </div>
+          <div class="stage-foot">
+            <span class="foot-l" id="foot-serial">CUR // X —.——— Y —.———</span>
+            <span class="foot-r" id="foot-dims">—×— PX</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="spec" id="spec" aria-label="Specification">
+        <div class="spec-head">
+          <p class="eyebrow">FIELD MESH 03 × 03 <span class="dim">//</span> GH-01</p>
+          <h1 class="title">Gradient<br />handles</h1>
+          <p class="lede">
+            Nine colour nodes on a shader field. Grab a reticle to move it. Grab its ring to
+            change how far its colour reaches.
+          </p>
+        </div>
+
+        <section class="spec-section" aria-labelledby="h-presets">
+          <h2 class="label" id="h-presets">COLOUR SET</h2>
+          <div class="presets" id="presets" role="radiogroup" aria-label="Colour set"></div>
+        </section>
+
+        <section class="spec-section" aria-labelledby="h-node">
+          <h2 class="label" id="h-node">NODE <span class="dim" id="node-hint">— HOVER OR TAP A RETICLE</span></h2>
+          <dl class="node-spec" id="node-spec">
+            <div class="full"><dt>ID</dt><dd id="ns-id">—</dd></div>
+            <div><dt>X</dt><dd id="ns-x">—</dd></div>
+            <div><dt>Y</dt><dd id="ns-y">—</dd></div>
+            <div class="last"><dt>R</dt><dd id="ns-r">—</dd></div>
+            <div class="last"><dt>HEX</dt><dd id="ns-hex"><i class="swatch" id="ns-swatch"></i><span id="ns-hex-v">—</span></dd></div>
+          </dl>
+        </section>
+
+        <div class="actions">
+          <button class="btn btn-primary" id="export" data-action="export" type="button">
+            <span class="btn-label">Export PNG</span><b>[↓]</b>
+          </button>
+          <button class="btn btn-ghost" id="reset" data-action="reset" type="button">
+            <span class="btn-label">Reset</span><b>[↺]</b>
+          </button>
+        </div>
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+
+        <p class="keys">
+          <span>TAB</span> focus node <span>←↑→↓</span> nudge <span>[ ]</span> radius
+          <span>SHIFT</span> ×10
+        </p>
+      </aside>
+
+      <aside class="rail" aria-hidden="true">
+        <span class="plus"></span>
+        <div class="barcode" id="barcode"></div>
+        <span class="pict pict-x"></span>
+        <span class="pict pict-box"></span>
+        <div class="rail-nums"><span id="rail-node">——</span><span id="rail-preset">01</span></div>
+        <span class="pict pict-check"></span>
+        <p class="rail-small">NEWFRAME / FIELD MESH 03×03<br />"HANDLE MECHANIC AFTER @EYEXAYUH"</p>
+        <p class="wordmark"><span>GRADIENT HANDLES</span></p>
+        <span class="plus"></span>
+      </aside>
+    </main>
+
+    <footer class="foot">
+      <span>HANDLE MECHANIC AFTER @EYEXAYUH</span>
+      <span class="foot-mid">NEWFRAME <b>[◇]</b> 2026</span>
+      <span class="foot-cat"><i class="check-chip"></i>INTERACTION <span class="dim">/</span> STUDY 01</span>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
