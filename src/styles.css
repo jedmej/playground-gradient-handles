@@ -3360,9 +3360,9 @@ html[data-drag='lum'] .stage,
   .vary-axis { height: 36px; padding: 0 12px 0 10px; }
 }
 
-/* Value chip: a small plate riding each gauge's arc at its value (`50`, `045°`), sliding round with the knob.
-   It reads as engaged with the rest of the gauge: FLARE while magnetized, dragged or wheeled. */
-.gring .val-bg { fill: var(--plate); fill-opacity: 0.92; stroke: var(--plate-fg); stroke-opacity: 0.55; stroke-width: 1; transition: fill var(--t) var(--ease); }
+/* Value arc: a short curved band on each gauge's own arc at its value, the number written along it (`50`, `045°`),
+   sliding round with the knob like the size ring's bearing arc. FLARE while magnetized, dragged or wheeled. */
+.gring .val-bg { fill: none; stroke: var(--plate); stroke-opacity: 0.92; stroke-linecap: butt; transition: stroke var(--t) var(--ease); }
 .gring .val-text {
   font-family: var(--mono);
   font-size: calc(var(--fx-fs, 9px) * 0.9);
@@ -3372,5 +3372,5 @@ html[data-drag='lum'] .stage,
   stroke: none;
   pointer-events: none;
 }
-.gring.is-hover .val-bg, .gring.is-drag .val-bg { fill: var(--flare); fill-opacity: 1; stroke: var(--flare); stroke-opacity: 1; }
+.gring.is-hover .val-bg, .gring.is-drag .val-bg { stroke: var(--flare); stroke-opacity: 1; }
 .gring.is-hover .val-text, .gring.is-drag .val-text { fill: var(--plate); }

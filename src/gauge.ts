@@ -59,11 +59,18 @@ export interface GaugeParts {
   tag: SVGGElement;
   tagBg: SVGRectElement;
   tagText: SVGTextElement;
-  /** Value chip riding the arc at the current value (the label's value part: `50`, `045°`, `9 LV`). */
+  /**
+   * Value arc: a short curved band on the gauge's own arc, centred on the current value, with the value written along
+   * it (the label's value part: `50`, `045°`, `9 LV`). It slides round with the knob, like the size ring's bearing arc.
+   */
   val: SVGGElement;
-  valBg: SVGRectElement;
+  valBg: SVGPathElement;
+  valPath: SVGPathElement;
   valText: SVGTextElement;
+  valTp: SVGTextPathElement;
   valLabel: string;
+  /** Last value / text width / radius the band was built for (it is rebuilt only when one changes). */
+  valKey: string;
   r: number;
   sp: number;
   label: string;
@@ -79,11 +86,15 @@ export function makeGauge(cls: string): GaugeParts {
     fillH: p('halo fill'), fillI: p('ink fill'), knobH: p('halo knob'), knobI: p('ink knob'),
     tag: el('g', { class: 'fx-tag' }), tagBg: el('rect', { class: 'tag-bg', height: 14, y: -7 }),
     tagText: el('text', { class: 'tag-text', 'text-anchor': 'middle', y: 3 }),
-    val: el('g', { class: 'val' }), valBg: el('rect', { class: 'val-bg', height: 12, y: -6 }),
-    valText: el('text', { class: 'val-text', 'text-anchor': 'middle', y: 3 }), valLabel: '',
+    val: el('g', { class: 'val' }), valBg: el('path', { class: 'val-bg' }),
+    valPath: el('path', { id: `gval-${++valSeq}`, fill: 'none', stroke: 'none' }),
+    valText: el('text', { class: 'val-text', 'text-anchor': 'middle', 'dominant-baseline': 'central' }),
+    valTp: el('textPath', { startOffset: '50%' }), valLabel: '', valKey: '',
   };
+  v.valTp.setAttribute('href', `#gval-${valSeq}`);
+  v.valText.appendChild(v.valTp);
   v.tag.append(v.tagBg, v.tagText);
-  v.val.append(v.valBg, v.valText);
+  v.val.append(v.valPath, v.valBg, v.valText);
   g.append(v.baseH, v.baseI, v.ticksH, v.ticksI, v.fillH, v.fillI, v.knobH, v.knobI, v.val, v.tag);
   return v;
 }
@@ -109,9 +120,13 @@ export function layoutGauge(v: GaugeParts, r: number, sp: number): void {
   v.t = -1;
   v.label = '';
   v.valLabel = '';
+  v.valKey = '';
 }
 
 /** Value `t` (0…1; `off` hides the fill) and the chip text. Cheap when nothing changed. */
+let valSeq = 0;
+const key0 = (t: number): string => (Math.round(t * 5000) / 5000).toString();
+
 export function renderGauge(v: GaugeParts, t: number, off: boolean, label: string): void {
   const key = off ? -2 : Math.round(t * 5000) / 5000;
   if (key !== v.t) {
@@ -123,20 +138,31 @@ export function renderGauge(v: GaugeParts, t: number, off: boolean, label: strin
     v.knobH.setAttribute('d', k);
     v.knobI.setAttribute('d', k);
     v.g.classList.toggle('is-off', off);
-    // The value chip sits on the arc at the value, so it slides round with the knob.
-    const a = G_START + G_SPAN * t;
-    v.val.setAttribute('transform', `translate(${(v.r * Math.cos(a)).toFixed(2)} ${(v.r * Math.sin(a)).toFixed(2)})`);
   }
   const value = off ? '' : label.slice(label.indexOf('//') + 2).trim();
   if (value !== v.valLabel) {
     v.valLabel = value;
-    v.valText.textContent = value;
+    v.valTp.textContent = value;
     v.val.style.display = value ? '' : 'none';
-    const fs = (parseFloat(v.g.style.getPropertyValue('--fx-fs')) || 9) * 0.9;
-    const w = Math.ceil(value.length * (fs * 0.62 + fs * 0.06) + 6);
-    v.valBg.setAttribute('width', String(w));
-    v.valBg.setAttribute('x', String(-w / 2));
   }
+  if (!value) return;
+  const fs = (parseFloat(v.g.style.getPropertyValue('--fx-fs')) || 9) * 0.9;
+  const w = value.length * (fs * 0.62 + fs * 0.06) + 10;
+  const vk = `${key0(t)}|${w.toFixed(1)}|${v.r.toFixed(1)}`;
+  if (vk === v.valKey) return;
+  v.valKey = vk;
+  // The band spans the text's width along the arc, centred on the value. On the lower half the path runs
+  // counter-clockwise so the text along it never reads upside down.
+  const a = G_START + G_SPAN * t;
+  const half = Math.min(Math.PI * 0.45, w / 2 / Math.max(1, v.r));
+  const flip = Math.sin(a) > 0;
+  const a0 = flip ? a + half : a - half;
+  const a1 = flip ? a - half : a + half;
+  const pt = (ang: number): string => `${(v.r * Math.cos(ang)).toFixed(2)} ${(v.r * Math.sin(ang)).toFixed(2)}`;
+  const d = `M${pt(a0)}A${v.r.toFixed(2)} ${v.r.toFixed(2)} 0 0 ${flip ? 0 : 1} ${pt(a1)}`;
+  v.valBg.setAttribute('d', d);
+  v.valPath.setAttribute('d', d);
+  v.valBg.style.strokeWidth = `${Math.min(13, Math.max(8, v.sp * 0.75)).toFixed(1)}px`;
   if (label !== v.label) {
     v.label = label;
     v.tagText.textContent = label;
