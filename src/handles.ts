@@ -578,7 +578,7 @@ export class Handles {
     let bestR = -1;
     let bestRD = Infinity;
     for (let i = 0; i < this.store.nodes.length; i++) {
-      // Only circles show the dotted size ring; other shapes resize by scroll / pinch / keys (their own outline is the extent).
+      // Only circles show the dotted size ring; other shapes resize by scroll / pinch / keys.
       if (!this.revealed(i) || this.store.nodes[i].shape !== 'circle' || this.store.nodes[i].lock) continue;
       const p = this.px(i);
       const d = Math.abs(Math.hypot(x - p.x, y - p.y) - p.r);
@@ -1395,9 +1395,9 @@ export class Handles {
 
   // ----- per-frame ----------------------------------------------------------
 
-  /** Dashed core outline for non-circle nodes; the path is rebuilt only when its inputs change. */
+  /** Dashed path of a stroke node (ellipse / box / capsule draw no outline: the field shows their shape); rebuilt only when its inputs change. */
   private updateOutline(v: NodeView, n: NodeState, rPx: number): void {
-    const op = n.shape === 'circle' ? 0 : Math.min(1, v.ringOp * 2);
+    const op = n.shape !== 'stroke' ? 0 : Math.min(1, v.ringOp * 2);
     v.outG.style.opacity = op < 0.005 ? '0' : op.toFixed(3);
     if (op < 0.005) return;
     const min = this.metrics.min;

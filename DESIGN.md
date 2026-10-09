@@ -278,8 +278,9 @@ re-uploads with `texSubImage2D` only when the bytes differ. Points that leave th
 inside a class. Body = polyline distance ≤ max(16 px, 24 px coarse, 0.45 r) for strokes,
 `q ≤ 0.45` for ellipse / box / capsule; circles have none. A body drag is the ordinary node
 move drag (grab offset kept, one `MOVE` undo step). The ring stays a circle of radius `r`
-for every shape; a stroke's reticle sits at its centroid. Non-circle nodes show a dashed
-dual-stroke outline of their core (SIGNAL while the body is hovered or dragged).
+for every shape; a stroke's reticle sits at its centroid. Stroke nodes show their path as a
+dashed dual stroke (SIGNAL while the body is hovered or dragged); ellipse / box / capsule draw
+no outline (removed in v6.1: the field already shows the shape and it cluttered the gauges).
 
 **Draw flow.** `D` / `DRAW` enters the tool (colour = the selected node's, else PAPER). Press
 creates the stroke node at once so the field reacts live; points are sampled at ≥ 2 px, the
