@@ -3108,13 +3108,26 @@ html[data-drag='lum'] .stage,
   touch-action: manipulation;
 }
 .vary-strip[hidden] { display: none; }
+.vary-headrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 6px;
+  border-bottom: 1px solid var(--hull);
+}
 .vary-head {
+  flex: 1;
+  min-width: 0;
   padding: 6px 8px 5px;
   color: var(--graphite);
-  border-bottom: 1px solid var(--hull);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* ROLL [R] / [V]: top-right of the strip, the corner-button type. */
+.vary-roll { margin: 0; height: 18px; flex: none; }
+@media (pointer: coarse) {
+  .vary-roll { height: 32px; padding: 0 10px; }
 }
 .vary-row {
   display: grid;

@@ -46,7 +46,15 @@ export class Explore {
   private head: HTMLElement;
   private btns: HTMLButtonElement[] = [];
   private imgs: HTMLImageElement[] = [];
-  private urls: string[] = [];
+  /**
+   * The last set shown per mode, kept while the strip is closed so reopening (hover or click) shows the same four;
+   * only an explicit roll (ROLL button, R / V while open, a chip change) or an edit of the field replaces it.
+   */
+  private cache: Record<'vary' | 'random', { variants: Explore['variants']; srcs: (string | null)[]; seed: number; sig: string } | null> = {
+    vary: null,
+    random: null,
+  };
+  private rollBtn!: HTMLButtonElement;
   private variants: Array<{ specs: NodeSpec[]; fx: FxState | null; rule?: Harmony; seed?: number }> = [];
   private mode: 'vary' | 'random' = 'vary';
   private axesEl!: HTMLElement;
@@ -106,8 +114,21 @@ export class Explore {
     el.hidden = true;
     const top = document.createElement('div');
     top.className = 'vary-top';
+    const headRow = document.createElement('div');
+    headRow.className = 'vary-headrow';
     this.head = document.createElement('div');
     this.head.className = 'vary-head';
+    // ROLL: a new set of four (locked takes stay). Same as R / V while the strip is open.
+    this.rollBtn = document.createElement('button');
+    this.rollBtn.type = 'button';
+    this.rollBtn.className = 'mini vary-roll';
+    this.rollBtn.dataset.action = 'vary-roll';
+    this.rollBtn.innerHTML = '<span class="mini-l">ROLL</span> <b>[R]</b>';
+    this.rollBtn.addEventListener('click', () => {
+      this.pinned = true;
+      void this.open(this.mode, true);
+    });
+    headRow.append(this.head, this.rollBtn);
     // VARY axes: any mix of composition, colours and effects (at least one stays checked). Changing them rolls again.
     const axes = document.createElement('div');
     axes.className = 'vary-axes';
@@ -141,7 +162,7 @@ export class Explore {
     }
     this.axesEl = axes;
     this.harmEl = harm;
-    top.append(this.head, axes, harm);
+    top.append(headRow, axes, harm);
     el.appendChild(top);
     this.syncAxes();
     this.syncHarmony();
@@ -223,7 +244,7 @@ export class Explore {
     s.harmony = h;
     this.syncHarmony();
     s.say(`HARMONY · ${HARMONY_LABEL[h]}`);
-    if (this.isOpen && this.mode === 'random') void this.open('random');
+    if (this.isOpen && this.mode === 'random') void this.open('random', true);
   }
 
   private syncHarmony(): void {
@@ -258,7 +279,7 @@ export class Explore {
       // not remembered this time
     }
     this.syncAxes();
-    if (this.isOpen) void this.open();
+    if (this.isOpen) void this.open(this.mode, true);
   }
 
   private syncAxes(): void {
@@ -270,10 +291,13 @@ export class Explore {
   }
 
   /** Release thumbnail images, except the ones a lock is holding (in either mode). */
-  private revoke(): void {
+  /** Release a mode's cached thumbnails, except the ones a lock is holding (in either mode). */
+  private revoke(mode: 'vary' | 'random'): void {
+    const c = this.cache[mode];
+    if (!c) return;
     const held = new Set([...this.kept.vary, ...this.kept.random].map((k) => k?.url));
-    for (const u of this.urls) if (!held.has(u)) URL.revokeObjectURL(u);
-    this.urls = this.urls.filter((u) => held.has(u));
+    for (const u of c.srcs) if (u && !held.has(u)) URL.revokeObjectURL(u);
+    this.cache[mode] = null;
   }
 
   /** Lock / unlock take `k` of the current mode. Only a rendered take can be locked. */
@@ -300,10 +324,11 @@ export class Explore {
   }
 
   /**
-   * Open the strip in `mode` (or roll a new set when it is already open in it) and render the four thumbnails one after
-   * another. RANDOM: four fresh compositions (locked nodes kept). VARY: four takes on the current field.
+   * Show the strip in `mode`. Without `roll` it shows that mode's last set (if the field has not changed since); with
+   * `roll`, or when there is none, it generates four new takes (locked ones stay) and renders them one after another.
+   * RANDOM: fresh compositions (locked nodes kept). VARY: takes on the current field.
    */
-  async open(mode: 'vary' | 'random' = this.mode): Promise<void> {
+  async open(mode: 'vary' | 'random' = this.mode, roll = false): Promise<void> {
     const s = this.store;
     if (s.drag.kind !== 'none' || s.drawing) return;
     this.sig = this.signature();
@@ -315,8 +340,11 @@ export class Explore {
     }
     this.mode = mode;
     const token = ++this.token;
-    const seed = newSeed();
-    if (mode === 'random') {
+    const cached = this.cache[mode];
+    const reuse = !roll && !!cached && cached.sig === this.sig;
+    const seed = reuse ? cached!.seed : newSeed();
+    if (reuse) this.variants = cached!.variants;
+    else if (mode === 'random') {
       const aspect = this.metrics.w / Math.max(1, this.metrics.h);
       // ANY: four different concrete rules, so the strip compares harmonies; a chosen rule: four takes on it.
       const start = Math.floor(makeRng(seed)() * ANY_SPREAD.length);
@@ -344,15 +372,24 @@ export class Explore {
       this.tags[j].textContent = mode === 'random' ? `R-${j + 1} · ${HARMONY_LABEL[v.rule!]}` : `V-${j + 1}`;
       this.btns[j].setAttribute('aria-label', `Adopt ${mode === 'random' ? 'random composition' : 'variation'} ${j + 1}`);
     });
-    this.revoke();
+    if (!reuse) {
+      this.revoke(mode);
+      this.cache[mode] = {
+        variants: this.variants,
+        srcs: this.variants.map((_, j) => this.kept[mode][j]?.url ?? null),
+        seed,
+        sig: this.sig,
+      };
+    }
+    const cache = this.cache[mode]!;
     this.syncLocks();
-    this.head.textContent = mode === 'random'
-      ? `RANDOM // 04 // SEED ${seedLabel(seed)} // 1–4 PICK · R ROLL · ESC`
-      : `VARIATIONS // 04 // SEED ${seedLabel(seed)} // 1–4 PICK · V ROLL · ESC`;
+    this.head.textContent = `${mode === 'random' ? 'RANDOM' : 'VARIATIONS'} // 04 // SEED ${seedLabel(seed)} // 1–4 PICK · ESC`;
+    this.rollBtn.querySelector('b')!.textContent = mode === 'random' ? '[R]' : '[V]';
+    this.rollBtn.title = `New set of four (${mode === 'random' ? 'R' : 'V'}); locked takes stay`;
     this.btns.forEach((b, j) => {
-      const keep = this.kept[mode][j];
-      b.classList.toggle('is-loading', !keep);
-      if (keep) this.imgs[j].src = keep.url;
+      const src = this.kept[mode][j]?.url ?? cache.srcs[j];
+      b.classList.toggle('is-loading', !src);
+      if (src) this.imgs[j].src = src;
       else this.imgs[j].removeAttribute('src');
     });
     this.strip.hidden = false;
@@ -367,7 +404,7 @@ export class Explore {
     const th = aspect >= 1 ? Math.max(16, Math.round(THUMB / aspect)) : THUMB;
     this.strip.style.setProperty('--vary-aspect', String(aspect));
     for (let j = 0; j < this.variants.length; j++) {
-      if (this.kept[mode][j]) continue; // a locked take keeps its image
+      if (this.kept[mode][j] || cache.srcs[j]) continue; // a locked or already rendered take keeps its image
       // renderOffscreen reads the store's nodes (settled targets) and FX: hand it a copy carrying the variant.
       const v = this.variants[j];
       const copy: Store = { ...s, nodes: v.specs.map((sp) => makeNode(sp)), fx: v.fx ?? s.fx };
@@ -375,7 +412,7 @@ export class Explore {
       if (token !== this.token) return; // closed or re-rolled meanwhile
       if (!res.ok) continue;
       const url = URL.createObjectURL(res.blob);
-      this.urls.push(url);
+      cache.srcs[j] = url;
       this.imgs[j].src = url;
       this.btns[j].classList.remove('is-loading');
       if (j === 0 && this.strip.contains(document.activeElement) === false) this.btns[0].focus({ preventScroll: true });
@@ -410,8 +447,7 @@ export class Explore {
       btn.classList.remove('is-on');
     }
     if (this.strip.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
-    this.revoke();
-    for (const img of this.imgs) img.removeAttribute('src');
+    // The set stays cached (images included) for the next open; an edit to the field or a roll replaces it.
   }
 
   private pick(k: number): void {
@@ -440,15 +476,13 @@ export class Explore {
       return;
     }
     if (e.repeat) return;
-    if (e.key === 'r' || e.key === 'R') {
-      e.preventDefault();
-      this.pinned = true;
-      void this.open('random');
-    } else if (e.key === 'v' || e.key === 'V') {
-      e.preventDefault();
-      this.pinned = true;
-      void this.open('vary');
-    }
+    // R / V: open that strip (showing its last set); pressed again while it is open, roll a new set.
+    const mode = e.key === 'r' || e.key === 'R' ? 'random' : e.key === 'v' || e.key === 'V' ? 'vary' : null;
+    if (!mode) return;
+    e.preventDefault();
+    const again = this.isOpen && this.mode === mode;
+    this.pinned = true;
+    void this.open(mode, again);
   }
 
   // ----- palette extraction --------------------------------------------------------
