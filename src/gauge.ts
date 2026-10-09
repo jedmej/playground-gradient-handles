@@ -130,8 +130,8 @@ export function layoutGauge(v: GaugeParts, r: number, sp: number): void {
   // Sweep: the arc runs round to a little short of the name chip in the bottom gap (chip half-width + pad + 14 px, so
   // the 0 / max ends, their knob and value arc stay clear of the name), leaving a short name an almost full circle.
   // Never less than 270° of travel, never past 340°.
-  // The chip reads `NAME [value]`: size the gap for the name plus a typical bracketed value (` [045°]`, 7 chars).
-  const chipHalf = v.name ? Math.ceil((v.name.length + 7) * (fs * 0.62 + fs * 0.06) + 10) / 2 : r * 0.7;
+  // The chip reads `NAME [value]`: size the gap for the name plus a typical bracketed value (`[045°]`, 6 chars).
+  const chipHalf = v.name ? Math.ceil((v.name.length + 6) * (fs * 0.62 + fs * 0.06) + 10) / 2 : r * 0.7;
   const clear = Math.min(r * 0.99, chipHalf + v.pad + 14);
   const gap = Math.min(Math.PI / 2, Math.max((20 * Math.PI) / 180, 2 * Math.asin(clear / Math.max(1, r))));
   v.sw = { a0: Math.PI / 2 + gap / 2, span: Math.PI * 2 - gap };
@@ -169,10 +169,10 @@ export function renderGauge(v: GaugeParts, t: number, off: boolean, label: strin
     v.knobI.setAttribute('d', k);
     v.g.classList.toggle('is-off', off);
   }
-  // `NAME // value` → the chip in the bottom gap reads `NAME [value]` (the app's `[KEY]` bracket); the value also rides
+  // `NAME // value` → the chip in the bottom gap reads `NAME[value]`; the value also rides
   // the arc as its own chip (renderValue).
   const cut = label.indexOf('//');
-  const name = cut < 0 ? label : `${label.slice(0, cut).trim()} [${label.slice(cut + 2).trim()}]`;
+  const name = cut < 0 ? label : `${label.slice(0, cut).trim()}[${label.slice(cut + 2).trim()}]`;
   if (name !== v.label) {
     v.label = name;
     v.tagText.textContent = name;
