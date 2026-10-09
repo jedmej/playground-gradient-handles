@@ -1,4 +1,5 @@
 import { FieldBuffers, packField } from './field';
+import { bumpStat } from './stats';
 import { GradientRenderer } from './gradient';
 import type { Dim, Store } from './store';
 
@@ -76,6 +77,7 @@ export function downloadBlob(blob: Blob, name: string): void {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
+  bumpStat('exports');
 }
 
 export const stamp = (): string => {

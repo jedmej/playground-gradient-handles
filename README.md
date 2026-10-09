@@ -191,6 +191,8 @@ Martian Mono). No runtime network calls beyond same-origin assets.
   `[data-action="vary-pick"][data-vary="0–3"]`; file input `#extract-file`; `.stage.is-drop` while a file is dragged over; presets `[data-preset="cs21"…"cs25"]`.
   CS-06 nodes carry `lock` / `hide` only when true. New built-in sets CS-21 … CS-25 (HULL BREACH, AFTERBURN, ICE CORE, RELAY GHOST, SALT FLAT); CS-06 … CS-13 are left free for the save library.
 
+- Footer and rail stats: `[data-stat="visits|exports"]` show this browser's counts (`localStorage` `gh.stats.v1`): VISITS = page loads, EXPORTS = PNG downloads (Export and the quick copy). Nothing is sent anywhere.
+
 ## Credits
 
 Handle mechanic after Isaiah (@eyexayuh)'s mesh-gradient node controls.
