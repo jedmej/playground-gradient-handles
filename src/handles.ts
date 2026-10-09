@@ -596,11 +596,17 @@ export class Handles {
       let d = Math.hypot(x - p.x, y - p.y);
       // An offset gauge stack's centre bracket is a second core for its node: hover, click (COLOUR page), drag.
       const v = this.views[i];
-      if (v && Math.hypot(v.gox, v.goy) > 18 && this.revealed(i) && this.store.tool === 'edit') {
-        const c = this.gaugeAt(i);
-        d = Math.min(d, Math.hypot(x - c.x, y - c.y));
+      let reach = core;
+      if (v && Math.hypot(v.gox, v.goy) > 6 && this.revealed(i) && this.store.tool === 'edit') {
+        // With its stack slid off, the reticle has the room around it to itself: a wider core (the gauges skip it too).
+        reach = core * 2 + 4;
+        if (Math.hypot(v.gox, v.goy) > 18) {
+          const c = this.gaugeAt(i);
+          const dc = Math.hypot(x - c.x, y - c.y);
+          if (dc <= core) d = Math.min(d, dc);
+        }
       }
-      if (d <= core && d < bestD) {
+      if (d <= reach && d < bestD) {
         best = i;
         bestD = d;
       }
@@ -618,6 +624,14 @@ export class Handles {
         if (!this.revealed(i) || this.onColor(i) !== colorKind) continue;
         if (!(kind === 'rot' ? this.rotShown(i) : this.gaugeShown(i))) continue;
         const c = this.gaugeAt(i);
+        const v = this.views[i];
+        if (v && Math.hypot(v.gox, v.goy) > 6) {
+          // An offset stack: not grabbable until it has finished sliding out and opened, and never right over the node's
+          // own reticle (a ring can pass across it), so reaching for the core to move the node always grabs the node.
+          if (v.slide < 1) continue;
+          const p = this.px(i);
+          if (Math.hypot(x - p.x, y - p.y) <= core * 2 + 4) continue;
+        }
         const d = gaugeHit(ri, x - c.x, y - c.y, this.gr.sp);
         if (d !== null && d < bd) {
           bi = i;
