@@ -1456,6 +1456,10 @@ export class Handles {
     }
     // The FX dial owns `ui-focus` while it is adjusted (`fx-focus`): never clear it from here.
     this.stage.classList.toggle('ui-focus', focusIdx >= 0 || this.stage.classList.contains('fx-focus'));
+    // Engaged: while a node is selected in the edit tool (its bezel is the thing being played with), the other nodes
+    // step back (CSS `.node-engaged`); the FX dial does the same for every node while it is open (`.fx-open`).
+    const engagedIdx = s.tool === 'edit' && !s.drawing && s.selected !== null && s.selected < s.nodes.length ? s.selected : -1;
+    this.stage.classList.toggle('node-engaged', engagedIdx >= 0);
 
     for (let i = 0; i < s.nodes.length; i++) {
       const n = s.nodes[i];
@@ -1654,6 +1658,7 @@ export class Handles {
         (isOpacFlash ? ' is-opac-flash' : '') +
         (v.pg > 0.005 ? ' is-colour' : '') +
         (cls0 ? ` is-focus focus-${focusKind}` : '') +
+        (engagedIdx === i ? ' is-engaged' : '') +
         (n.shape !== 'circle' ? ' no-ring' : '') +
         (n.lock ? ' is-locked' : '') +
         (n.hide ? ' is-hidden' : '') +

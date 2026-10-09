@@ -31,6 +31,7 @@ PREVIEW stays.
 
 | Input                      | Action                                                      |
 | -------------------------- | ----------------------------------------------------------- |
+| Select a node / open the FX dial | The other nodes (every node, for the dial) dim to 20 % while it is in hand; they stay clickable |
 | Hover / drag reticle core  | Move node (past the click slop the rest of the artboard UI dims, like a size or gauge drag; the coordinate tag and snap guides stay) |
 | Hover / drag ring band     | Change radius (cursor hides, arc shows)                     |
 | Tap reticle (touch)        | Select node; shows its ring and an arc affordance           |

@@ -3374,3 +3374,11 @@ html[data-drag='lum'] .stage,
 }
 .gring.is-hover .val-bg, .gring.is-drag .val-bg { fill: var(--flare); fill-opacity: 1; }
 .gring.is-hover .val-text, .gring.is-drag .val-text { fill: var(--plate); }
+
+/* Engaged: playing with one node (selected) or the FX dial (open) steps everything else back like `ui-focus` does,
+   so the thing in hand reads alone. The node's own coordinate chip, snap guides and the canvas never dim. */
+.stage.node-engaged .handles > .node:not(.is-engaged),
+.stage.fx-open .handles > .node {
+  filter: opacity(0.2);
+  transition-duration: 100ms;
+}
