@@ -1,4 +1,4 @@
-# Gradient handles
+# Gradientlabs
 
 A mesh-gradient *handle study*. Two to sixteen colour nodes (nine to start) sit on a WebGL field; each one
 has a position, a colour and an influence radius. The point of the demo is one
@@ -23,9 +23,26 @@ token system and the critique that shaped it.
 The stage column is three bands: a **toolbar** (`#toolbar`), the artboard area, and a **stage bar** (`#stage-bar`).
 Toolbar groups, in order: HISTORY (`Undo [↶]`, `Reset [↺]`), then OUTPUT (`Share [U]`, `Copy [C]`, `Code [X]`, `Export [↓]`) pinned to the far right; the status plate floats just left of it. `FX DIAL [F]` (top-left)
 and `PREVIEW [P]` (top-right) are small corner buttons riding the artboard frame, with NODES (`ADD NODE [+]`, `REMOVE NODE [−]`, `DRAW [D]`, `.frame-top`) centred between them on the same edge (on a phone, a row above them); TOOLS (`SNAP [G]`, `MIRROR [Y]` + its mode) and GENERATE (`RANDOM [R]`, `VARY [V]`), one `.foot-gen` row with a hairline between the two, sit in the same corner-button style centred in the artboard's foot line, between the cursor readout and the stage size. The stage bar holds `SHORTCUTS [?]` (`#keys-btn`, corner-button style): hovering it peeks the key list as a vertical popup (`#keys`, the node menu's plate, action on the left and key on the right; touch shows the gesture list) and leaving hides it again; a click or `?` pins it open (`aria-pressed`) until a second click / `?`, `Esc` or a press outside. The right panel keeps the contextual
-controls only (colour set, node readout + steppers + shape, FX, wallpaper target). Below 960 px the toolbar is one
+controls only, as collapsible sections under the REV plate: COLOUR SET, SAVED SETS, FROM IMAGE, NODE, FX and WALLPAPER
+(see *Panel sections*). The top bar holds the NEWFRAME mark, the GRADIENTLABS title, a HUD strip (see *Top bar*) and
+`DARK` / `PANEL`. Below 960 px the toolbar is one
 horizontally scrolling row, GENERATE drops under the foot readouts, and status messages float as a toast. In preview the toolbar, FX DIAL, the foot line (GENERATE included) and the stage bar hide;
 PREVIEW stays.
+
+### Panel sections
+
+Each block of the spec panel is its own section: COLOUR SET (the built-in sets), SAVED SETS (CS-06 … CS-13, with
+`SAVE` / `CLEAR` in its header), FROM IMAGE, NODE, FX and WALLPAPER. A click anywhere on a section's header row (or
+`Enter` / `Space` on its title) collapses or expands it; header actions (`SAVE`, `ALL OFF`) keep their own clicks. The
+header is a fixed-height row: a state square (hollow collapsed, filled open), the title and its live hint, the actions,
+and a chevron plate (down collapsed, up open). An open section's rule carries a short index tab. Collapsed sections are
+remembered (`localStorage` `gh.sections.v1`).
+
+### Top bar
+
+Between the title and `DARK` / `PANEL` sits a HUD strip: a hazard block, a tick rail whose SIGNAL cursor follows the
+pointer's x across the stage (hidden while the pointer is off it), and the node meter: one cell per possible node
+(16), SIGNAL = in use, PAPER = the selected node, with a `09/16` count. The rail is dropped below 960 px.
 
 ## Controls
 
@@ -60,7 +77,7 @@ PREVIEW stays.
 | `L` (selected / focused node), `STATE` row `LOCK [L]`, node menu | Lock: drags (core, gauges, ring, body), wheel, pinch, nudge keys, radius / soft / opac / rot / shape steppers, the colour page and hex field, Random, Vary and Extract all leave the node alone. It stays selectable and deletable, shows a small padlock on its reticle and `· LOCK` in the coordinate tag. Undo steps `LOCK N-xx` / `UNLOCK N-xx`. Stored in CS-06 (optional `lock` field) |
 | `H`, `STATE` row `HIDE [H]`, node menu | Hide: the node is skipped by the field render (live and export), the reticle stays, ghosted (dashed brackets, hollow core), still selectable. The last visible node cannot be hidden. Undo steps `HIDE N-xx` / `SHOW N-xx`. Stored in CS-06 (optional `hide` field) |
 | `⇧H`, `STATE` row `SOLO [⇧H]`, node menu | Solo the selected node: hides every other node; again (or un-solo from the menu) restores what was hidden before. Undo steps `SOLO` / `UNSOLO N-xx` |
-| `FROM IMAGE [↥]` (colour-set panel) or drop an image file on the stage | Palette extract: the image is downsampled to ≤ 96 px on a 2D canvas and clustered with k-means in OKLab (k = number of unlocked nodes, fixed seed, so one image always gives one palette). Colours go dark → light, lightest to the node highest on the stage; one undo step `EXTRACT`, ~600 ms tween. The image is decoded locally and never leaves the browser |
+| `PICK IMAGE [↥]` (FROM IMAGE section) or drop an image file on the stage | Palette extract: the image is downsampled to ≤ 96 px on a 2D canvas and clustered with k-means in OKLab (k = number of unlocked nodes, fixed seed, so one image always gives one palette). Colours go dark → light, lightest to the node highest on the stage; one undo step `EXTRACT`, ~600 ms tween. The image is decoded locally and never leaves the browser |
 | `Esc`                      | Deselect                                                    |
 | Double-click empty field   | Add a node there (colour = field under the point)           |
 | Double-tap (touch)         | Same, two taps within 380 ms and 36 px (mouse: 320 ms / 24 px)  |
@@ -69,14 +86,16 @@ PREVIEW stays.
 | `Remove node` button       | Same                                                        |
 | Tap, then hold a selected core (touch, 550 ms) | Opens the node menu beside it (SIGNAL progress arc on the armed hold only, moving > 6 px cancels). Removing on touch = tap → hold → `DELETE`. Holding an unselected node does nothing |
 | Two-finger pinch (touch, node selected) | Scales that node's reach from where the pinch started; one `RADIUS` undo step. A second finger cancels any one-finger drag / hold / stroke |
-| `D` / `DRAW [D]` button    | Draw mode (crosshair everywhere, nodes not hit-tested). Press-drag paints one freehand stroke, release simplifies it (≤ 64 pts), selects it and leaves draw mode. `Esc` exits. Touch: the `DRAW` toggle in the toolbar |
+| `D` / `DRAW [D]` button    | Draw mode (crosshair everywhere, nodes not hit-tested) and the **DRAW tray** over the foot of the stage (the RANDOM / VARY strip's plate). Left of its rule, the tools (`1`–`6`): PENCIL (freehand, simplified to ≤ 64 pts on release), LINE (`⇧` snaps to 45°), RECT / ELLIPSE / TRIANGLE (drag the box; `⇧` square / circle / even, `⌥` from the centre) and STAR (drag out from the centre, round to turn it, `⇧` snaps to 15°; `↑ ↓` points 3–12, `← →` spike depth, live while dragging; spike 0 = a regular polygon). Right of it, the look of the next shape: `OUTLINE` / `FILL` (closed shapes only), `WEIGHT` (the stroke's reach; hovering or dragging the slider shows a true-size preview of it above, scaled with a `1:n` tag when it would not fit) and, for the star, `POINTS` / `SPIKE`. Tool and settings are remembered (`localStorage` `gh.draw.v1`). Every shape is a stroke node; one per activation, then it is selected and draw mode ends. `Esc` or the tray's `×` exits. Touch: the `DRAW` toggle in the toolbar |
+| DRAW tray with a drawn stroke selected | The tray stays up (head `N-xx // SHAPE · 04 PTS // EDITING THIS SHAPE`) and its `WEIGHT` and `OUTLINE` / `FILL` edit that stroke (undo steps `WEIGHT N-xx`, `FILL N-xx` / `OUTLINE N-xx`; one step per slider drag). A tool button starts drawing again. `×` hides the tray for that stroke until something else is selected. The tray jumps to the head of the stage whenever the stroke it is about runs under its spot at the foot |
+| Selected stroke's anchors (squares) and edge `+` marks | Point editing (strokes with ≤ 32 anchors; shapes keep theirs: 4 for a rect, 3 for a triangle, 8 smooth ones for an ellipse). Drag a square to move that point; press a `+` to insert a point on that edge and drag it straight away; `⌥`-click or double-click a square, or press it and `Delete` / `Backspace`, to remove it (loops keep ≥ 3, lines ≥ 2). One undo step each (`POINT N-xx`, `DELETE POINT N-xx`); the core re-centres on the anchors afterwards. Ellipses stay a smooth curve through their anchors, other shapes keep sharp corners |
 | Drag a stroke / shape body | Hover shows an open hand; dragging anywhere on a stroke (or inside an ellipse / box / capsule core) moves the whole node. One undo step `MOVE N-xx` |
-| `SHAPE` row                | Circle / ellipse / box / capsule for the selected node (undo step `SHAPE N-xx`). Disabled for strokes, which show `STROKE · nn PTS` |
+| `SHAPE` row                | Circle / ellipse / box / capsule for the selected node (undo step `SHAPE N-xx`). Disabled for strokes, which show `STROKE · nn PTS` (open), `SHAPE · nn PTS` (closed outline) or `FILL · nn PTS` |
 | `ROT` `[−]` `[+]`, `,` `.` | Rotate ellipse / box / capsule 15° (`Shift` = 45°); bursts coalesce into one undo step |
 | Colour swatch / HEX field  | Recolour the selected node (OKLab tween); Enter/blur commit, Esc reverts |
 | Palette strip chip         | Select that node                                            |
-| `SAVE [↧]` (panel header)  | Store the field in the **active** library slot, else the first empty one (`LIBRARY FULL` if none: use a card's own `[↧]`). Saves nodes, shapes, strokes, FX; the card gets a small thumbnail of the field. Storage refusal (quota, private mode) is reported and the slot lives for the session |
-| `CLEAR [×]` (panel header, twice in 3 s) | Delete the saved set of the active slot (the header button only shows while a filled slot is active); the card goes back to dashed / empty (Esc cancels) |
+| `SAVE [↧]` (SAVED SETS header) | Store the field in the **active** library slot, else the first empty one (`LIBRARY FULL` if none: use a card's own `[↧]`). Saves nodes, shapes, strokes, FX; the card gets a small thumbnail of the field. Storage refusal (quota, private mode) is reported and the slot lives for the session |
+| `CLEAR [×]` (SAVED SETS header, twice in 3 s) | Delete the saved set of the active slot (the header button only shows while a filled slot is active); the card goes back to dashed / empty (Esc cancels) |
 | Library cards CS-06 … CS-13 | Eight slots under the five factory sets, a 4-up grid of thumbnails. Click a card = load that set (undo step `PRESET CS-0x`; an empty card says so). Each card has its own `[↧]` (save the current field into it, overwrites) and `[×]` (clear, press twice within 3 s, shown only while filled). A set saved before thumbnails existed (or migrated from v5) shows its colour chips until it is saved again |
 | `U` / `Share [U]`          | Copy a link to the clipboard that restores this exact document (nodes with shape / rot / pts / soft / opac, colours, FX, wallpaper target); status `LINK COPIED`. Opening such a link (or pasting it while the app is open) loads it as one undo step `LINK` (`UNDO` goes back) and strips the hash from the address bar; a malformed one is ignored with `SHARE LINK NOT RECOGNISED — IGNORED`. Hash format below |
 | `C` / `Copy [C]`           | Copy the field as a PNG to the clipboard: the quick-export render (2048 px long side, FX included, no handles). Needs the async clipboard API with `ClipboardItem` (HTTPS / localhost); otherwise a status line says so and Export still works |
@@ -193,7 +212,18 @@ Martian Mono). No runtime network calls beyond same-origin assets.
 
 - Footer and rail stats: `[data-stat="visits|exports"]` show this browser's counts (`localStorage` `gh.stats.v1`): VISITS = page loads, EXPORTS = PNG downloads (Export and the quick copy). Nothing is sent anywhere.
 
-- REV plate (spec panel head, `.rev`, `[data-build="version|sha|date|env"]`): `REV 06.1`, `BUILD <sha> // YY.MM.DD`, `LIVE` / `DEV`. Stamped at build time by `vite.config.ts` (`package.json` version; commit from `VERCEL_GIT_COMMIT_SHA` on Vercel, else `git rev-parse`), so every deploy shows its own commit and date. Bump `version` in `package.json` for a new REV number.
+- Draw tools: `[data-testid="draw-tray"]` (`hidden` unless drawing or a stroke is selected; `.is-top` while flipped to the
+  stage head, `.is-editing` while it edits the selected stroke), tools `.dt-tool[data-draw-kind="pencil|line|rect|ellipse|tri|star"]`
+  (`role=radio`, `aria-checked`), style `[data-draw-fill="false|true"]`, `.dt-weight input[type=range]` with `.dt-preview`, star
+  `.dt-star` fields, close `[data-action="draw-tray-close"]`. Strokes in documents may carry `closed`, `fill` and `smooth`
+  (`true` only; `fill` needs `closed`); a filled loop is shader shape 5. Point editing: `.vtx-layer` (`.vtx-sq` anchors,
+  `.vtx-mid` edge marks, `.is-hot` on the hovered / active one); `data-hover-state` gains `vtx|mid`, `data-drag` gains `vtx`.
+- Panel sections: `.spec-section[data-sec="presets|saved|image|node|fx|wallpaper"]` (`.is-collapsed`), header `.sec-head`,
+  toggle `.sec-toggle` (`aria-expanded`, `aria-controls` = `#sec-<id>`), body `.sec-body`.
+- Top bar HUD: `.hud`, `#hud-cursor` (`.is-on` while the pointer is over the stage), `#hud-meter` (16 `<i>`, `.is-on` /
+  `.is-sel`), `#hud-count`. The old `#state-readout` / `#state-glyph` and the `SPEC [↓]` link are gone.
+
+- REV plate (spec panel head, `.rev`, `[data-build="version|sha|date|env"]`): `REV 06.2`, `BUILD <sha> // YY.MM.DD`, `LIVE` / `DEV`. Stamped at build time by `vite.config.ts` (`package.json` version; commit from `VERCEL_GIT_COMMIT_SHA` on Vercel, else `git rev-parse`), so every deploy shows its own commit and date. Bump `version` in `package.json` for a new REV number.
 
 ## Credits
 
