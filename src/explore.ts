@@ -577,13 +577,13 @@ export class Explore {
   }
 
   /**
-   * Drop the full preview. `soon`: after leaving a thumbnail, wait 500 ms first, so crossing the gap to the next take
+   * Drop the full preview. `soon`: after leaving a thumbnail, wait 200 ms first, so crossing the gap to the next take
    * does not flash the real field in between (entering a take cancels it and swaps straight over).
    */
   private hideFull(soon = false): void {
     window.clearTimeout(this.fullHideTimer);
     if (soon) {
-      this.fullHideTimer = window.setTimeout(() => this.hideFull(), 500);
+      this.fullHideTimer = window.setTimeout(() => this.hideFull(), 200);
       return;
     }
     this.fullToken++;
