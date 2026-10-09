@@ -69,6 +69,9 @@ export class Explore {
   private randomBtn = document.querySelector<HTMLButtonElement>('[data-action=randomize]')!;
   private varyBtn = document.querySelector<HTMLButtonElement>('[data-action=vary]')!;
   private dropDepth = 0;
+  /** Opened by a click / key (stays until dismissed) rather than a hover peek. */
+  private pinned = false;
+  private peekTimer = 0;
 
   constructor(
     private store: Store,
@@ -77,8 +80,22 @@ export class Explore {
     private metrics: Metrics,
     private now: () => number,
   ) {
-    this.randomBtn.addEventListener('click', () => (this.isOpen && this.mode === 'random' ? this.close() : void this.open('random')));
-    this.varyBtn.addEventListener('click', () => (this.isOpen && this.mode === 'vary' ? this.close() : void this.open('vary')));
+    // Hover peeks the strip (it goes again once the pointer has left both the button and the strip); a click pins it
+    // until a click off it, Esc or a second click on the same button. R / V open it pinned.
+    for (const [btn, mode] of [[this.randomBtn, 'random'], [this.varyBtn, 'vary']] as const) {
+      btn.addEventListener('click', () => {
+        if (this.isOpen && this.mode === mode && this.pinned) this.close();
+        else this.pin(mode);
+      });
+      btn.addEventListener('pointerenter', (e) => {
+        if (e.pointerType !== 'mouse' || (this.pinned && this.isOpen)) return;
+        window.clearTimeout(this.peekTimer);
+        if (!this.isOpen || this.mode !== mode) void this.open(mode);
+      });
+      btn.addEventListener('pointerleave', (e) => {
+        if (e.pointerType === 'mouse') this.schedulePeekClose();
+      });
+    }
 
     // ----- VARY strip (a child of the stage, like the node menu: it hides with the rest of the furniture in PREVIEW)
     const el = document.createElement('div');
@@ -172,6 +189,10 @@ export class Explore {
     el.appendChild(row);
     this.strip = el;
     stage.appendChild(el);
+    el.addEventListener('pointerenter', () => window.clearTimeout(this.peekTimer));
+    el.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'mouse') this.schedulePeekClose();
+    });
     // The strip is a child of the stage: keep its gestures away from the stage's pointer handling.
     for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'dblclick', 'wheel', 'contextmenu']) {
       el.addEventListener(t, (e) => e.stopPropagation());
@@ -196,6 +217,7 @@ export class Explore {
   // ----- RANDOM harmony --------------------------------------------------------
 
   private setHarmony(h: Harmony): void {
+    this.pinned = true;
     const s = this.store;
     if (s.harmony === h) return;
     s.harmony = h;
@@ -223,6 +245,7 @@ export class Explore {
 
   /** Flip one axis (the last checked one cannot be cleared), remember it, and roll a fresh set when open. */
   private toggleAxis(key: keyof VaryAxes): void {
+    this.pinned = true;
     const next = { ...this.axes, [key]: !this.axes[key] };
     if (!next.comp && !next.color && !next.fx) {
       this.store.say('VARY · KEEP AT LEAST ONE');
@@ -255,6 +278,7 @@ export class Explore {
 
   /** Lock / unlock take `k` of the current mode. Only a rendered take can be locked. */
   private toggleKeep(k: number): void {
+    this.pinned = true; // working inside the strip keeps it
     const slot = this.kept[this.mode];
     if (slot[k]) slot[k] = null;
     else {
@@ -358,7 +382,26 @@ export class Explore {
     }
   }
 
+  /** Open (or switch to) `mode` and keep it until dismissed. */
+  private pin(mode: 'vary' | 'random'): void {
+    window.clearTimeout(this.peekTimer);
+    this.pinned = true;
+    if (!this.isOpen || this.mode !== mode) void this.open(mode);
+  }
+
+  /** A peek closes a moment after the pointer has left both its button and the strip (the grace bridges the gap). */
+  private schedulePeekClose(): void {
+    if (this.pinned) return;
+    window.clearTimeout(this.peekTimer);
+    this.peekTimer = window.setTimeout(() => {
+      const over = this.strip.matches(':hover') || this.varyBtn.matches(':hover') || this.randomBtn.matches(':hover');
+      if (!this.pinned && !over) this.close();
+    }, 260);
+  }
+
   close(): void {
+    window.clearTimeout(this.peekTimer);
+    this.pinned = false;
     if (!this.isOpen) return;
     this.token++;
     this.strip.hidden = true;
@@ -399,9 +442,11 @@ export class Explore {
     if (e.repeat) return;
     if (e.key === 'r' || e.key === 'R') {
       e.preventDefault();
+      this.pinned = true;
       void this.open('random');
     } else if (e.key === 'v' || e.key === 'V') {
       e.preventDefault();
+      this.pinned = true;
       void this.open('vary');
     }
   }
