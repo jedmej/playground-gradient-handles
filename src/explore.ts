@@ -3,7 +3,7 @@ import { renderOffscreen } from './exporter';
 import { extractFromFile } from './extract';
 import type { Metrics } from './handles';
 import { copyFx, type FxState } from './fx';
-import { HARMONIES, HARMONY_LABEL, makeRng, newSeed, seedLabel, varyFx, varySpecs, type VaryAxes } from './generate';
+import { HARMONIES, HARMONY_LABEL, makeRng, newSeed, randomSpecs, seedLabel, varyFx, varySpecs, type Harmony, type VaryAxes } from './generate';
 import { makeNode, snapshotIdentified, type NodeSpec, type Store } from './store';
 
 const TYPING = 'input:not([type=color]):not([type=checkbox]), textarea, select, [contenteditable=""], [contenteditable="true"]';
@@ -32,9 +32,14 @@ function loadAxes(): VaryAxes {
   return { comp: true, color: false, fx: false };
 }
 
+/** The concrete rules ANY spreads across RANDOM's four takes, so the strip shows four different harmonies. */
+const ANY_SPREAD: Harmony[] = ['analog', 'compl', 'triad', 'split', 'mono'];
+
 /**
- * Starting points and exploration: RANDOM [R] + its harmony chip, VARY [V] (a strip of four mutated copies over the
- * stage), and palette extraction from an image (file picker in the colour-set panel, or a drop on the stage).
+ * Starting points and exploration: one strip over the stage with four thumbnails, in two modes. RANDOM [R]: four
+ * fresh compositions under the harmony chosen by the chips in the strip head (ANY spreads four different rules).
+ * VARY [V]: four takes on the current field, the axes chips choosing what may change. Plus palette extraction from an
+ * image (file picker in the colour-set panel, or a drop on the stage).
  */
 export class Explore {
   private strip: HTMLDivElement;
@@ -42,12 +47,17 @@ export class Explore {
   private btns: HTMLButtonElement[] = [];
   private imgs: HTMLImageElement[] = [];
   private urls: string[] = [];
-  private variants: Array<{ specs: NodeSpec[]; fx: FxState | null }> = [];
+  private variants: Array<{ specs: NodeSpec[]; fx: FxState | null; rule?: Harmony; seed?: number }> = [];
+  private mode: 'vary' | 'random' = 'vary';
+  private axesEl!: HTMLElement;
+  private harmEl!: HTMLElement;
+  private harmBtns: HTMLButtonElement[] = [];
+  private tags: HTMLElement[] = [];
   private axes = loadAxes();
   private axisBtns: HTMLButtonElement[] = [];
   private token = 0;
   private sig = '';
-  private harmonyBtn = document.querySelector<HTMLButtonElement>('[data-action=harmony]')!;
+  private randomBtn = document.querySelector<HTMLButtonElement>('[data-action=randomize]')!;
   private varyBtn = document.querySelector<HTMLButtonElement>('[data-action=vary]')!;
   private dropDepth = 0;
 
@@ -58,10 +68,8 @@ export class Explore {
     private metrics: Metrics,
     private now: () => number,
   ) {
-    document.querySelector<HTMLButtonElement>('[data-action=randomize]')!.addEventListener('click', () => this.random());
-    this.varyBtn.addEventListener('click', () => (this.isOpen ? this.close() : void this.open()));
-    this.harmonyBtn.addEventListener('click', (e) => this.cycleHarmony(e.shiftKey ? -1 : 1));
-    this.syncHarmony();
+    this.randomBtn.addEventListener('click', () => (this.isOpen && this.mode === 'random' ? this.close() : void this.open('random')));
+    this.varyBtn.addEventListener('click', () => (this.isOpen && this.mode === 'vary' ? this.close() : void this.open('vary')));
 
     // ----- VARY strip (a child of the stage, like the node menu: it hides with the rest of the furniture in PREVIEW)
     const el = document.createElement('div');
@@ -89,9 +97,28 @@ export class Explore {
       axes.appendChild(b);
       this.axisBtns.push(b);
     }
-    top.append(this.head, axes);
+    // RANDOM harmony: one rule at a time (radio chips in the same style). Changing it rolls again.
+    const harm = document.createElement('div');
+    harm.className = 'vary-axes';
+    harm.setAttribute('role', 'radiogroup');
+    harm.setAttribute('aria-label', 'Colour harmony');
+    for (const h of HARMONIES) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'vary-axis';
+      b.setAttribute('role', 'radio');
+      b.dataset.harmony = h;
+      b.innerHTML = `<i aria-hidden="true"></i>${HARMONY_LABEL[h]}`;
+      b.addEventListener('click', () => this.setHarmony(h));
+      harm.appendChild(b);
+      this.harmBtns.push(b);
+    }
+    this.axesEl = axes;
+    this.harmEl = harm;
+    top.append(this.head, axes, harm);
     el.appendChild(top);
     this.syncAxes();
+    this.syncHarmony();
     const row = document.createElement('div');
     row.className = 'vary-row';
     for (let k = 0; k < STRENGTH.length; k++) {
@@ -107,6 +134,7 @@ export class Explore {
       const tag = document.createElement('span');
       tag.className = 'vary-serial';
       tag.textContent = `V-${k + 1}`;
+      this.tags.push(tag);
       const key = document.createElement('kbd');
       key.textContent = String(k + 1);
       b.append(img, tag, key);
@@ -123,7 +151,8 @@ export class Explore {
       el.addEventListener(t, (e) => e.stopPropagation());
     }
     window.addEventListener('pointerdown', (e) => {
-      if (this.isOpen && !el.contains(e.target as Node) && e.target !== this.varyBtn && !this.varyBtn.contains(e.target as Node)) this.close();
+      const t = e.target as Node;
+      if (this.isOpen && !el.contains(t) && !this.varyBtn.contains(t) && !this.randomBtn.contains(t)) this.close();
     }, { capture: true });
     // Any edit (or a different document) makes the thumbnails stale: close rather than show lies.
     store.listeners.add(() => {
@@ -138,26 +167,23 @@ export class Explore {
     return !this.strip.hidden;
   }
 
-  // ----- RANDOM ---------------------------------------------------------------
+  // ----- RANDOM harmony --------------------------------------------------------
 
-  private random(): void {
-    this.close();
-    this.actions.randomize();
-  }
-
-  private cycleHarmony(dir: number): void {
+  private setHarmony(h: Harmony): void {
     const s = this.store;
-    const at = HARMONIES.indexOf(s.harmony);
-    s.harmony = HARMONIES[(at + dir + HARMONIES.length) % HARMONIES.length];
+    if (s.harmony === h) return;
+    s.harmony = h;
     this.syncHarmony();
-    s.say(`HARMONY · ${HARMONY_LABEL[s.harmony]}`);
+    s.say(`HARMONY · ${HARMONY_LABEL[h]}`);
+    if (this.isOpen && this.mode === 'random') void this.open('random');
   }
 
   private syncHarmony(): void {
-    const label = HARMONY_LABEL[this.store.harmony];
-    this.harmonyBtn.dataset.harmony = this.store.harmony;
-    this.harmonyBtn.setAttribute('aria-label', `Colour harmony for Random: ${label}. Press to change`);
-    this.harmonyBtn.querySelector('b')!.textContent = `[${label}]`;
+    for (const b of this.harmBtns) {
+      const on = b.dataset.harmony === this.store.harmony;
+      b.setAttribute('aria-checked', String(on));
+      b.classList.toggle('is-on', on);
+    }
   }
 
   // ----- VARY -----------------------------------------------------------------
@@ -199,30 +225,58 @@ export class Explore {
     this.urls = [];
   }
 
-  /** Open the strip (or roll a new set when it is already open) and render the four thumbnails one after another. */
-  async open(): Promise<void> {
+  /**
+   * Open the strip in `mode` (or roll a new set when it is already open in it) and render the four thumbnails one after
+   * another. RANDOM: four fresh compositions (locked nodes kept). VARY: four takes on the current field.
+   */
+  async open(mode: 'vary' | 'random' = this.mode): Promise<void> {
     const s = this.store;
     if (s.drag.kind !== 'none' || s.drawing) return;
     this.sig = this.signature();
     const base = snapshotIdentified(s);
+    const label = mode === 'random' ? 'RANDOM' : 'VARY';
     if (base.every((n) => n.lock)) {
-      s.say('VARY · EVERY NODE IS LOCKED');
+      s.say(`${label} · EVERY NODE IS LOCKED`);
       return;
     }
+    this.mode = mode;
     const token = ++this.token;
     const seed = newSeed();
-    const ax = this.axes;
-    this.variants = STRENGTH.map((k, j) => {
-      const rng = makeRng(seed + j * 7919);
-      return { specs: varySpecs(rng, base, k, ax), fx: ax.fx ? varyFx(rng, s.fx, k) : null };
+    if (mode === 'random') {
+      const aspect = this.metrics.w / Math.max(1, this.metrics.h);
+      // ANY: four different concrete rules, so the strip compares harmonies; a chosen rule: four takes on it.
+      const start = Math.floor(makeRng(seed)() * ANY_SPREAD.length);
+      this.variants = STRENGTH.map((_, j) => {
+        const rule = s.harmony === 'any' ? ANY_SPREAD[(start + j) % ANY_SPREAD.length] : s.harmony;
+        const sj = (seed + j * 7919) & 0xffff;
+        const specs = randomSpecs(makeRng(sj), rule, base, aspect).map((sp) => ({ ...sp, uid: undefined }));
+        return { specs, fx: null, rule, seed: sj };
+      });
+    } else {
+      const ax = this.axes;
+      this.variants = STRENGTH.map((k, j) => {
+        const rng = makeRng(seed + j * 7919);
+        return { specs: varySpecs(rng, base, k, ax), fx: ax.fx ? varyFx(rng, s.fx, k) : null };
+      });
+    }
+    this.axesEl.hidden = mode !== 'vary';
+    this.harmEl.hidden = mode !== 'random';
+    this.strip.setAttribute('aria-label', mode === 'random' ? 'Random compositions' : 'Variations');
+    this.variants.forEach((v, j) => {
+      this.tags[j].textContent = mode === 'random' ? `R-${j + 1} · ${HARMONY_LABEL[v.rule!]}` : `V-${j + 1}`;
+      this.btns[j].setAttribute('aria-label', `Adopt ${mode === 'random' ? 'random composition' : 'variation'} ${j + 1}`);
     });
     this.revoke();
-    this.head.textContent = `VARIATIONS // 04 // SEED ${seedLabel(seed)} // 1–4 PICK · V ROLL · ESC`;
+    this.head.textContent = mode === 'random'
+      ? `RANDOM // 04 // SEED ${seedLabel(seed)} // 1–4 PICK · R ROLL · ESC`
+      : `VARIATIONS // 04 // SEED ${seedLabel(seed)} // 1–4 PICK · V ROLL · ESC`;
     for (const b of this.btns) b.classList.add('is-loading');
     this.strip.hidden = false;
-    this.varyBtn.setAttribute('aria-pressed', 'true');
-    this.varyBtn.classList.add('is-on');
-    s.say('VARY · pick a variation');
+    for (const [btn, m] of [[this.varyBtn, 'vary'], [this.randomBtn, 'random']] as const) {
+      btn.setAttribute('aria-pressed', String(m === mode));
+      btn.classList.toggle('is-on', m === mode);
+    }
+    s.say(mode === 'random' ? 'RANDOM · pick a composition' : 'VARY · pick a variation');
     const m = this.metrics;
     const aspect = m.w / Math.max(1, m.h);
     const tw = aspect >= 1 ? THUMB : Math.max(16, Math.round(THUMB * aspect));
@@ -247,8 +301,10 @@ export class Explore {
     if (!this.isOpen) return;
     this.token++;
     this.strip.hidden = true;
-    this.varyBtn.setAttribute('aria-pressed', 'false');
-    this.varyBtn.classList.remove('is-on');
+    for (const btn of [this.varyBtn, this.randomBtn]) {
+      btn.setAttribute('aria-pressed', 'false');
+      btn.classList.remove('is-on');
+    }
     if (this.strip.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
     this.revoke();
     for (const img of this.imgs) img.removeAttribute('src');
@@ -257,8 +313,10 @@ export class Explore {
   private pick(k: number): void {
     const v = this.variants[k];
     if (!v || this.btns[k].classList.contains('is-loading')) return;
+    const mode = this.mode;
     this.close();
-    this.actions.adoptVariant(v.specs, k + 1, v.fx ? copyFx(v.fx) : null);
+    if (mode === 'random') this.actions.adoptRandom(v.specs, `RANDOM · ${HARMONY_LABEL[v.rule!]} · SEED ${seedLabel(v.seed!)}`);
+    else this.actions.adoptVariant(v.specs, k + 1, v.fx ? copyFx(v.fx) : null);
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -280,10 +338,10 @@ export class Explore {
     if (e.repeat) return;
     if (e.key === 'r' || e.key === 'R') {
       e.preventDefault();
-      this.random();
+      void this.open('random');
     } else if (e.key === 'v' || e.key === 'V') {
       e.preventDefault();
-      void this.open();
+      void this.open('vary');
     }
   }
 

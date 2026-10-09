@@ -3396,6 +3396,7 @@ html[data-drag='lum'] .stage,
   gap: 6px;
   padding: 6px 6px 0;
 }
+.vary-axes[hidden] { display: none; }
 .vary-axis {
   display: inline-flex;
   align-items: center;

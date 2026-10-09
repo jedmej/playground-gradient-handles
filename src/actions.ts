@@ -14,7 +14,6 @@ import {
   moveNodeTo,
   nodeSerial,
   reconcile,
-  snapshotIdentified,
   type NodeSpec,
   PAPER_HEX,
   R_MAX,
@@ -31,7 +30,6 @@ import {
 import { fieldHexAt } from './field';
 import { addGroup, mirrorSpots, pairNodes, tools } from './tools';
 import { copyFx, FX_IDS, fxActive, fxFromPos, fxMaxPos, fxOptId, fxPos, fxStatus, fxWithOption, onValue, rememberFx, sameFx, type FxId, type FxOpt, type FxState } from './fx';
-import { HARMONY_LABEL, makeRng, newSeed, randomSpecs, seedLabel } from './generate';
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 
@@ -358,15 +356,12 @@ export class Actions {
     emit(s);
   }
 
-  /** RANDOM [R]: a new composition under the chosen harmony rule. Locked nodes stay as they are. */
-  randomize(): void {
+  /** Adopt one RANDOM thumbnail (a fresh composition, locked nodes already kept in it). One undo step `RANDOM`. */
+  adoptRandom(specs: NodeSpec[], status: string): void {
     const s = this.store;
     if (s.drag.kind !== 'none' || s.drawing) return;
-    const seed = newSeed();
-    const aspect = this.metrics.w / Math.max(1, this.metrics.h);
-    const specs = randomSpecs(makeRng(seed), s.harmony, snapshotIdentified(s), aspect);
-    this.adopt('RANDOM', specs.map((sp) => ({ ...sp, uid: undefined })));
-    s.say(`RANDOM · ${HARMONY_LABEL[s.harmony]} · SEED ${seedLabel(seed)}`);
+    this.adopt('RANDOM', specs);
+    s.say(status);
   }
 
   /** Adopt one VARY thumbnail's specs (identified, so every node keeps its identity). One undo step `VARY`. */
