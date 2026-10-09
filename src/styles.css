@@ -441,9 +441,13 @@ b {
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
-.stage-bar .tb-btn[aria-expanded='true'],
-.stage-bar .tb-btn[aria-expanded='true']:hover { background: var(--plate); color: var(--signal); }
-.stage-bar .tb-btn[aria-expanded='true'] b { color: var(--signal); }
+.stage-bar .keys-btn { margin: 0; height: 20px; }
+.keys-btn[aria-pressed='true'],
+.keys-btn[aria-pressed='true']:hover { background: var(--plate); color: var(--signal); }
+.keys-btn[aria-pressed='true'] b { color: var(--signal); }
+@media (pointer: coarse), (max-width: 959px) {
+  .stage-bar .keys-btn { height: 36px; padding: 0 12px; }
+}
 .keys-wrap { position: relative; margin-left: auto; }
 
 /* SHORTCUTS popup: the node menu's plate, a vertical key → action list, opening up from its button. */
@@ -470,6 +474,7 @@ b {
 .keys-list { margin: 0; padding: 0; }
 .keys-list > div {
   display: flex;
+  flex-direction: row-reverse; /* action on the left, key on the right */
   align-items: center;
   justify-content: space-between;
   gap: 18px;
@@ -483,7 +488,7 @@ b {
   font-size: 9.5px;
   white-space: nowrap;
 }
-.keys-list dd { margin: 0; color: var(--graphite); text-align: right; }
+.keys-list dd { margin: 0; color: var(--graphite); text-align: left; }
 .keys-list > div:hover dd { color: var(--signal); }
 .keys-pop .k-touch { display: none; }
 

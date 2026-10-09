@@ -294,30 +294,51 @@ window.addEventListener('keydown', (e) => {
   setTheme(!isDark());
 });
 
-// ----- SHORTCUTS [?]: the key list lives in a popup under the artboard (closed by default). ? or the button toggles it;
-// Esc, a press outside or the button again closes it.
+// ----- SHORTCUTS [?]: the key list lives in a popup under the artboard (closed by default). Hovering the button peeks
+// it (it goes again when the pointer leaves the button and the list); a click or ? pins it open (aria-pressed) until
+// a second click / ?, Esc or a press outside.
 const keysBtn = document.getElementById('keys-btn') as HTMLButtonElement;
 const keysPop = document.getElementById('keys') as HTMLElement;
-const setKeys = (open: boolean): void => {
+const keysWrap = keysBtn.parentElement as HTMLElement;
+let keysPinned = false;
+let keysPeekTimer = 0;
+const showKeys = (open: boolean): void => {
+  window.clearTimeout(keysPeekTimer);
   keysPop.hidden = !open;
   keysBtn.setAttribute('aria-expanded', String(open));
 };
-keysBtn.addEventListener('click', () => setKeys(keysPop.hidden));
+const pinKeys = (pin: boolean): void => {
+  keysPinned = pin;
+  keysBtn.setAttribute('aria-pressed', String(pin));
+  showKeys(pin);
+};
+keysBtn.setAttribute('aria-pressed', 'false');
+keysBtn.addEventListener('click', () => pinKeys(!keysPinned));
+keysWrap.addEventListener('pointerenter', (e) => {
+  if (e.pointerType === 'mouse' && !keysPinned) showKeys(true);
+});
+keysWrap.addEventListener('pointerleave', (e) => {
+  if (e.pointerType !== 'mouse' || keysPinned) return;
+  // A short grace period bridges the gap between the button and the list above it.
+  keysPeekTimer = window.setTimeout(() => {
+    if (!keysPinned && !keysWrap.matches(':hover')) showKeys(false);
+  }, 180);
+});
 window.addEventListener('pointerdown', (e) => {
-  if (!keysPop.hidden && !keysPop.contains(e.target as Node) && !keysBtn.contains(e.target as Node)) setKeys(false);
+  if (!keysPop.hidden && !keysWrap.contains(e.target as Node)) pinKeys(false);
 }, { capture: true });
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !keysPop.hidden) {
     e.preventDefault();
     e.stopPropagation();
-    setKeys(false);
+    pinKeys(false);
     return;
   }
   if (e.key !== '?' || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
   const t = e.target as HTMLElement | null;
   if (t?.closest?.(TYPING) || t?.closest?.('[data-fx-knob], [data-fx-ring]')) return;
   e.preventDefault();
-  setKeys(keysPop.hidden);
+  pinKeys(!keysPinned);
 }, { capture: true });
 
 let last = now();
