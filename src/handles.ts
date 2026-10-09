@@ -1456,9 +1456,12 @@ export class Handles {
     }
     // The FX dial owns `ui-focus` while it is adjusted (`fx-focus`): never clear it from here.
     this.stage.classList.toggle('ui-focus', focusIdx >= 0 || this.stage.classList.contains('fx-focus'));
-    // Engaged: while a node is selected in the edit tool (its bezel is the thing being played with), the other nodes
-    // step back (CSS `.node-engaged`); the FX dial does the same for every node while it is open (`.fx-open`).
-    const engagedIdx = s.tool === 'edit' && !s.drawing && s.selected !== null && s.selected < s.nodes.length ? s.selected : -1;
+    // Engaged: while a node is hovered or selected in the edit tool (its bezel is the thing being played with), the
+    // other nodes step back (CSS `.node-engaged`); the hovered one wins over the selection. The FX dial does the same
+    // for every node while it is open (`.fx-open`).
+    const hovIdx = s.hover.kind !== 'idle' && s.hover.index >= 0 && s.hover.index < s.nodes.length ? s.hover.index : -1;
+    const selIdx = s.selected !== null && s.selected < s.nodes.length ? s.selected : -1;
+    const engagedIdx = s.tool === 'edit' && !s.drawing ? (hovIdx >= 0 ? hovIdx : selIdx) : -1;
     this.stage.classList.toggle('node-engaged', engagedIdx >= 0);
 
     for (let i = 0; i < s.nodes.length; i++) {
