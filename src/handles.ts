@@ -5,7 +5,7 @@ import type { Actions } from './actions';
 import type { History } from './history';
 import { BODY_Q, nodeQ, outlinePoints } from './field';
 import { centroid, distToPolyline, pathLength, rdp, simplifyTo, type Pt } from './geom';
-import { NodeMenu } from './menu';
+import { BoardMenu, NodeMenu } from './menu';
 import { endPlace, placeNode } from './tools';
 import {
   addNode,
@@ -203,6 +203,7 @@ export class Handles {
   private lastPointerType = 'mouse';
   private keyMenuAt = -Infinity;
   private menu: NodeMenu;
+  private boardMenu: BoardMenu;
 
   constructor(
     private store: Store,
@@ -245,6 +246,7 @@ export class Handles {
     window.addEventListener('pointerdown', () => svg.classList.remove('kb'), { capture: true });
 
     this.menu = new NodeMenu(store, stage, actions, (i) => this.views[i]?.g.focus({ preventScroll: true }));
+    this.boardMenu = new BoardMenu(store, stage, actions, () => ({ w: this.metrics.w, h: this.metrics.h }));
 
     stage.addEventListener('pointerdown', this.onDown);
     stage.addEventListener('pointermove', this.onMove);
@@ -1319,6 +1321,7 @@ export class Handles {
     if (performance.now() - this.keyMenuAt < 400 || this.lastPointerType === 'touch') return;
     if (s.tool !== 'edit' || s.drawing || s.drag.kind !== 'none') {
       this.menu.close();
+      this.boardMenu.close();
       return;
     }
     this.updateMetrics();
@@ -1326,9 +1329,16 @@ export class Handles {
     const y = e.clientY - this.metrics.top;
     const hit = this.pick(x, y);
     if (hit.index < 0) {
+      // Off every node: the artboard's own menu (ADD NODE HERE · DRAW).
       this.menu.close();
+      if (s.selected !== null) {
+        s.selected = null;
+        emit(s);
+      }
+      this.boardMenu.open(x, y);
       return;
     }
+    this.boardMenu.close();
     s.selected = hit.index;
     s.armed = hit.index;
     emit(s);

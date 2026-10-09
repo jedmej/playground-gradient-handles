@@ -1,5 +1,5 @@
 import type { Actions } from './actions';
-import { MIN_NODES, nodeSerial, type LayerMove, type Store } from './store';
+import { MAX_NODES, MIN_NODES, nodeSerial, type LayerMove, type Store } from './store';
 
 interface Item {
   action: string;
@@ -245,6 +245,136 @@ export class NodeMenu {
         break;
       default:
         // Layer / radius shortcuts keep working with the menu open (they act on the selected node).
+        return;
+    }
+    e.stopPropagation();
+  }
+}
+
+/**
+ * Board menu: right-click on the artboard away from any node. The node menu's plate with ADD NODE HERE (the
+ * double-click add, colour = the field under the point; mirror partners too when MIRROR is on) and DRAW.
+ */
+export class BoardMenu {
+  readonly el: HTMLDivElement;
+  private addBtn: HTMLButtonElement;
+  private at = { x: 0, y: 0 };
+  private openedAt = -Infinity;
+
+  constructor(
+    private store: Store,
+    private stage: HTMLElement,
+    private actions: Actions,
+    /** Stage size, for turning the click point into normalised coordinates. */
+    private size: () => { w: number; h: number },
+  ) {
+    const el = document.createElement('div');
+    el.className = 'node-menu board-menu';
+    el.setAttribute('role', 'menu');
+    el.setAttribute('aria-label', 'Artboard menu');
+    el.dataset.testid = 'board-menu';
+    el.hidden = true;
+    const head = document.createElement('div');
+    head.className = 'menu-head';
+    head.setAttribute('role', 'presentation');
+    head.textContent = 'ARTBOARD';
+    el.appendChild(head);
+    const item = (action: string, label: string, key: string): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'menu-item';
+      b.setAttribute('role', 'menuitem');
+      b.dataset.action = action;
+      b.innerHTML = `<span class="mi-l">${label}</span><kbd>${key}</kbd>`;
+      b.addEventListener('click', () => {
+        if (performance.now() - this.openedAt < 120 && !el.classList.contains('is-kb')) return;
+        this.activate(action);
+      });
+      el.appendChild(b);
+      return b;
+    };
+    this.addBtn = item('board-add', 'ADD NODE HERE', 'DBL-CLICK');
+    item('board-draw', 'DRAW', 'D');
+    this.el = el;
+    stage.appendChild(el);
+    for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'dblclick']) {
+      el.addEventListener(t, (e) => e.stopPropagation());
+    }
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    el.addEventListener('wheel', (e) => {
+      e.stopPropagation();
+      this.close();
+    }, { passive: true });
+    el.addEventListener('keydown', (e) => this.onKey(e));
+    window.addEventListener('pointerdown', (e) => {
+      if (this.isOpen && !el.contains(e.target as Node)) this.close();
+    }, { capture: true });
+    window.addEventListener('blur', () => this.close());
+    window.addEventListener('resize', () => this.close());
+  }
+
+  get isOpen(): boolean {
+    return !this.el.hidden;
+  }
+
+  /** Open at stage-local (x, y), the point ADD NODE HERE will use. */
+  open(x: number, y: number): void {
+    this.at = { x, y };
+    this.openedAt = performance.now();
+    this.addBtn.disabled = this.store.nodes.length >= MAX_NODES;
+    this.el.hidden = false;
+    const w = this.stage.clientWidth;
+    const h = this.stage.clientHeight;
+    const mw = this.el.offsetWidth;
+    const mh = this.el.offsetHeight;
+    let left = x + 2;
+    let top = y + 2;
+    if (left + mw > w - 4) left = x - mw - 2;
+    if (top + mh > h - 4) top = y - mh - 2;
+    this.el.style.left = `${Math.round(Math.max(4, Math.min(left, w - mw - 4)))}px`;
+    this.el.style.top = `${Math.round(Math.max(4, Math.min(top, h - mh - 4)))}px`;
+    [...this.el.querySelectorAll<HTMLButtonElement>('.menu-item')].find((b) => !b.disabled)?.focus({ preventScroll: true });
+  }
+
+  close(): void {
+    if (!this.isOpen) return;
+    this.el.hidden = true;
+    this.el.classList.remove('is-kb');
+    if (this.el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+  }
+
+  private activate(action: string): void {
+    this.close();
+    if (action === 'board-add') {
+      const { w, h } = this.size();
+      this.actions.addAt(this.at.x / w, this.at.y / h, true);
+    } else if (action === 'board-draw') {
+      this.actions.setDraw(true);
+    }
+  }
+
+  private onKey(e: KeyboardEvent): void {
+    const items = [...this.el.querySelectorAll<HTMLButtonElement>('.menu-item')].filter((b) => !b.disabled);
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    const go = (k: number): void => {
+      e.preventDefault();
+      this.el.classList.add('is-kb');
+      items[(k + items.length) % items.length]?.focus({ preventScroll: true });
+    };
+    switch (e.key) {
+      case 'ArrowDown': go(at + 1); break;
+      case 'ArrowUp': go(at < 0 ? items.length - 1 : at - 1); break;
+      case 'Escape':
+        e.preventDefault();
+        this.close();
+        break;
+      case 'Tab':
+        this.close();
+        break;
+      default:
         return;
     }
     e.stopPropagation();
