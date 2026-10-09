@@ -53,6 +53,15 @@ export class Explore {
   private harmEl!: HTMLElement;
   private harmBtns: HTMLButtonElement[] = [];
   private tags: HTMLElement[] = [];
+  private lockBtns: HTMLButtonElement[] = [];
+  /**
+   * Thumbnails the user locked (padlock, top-right), per mode: a locked take survives every roll, chip change and
+   * reopen, keeping its slot and its rendered image, until it is unlocked.
+   */
+  private kept: Record<'vary' | 'random', Array<{ v: Explore['variants'][number]; url: string } | null>> = {
+    vary: [null, null, null, null],
+    random: [null, null, null, null],
+  };
   private axes = loadAxes();
   private axisBtns: HTMLButtonElement[] = [];
   private token = 0;
@@ -137,7 +146,22 @@ export class Explore {
       this.tags.push(tag);
       b.append(img, tag); // the serial (R-1 / V-1) doubles as the 1–4 key hint
       b.addEventListener('click', () => this.pick(k));
-      row.appendChild(b);
+      // Padlock over the thumbnail's top-right corner (a sibling, not inside the pick button).
+      const lock = document.createElement('button');
+      lock.type = 'button';
+      lock.className = 'vary-lock';
+      lock.dataset.varyLock = String(k);
+      lock.setAttribute('aria-pressed', 'false');
+      lock.setAttribute('aria-label', `Keep take ${k + 1} across rolls`);
+      lock.title = 'Lock: keep this take when rolling again';
+      lock.innerHTML =
+        '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path class="lk-sh" d="M3.5 5.5V4a2.5 2.5 0 0 1 5 0v1.5"/><rect class="lk-bd" x="2" y="5.5" width="8" height="5.5"/></svg>';
+      lock.addEventListener('click', () => this.toggleKeep(k));
+      const cell = document.createElement('div');
+      cell.className = 'vary-cell';
+      cell.append(b, lock);
+      row.appendChild(cell);
+      this.lockBtns.push(lock);
       this.btns.push(b);
       this.imgs.push(img);
     }
@@ -218,9 +242,33 @@ export class Explore {
     });
   }
 
+  /** Release thumbnail images, except the ones a lock is holding (in either mode). */
   private revoke(): void {
-    for (const u of this.urls) URL.revokeObjectURL(u);
-    this.urls = [];
+    const held = new Set([...this.kept.vary, ...this.kept.random].map((k) => k?.url));
+    for (const u of this.urls) if (!held.has(u)) URL.revokeObjectURL(u);
+    this.urls = this.urls.filter((u) => held.has(u));
+  }
+
+  /** Lock / unlock take `k` of the current mode. Only a rendered take can be locked. */
+  private toggleKeep(k: number): void {
+    const slot = this.kept[this.mode];
+    if (slot[k]) slot[k] = null;
+    else {
+      const v = this.variants[k];
+      const url = this.imgs[k].getAttribute('src');
+      if (!v || !url || this.btns[k].classList.contains('is-loading')) return;
+      slot[k] = { v, url };
+    }
+    this.syncLocks();
+    this.store.say(`${this.mode === 'random' ? 'R' : 'V'}-${k + 1} · ${slot[k] ? 'LOCKED' : 'UNLOCKED'}`);
+  }
+
+  private syncLocks(): void {
+    this.lockBtns.forEach((b, k) => {
+      const on = !!this.kept[this.mode][k];
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('is-on', on);
+    });
   }
 
   /**
@@ -245,6 +293,8 @@ export class Explore {
       // ANY: four different concrete rules, so the strip compares harmonies; a chosen rule: four takes on it.
       const start = Math.floor(makeRng(seed)() * ANY_SPREAD.length);
       this.variants = STRENGTH.map((_, j) => {
+        const keep = this.kept.random[j];
+        if (keep) return keep.v;
         const rule = s.harmony === 'any' ? ANY_SPREAD[(start + j) % ANY_SPREAD.length] : s.harmony;
         const sj = (seed + j * 7919) & 0xffff;
         const specs = randomSpecs(makeRng(sj), rule, base, aspect).map((sp) => ({ ...sp, uid: undefined }));
@@ -253,6 +303,8 @@ export class Explore {
     } else {
       const ax = this.axes;
       this.variants = STRENGTH.map((k, j) => {
+        const keep = this.kept.vary[j];
+        if (keep) return keep.v;
         const rng = makeRng(seed + j * 7919);
         return { specs: varySpecs(rng, base, k, ax), fx: ax.fx ? varyFx(rng, s.fx, k) : null };
       });
@@ -265,10 +317,16 @@ export class Explore {
       this.btns[j].setAttribute('aria-label', `Adopt ${mode === 'random' ? 'random composition' : 'variation'} ${j + 1}`);
     });
     this.revoke();
+    this.syncLocks();
     this.head.textContent = mode === 'random'
       ? `RANDOM // 04 // SEED ${seedLabel(seed)} // 1–4 PICK · R ROLL · ESC`
       : `VARIATIONS // 04 // SEED ${seedLabel(seed)} // 1–4 PICK · V ROLL · ESC`;
-    for (const b of this.btns) b.classList.add('is-loading');
+    this.btns.forEach((b, j) => {
+      const keep = this.kept[mode][j];
+      b.classList.toggle('is-loading', !keep);
+      if (keep) this.imgs[j].src = keep.url;
+      else this.imgs[j].removeAttribute('src');
+    });
     this.strip.hidden = false;
     for (const [btn, m] of [[this.varyBtn, 'vary'], [this.randomBtn, 'random']] as const) {
       btn.setAttribute('aria-pressed', String(m === mode));
@@ -281,6 +339,7 @@ export class Explore {
     const th = aspect >= 1 ? Math.max(16, Math.round(THUMB / aspect)) : THUMB;
     this.strip.style.setProperty('--vary-aspect', String(aspect));
     for (let j = 0; j < this.variants.length; j++) {
+      if (this.kept[mode][j]) continue; // a locked take keeps its image
       // renderOffscreen reads the store's nodes (settled targets) and FX: hand it a copy carrying the variant.
       const v = this.variants[j];
       const copy: Store = { ...s, nodes: v.specs.map((sp) => makeNode(sp)), fx: v.fx ?? s.fx };

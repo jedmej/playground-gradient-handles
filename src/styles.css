@@ -3122,6 +3122,34 @@ html[data-drag='lum'] .stage,
   gap: 6px;
   padding: 6px 6px 0;
 }
+.vary-cell { position: relative; min-width: 0; }
+.vary-cell .vary-btn { width: 100%; }
+/* Padlock: keeps this take through rolls. Faint until hovered; SIGNAL plate while locked. */
+.vary-lock {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: var(--plate);
+  color: var(--graphite);
+  cursor: pointer;
+  opacity: 0.75;
+}
+.vary-lock svg { display: block; }
+.vary-lock .lk-sh { fill: none; stroke: currentColor; stroke-width: 1.3; }
+.vary-lock .lk-bd { fill: currentColor; }
+.vary-cell:hover .vary-lock, .vary-lock:focus-visible { opacity: 1; color: var(--plate-fg); }
+.vary-lock:hover { color: var(--signal); }
+.vary-lock.is-on { opacity: 1; background: var(--signal); color: var(--plate); }
+.vary-cell:has(.vary-lock.is-on) .vary-btn { outline: 1px solid var(--signal); outline-offset: -1px; }
+@media (pointer: coarse) {
+  .vary-lock { width: 32px; height: 32px; opacity: 1; }
+}
 .vary-btn {
   position: relative;
   display: block;
