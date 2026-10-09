@@ -2705,8 +2705,9 @@ html[data-drag='lum'] .stage,
 .fxdial .halo { fill: none; stroke: #000; stroke-opacity: 0.6; stroke-width: 3; stroke-linecap: butt; }
 .fxdial .ink { fill: none; stroke: #fff; stroke-width: 1; stroke-linecap: butt; }
 .fxdial .fxring { outline: none; pointer-events: none; transition: opacity 60ms linear; }
+/* Colour flips at once when a gauge is magnetized / released (a fade read as lag); only the stroke weight eases. */
 .gring .halo, .gring .ink {
-  transition: stroke-width var(--t) var(--ease), stroke var(--t) var(--ease), stroke-opacity var(--t) var(--ease);
+  transition: stroke-width 80ms var(--ease);
 }
 
 /* Bezel */
@@ -2744,7 +2745,7 @@ html[data-drag='lum'] .stage,
 
 /* Callout chip: the node coordinate tag, one per ring, in the ring's own bottom gap. */
 .gring .tag-bg,
-.fxempty .tag-bg { fill: var(--plate); fill-opacity: 0.92; transition: fill var(--t) var(--ease); }
+.fxempty .tag-bg { fill: var(--plate); fill-opacity: 0.92; }
 .gring .tag-text,
 .fxempty .tag-text {
   font-family: var(--mono);
@@ -2818,6 +2819,12 @@ html[data-drag='lum'] .stage,
   transition: opacity 120ms var(--ease), background-color var(--t) var(--ease), color var(--t) var(--ease), filter 200ms var(--ease);
 }
 .stage .fxdial .fxring { transition: opacity 60ms linear, filter 200ms var(--ease); }
+/* Hand-off between dials: the gauges inside a bezel / the dial trade the dim fast both ways, so the newly grabbed one
+   lights as quickly as its FLARE appears. */
+.stage .handles .node .ring > .gauge,
+.stage .fxdial .fxring,
+.stage.ui-focus .node .ring > .gauge,
+.stage.ui-focus .fxdial .fxring { transition-duration: 60ms, 80ms; }
 
 .stage.ui-focus .handles > :not(.is-focus):not(.tools-layer),
 .stage.ui-focus .chip.is-on:not(.is-focus),
@@ -3362,7 +3369,7 @@ html[data-drag='lum'] .stage,
 
 /* Value chip: a small upright plate on each gauge's arc at its value (`50`, `045°`), sliding round with the knob.
    FLARE while magnetized, dragged or wheeled. */
-.gring .val-bg { fill: var(--plate); fill-opacity: 0.92; transition: fill var(--t) var(--ease); }
+.gring .val-bg { fill: var(--plate); fill-opacity: 0.92; }
 .gring .val-text {
   font-family: var(--mono);
   font-size: calc(var(--fx-fs, 9px) * 0.9);
