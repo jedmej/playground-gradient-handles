@@ -1,7 +1,7 @@
 /**
  * One gauge renderer for the whole app: the FX dial's rings and a node's OPAC / SOFT / ROT dials are the same object.
  * An arc that runs almost all the way round, its gap at 6 o'clock just wide enough for the name chip (0 at the lower
- * left, clockwise through the top), halo + ink base, 11 ticks, a SIGNAL fill, a notch at the value, a value arc on the
+ * left, clockwise through the top), halo + ink base, 11 ticks, a SIGNAL fill, a notch at the value, a value chip on the
  * knob and a black mono name chip in the bottom gap (`GRAIN`).
  * Styles live under `.gring` in styles.css; state classes (`is-hover`, `is-drag`, `is-off`, `is-active`) are set by the owner.
  */
@@ -81,16 +81,14 @@ export interface GaugeParts {
   tagBg: SVGRectElement;
   tagText: SVGTextElement;
   /**
-   * Value arc: a short curved band on the gauge's own arc, centred on the current value, with the value written along
-   * it (the label's value part: `50`, `045°`, `9 LV`). It slides round with the knob, like the size ring's bearing arc.
+   * Value chip: a small upright plate on the gauge's arc at the current value (the label's value part: `50`, `045°`,
+   * `9 LV`). It slides round with the knob.
    */
   val: SVGGElement;
-  valBg: SVGPathElement;
-  valPath: SVGPathElement;
+  valBg: SVGRectElement;
   valText: SVGTextElement;
-  valTp: SVGTextPathElement;
   valLabel: string;
-  /** Last value / text width / radius the band was built for (it is rebuilt only when one changes). */
+  /** Last value / chip width / radius the chip was placed for (it is moved only when one changes). */
   valKey: string;
   r: number;
   sp: number;
@@ -113,15 +111,12 @@ export function makeGauge(cls: string, name = '', pad = 0): GaugeParts {
     fillH: p('halo fill'), fillI: p('ink fill'), knobH: p('halo knob'), knobI: p('ink knob'),
     tag: el('g', { class: 'fx-tag' }), tagBg: el('rect', { class: 'tag-bg', height: 14, y: -7 }),
     tagText: el('text', { class: 'tag-text', 'text-anchor': 'middle', y: 3 }),
-    val: el('g', { class: 'val' }), valBg: el('path', { class: 'val-bg' }),
-    valPath: el('path', { id: `gval-${++valSeq}`, fill: 'none', stroke: 'none' }),
+    val: el('g', { class: 'val' }), valBg: el('rect', { class: 'val-bg', height: 12, y: -6 }),
     valText: el('text', { class: 'val-text', 'text-anchor': 'middle', 'dominant-baseline': 'central' }),
-    valTp: el('textPath', { startOffset: '50%' }), valLabel: '', valKey: '',
+    valLabel: '', valKey: '',
   };
-  v.valTp.setAttribute('href', `#gval-${valSeq}`);
-  v.valText.appendChild(v.valTp);
   v.tag.append(v.tagBg, v.tagText);
-  v.val.append(v.valPath, v.valBg, v.valText);
+  v.val.append(v.valBg, v.valText);
   g.append(v.baseH, v.baseI, v.ticksH, v.ticksI, v.fillH, v.fillI, v.knobH, v.knobI, v.val, v.tag);
   return v;
 }
@@ -159,7 +154,6 @@ export function layoutGauge(v: GaugeParts, r: number, sp: number): void {
 }
 
 /** Value `t` (0…1; `off` hides the fill) and the chip text. Cheap when nothing changed. */
-let valSeq = 0;
 const key0 = (t: number): string => (Math.round(t * 5000) / 5000).toString();
 
 export function renderGauge(v: GaugeParts, t: number, off: boolean, label: string): void {
@@ -174,7 +168,7 @@ export function renderGauge(v: GaugeParts, t: number, off: boolean, label: strin
     v.knobI.setAttribute('d', k);
     v.g.classList.toggle('is-off', off);
   }
-  // `NAME // value`: the chip in the bottom gap shows the name only; the value rides the arc (renderValue).
+  // `NAME // value`: the chip in the bottom gap shows the name only; the value rides the arc as its own chip (renderValue).
   const cut = label.indexOf('//');
   const name = cut < 0 ? label : label.slice(0, cut).trim();
   if (name !== v.label) {
@@ -189,30 +183,24 @@ export function renderGauge(v: GaugeParts, t: number, off: boolean, label: strin
 }
 
 /**
- * The value arc: a short curved band on the gauge's own arc, centred on the current value, with the number set along
- * it on a `textPath`. On the lower half of the dial the path runs counter-clockwise so the text never reads upside down.
+ * The value chip: an upright plate sized to the number, centred on the arc at the value, but kept inside the sweep
+ * near either end so `0` / `100` never run into the name chip.
  */
 function renderValue(v: GaugeParts, t: number, value: string): void {
   if (value !== v.valLabel) {
     v.valLabel = value;
-    v.valTp.textContent = value;
+    v.valText.textContent = value;
     v.val.style.display = value ? '' : 'none';
   }
   if (!value) return;
   const fs = (parseFloat(v.g.style.getPropertyValue('--fx-fs')) || 9) * 0.9;
-  const w = value.length * (fs * 0.62 + fs * 0.06) + 10;
-  const vk = `${key0(t)}|${w.toFixed(1)}|${v.r.toFixed(1)}`;
+  const w = Math.ceil(value.length * (fs * 0.62 + fs * 0.06) + 6);
+  const vk = `${key0(t)}|${w}|${v.r.toFixed(1)}`;
   if (vk === v.valKey) return;
   v.valKey = vk;
+  v.valBg.setAttribute('width', String(w));
+  v.valBg.setAttribute('x', String(-w / 2));
   const half = Math.min(Math.PI * 0.45, w / 2 / Math.max(1, v.r));
-  // Centred on the value, but kept inside the sweep so near either end it never runs into the name chip.
   const a = Math.min(v.sw.a0 + v.sw.span - half, Math.max(v.sw.a0 + half, v.sw.a0 + v.sw.span * t));
-  const flip = Math.sin(a) > 0;
-  const a0 = flip ? a + half : a - half;
-  const a1 = flip ? a - half : a + half;
-  const pt = (ang: number): string => `${(v.r * Math.cos(ang)).toFixed(2)} ${(v.r * Math.sin(ang)).toFixed(2)}`;
-  const d = `M${pt(a0)}A${v.r.toFixed(2)} ${v.r.toFixed(2)} 0 0 ${flip ? 0 : 1} ${pt(a1)}`;
-  v.valBg.setAttribute('d', d);
-  v.valPath.setAttribute('d', d);
-  v.valBg.style.strokeWidth = `${Math.min(13, Math.max(8, v.sp * 0.75)).toFixed(1)}px`;
+  v.val.setAttribute('transform', `translate(${(v.r * Math.cos(a)).toFixed(2)} ${(v.r * Math.sin(a)).toFixed(2)})`);
 }
