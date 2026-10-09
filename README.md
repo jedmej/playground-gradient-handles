@@ -21,7 +21,7 @@ token system and the critique that shaped it.
 ## Layout
 
 The stage column is three bands: a **toolbar** (`#toolbar`), the artboard area, and a **shortcut strip** (`#keys`).
-Toolbar groups, in order: NODES (`Add node [+]`, `Remove node [−]`, `DRAW [D]`) · HISTORY (`Undo [↶]`, `Reset [↺]`), then EXPORT (one `Export [↓]` button, `E`) pinned alone to the far right; the status plate floats just left of it. `FX DIAL [F]` (top-left)
+Toolbar groups, in order: NODES (`Add node [+]`, `Remove node [−]`, `DRAW [D]`) · HISTORY (`Undo [↶]`, `Reset [↺]`) · GENERATE (`Random [R]`, `Harmony [ANY]`, `Vary [V]`), then EXPORT (one `Export [↓]` button, `E`) pinned alone to the far right; the status plate floats just left of it. `FX DIAL [F]` (top-left)
 and `PREVIEW [P]` (top-right) are small corner buttons riding the artboard frame. The right panel keeps the contextual
 controls only (colour set, node readout + steppers + shape, FX, wallpaper target). Below 960 px the toolbar is one
 horizontally scrolling row, the strip wraps, and status messages float as a toast. In preview the toolbar, FX DIAL and strip hide;
@@ -48,7 +48,14 @@ PREVIEW stays.
 | `OPAC` row `[−]` `[+]` | Opacity −/+ 10 % |
 | `SOFT` row `[−]` `[+]`      | Softness −/+ 10 %                                            |
 | `]` / `[`                  | Layer up / down (`⇧]` bring to front, `⇧[` send to back). Layer = array order = serial `N-xx` = Tab order; the node stays selected |
-| Right-click a node (`ContextMenu`, `Shift+F10` on a focused node) | Node menu: BRING TO FRONT · MOVE UP · MOVE DOWN · SEND TO BACK · DELETE. ↑/↓ move, Enter/Space activate, Esc / click outside / scroll closes |
+| Right-click a node (`ContextMenu`, `Shift+F10` on a focused node) | Node menu: BRING TO FRONT · MOVE UP · MOVE DOWN · SEND TO BACK · LOCK / UNLOCK · HIDE / SHOW · SOLO / UNSOLO · DELETE. ↑/↓ move, Enter/Space activate, Esc / click outside / scroll closes |
+| `R` / `Random [R]` button  | New composition: 5–10 nodes spread with decent spacing (best-candidate placement, measured in stage px), radii scaled to the count, big hazy nodes sent to the back, occasional ellipse / box / capsule and a little transparency, colours from the chosen harmony rule in OKLCH (L spread dark / mid / bright, chroma a share of the in-gamut maximum). **Locked nodes are kept untouched** at their layer index (and set the base hue). Colours tween ~600 ms like a preset switch; one undo step `RANDOM`; the status line shows the seed (`RANDOM · TRIAD · SEED 4F2A`; the PRNG is seeded, so a seed is a repeatable composition) |
+| `Harmony [ANY]` chip (next to Random) | Cycles the rule Random uses: `ANY` (free hues) · `ANALOG` (±35°) · `COMPL` (base and its opposite) · `TRIAD` (120° steps) · `SPLIT` (base, +150°, +210°) · `MONO` (one hue, lightness and chroma vary). `⇧`-click goes back. UI state, not an undo step |
+| `V` / `Vary [V]` button    | Opens a strip of four thumbnails over the foot of the stage: small mutations of the current field (position, reach, softness, hue, lightness, chroma jitter, gentle to bold; locked nodes untouched), rendered with the offscreen exporter (FX included). Click one or press `1`–`4` to adopt it (one undo step `VARY`); `V` again rolls a new set; `Esc`, a click elsewhere, or any edit closes it |
+| `L` (selected / focused node), `STATE` row `LOCK [L]`, node menu | Lock: drags (core, gauges, ring, body), wheel, pinch, nudge keys, radius / soft / opac / rot / shape steppers, the colour page and hex field, Random, Vary and Extract all leave the node alone. It stays selectable and deletable, shows a small padlock on its reticle and `· LOCK` in the coordinate tag. Undo steps `LOCK N-xx` / `UNLOCK N-xx`. Stored in CS-06 (optional `lock` field) |
+| `H`, `STATE` row `HIDE [H]`, node menu | Hide: the node is skipped by the field render (live and export), the reticle stays, ghosted (dashed brackets, hollow core), still selectable. The last visible node cannot be hidden. Undo steps `HIDE N-xx` / `SHOW N-xx`. Stored in CS-06 (optional `hide` field) |
+| `⇧H`, `STATE` row `SOLO [⇧H]`, node menu | Solo the selected node: hides every other node; again (or un-solo from the menu) restores what was hidden before. Undo steps `SOLO` / `UNSOLO N-xx` |
+| `FROM IMAGE [↥]` (colour-set panel) or drop an image file on the stage | Palette extract: the image is downsampled to ≤ 96 px on a 2D canvas and clustered with k-means in OKLab (k = number of unlocked nodes, fixed seed, so one image always gives one palette). Colours go dark → light, lightest to the node highest on the stage; one undo step `EXTRACT`, ~600 ms tween. The image is decoded locally and never leaves the browser |
 | `Esc`                      | Deselect                                                    |
 | Double-click empty field   | Add a node there (colour = field under the point)           |
 | Double-tap (touch)         | Same, two taps within 380 ms and 36 px (mouse: 320 ms / 24 px)  |
@@ -148,6 +155,12 @@ Martian Mono). No runtime network calls beyond same-origin assets.
   `[data-fx-opt="grain-fine|grain-coarse|dither-bayer|dither-blue|scan-h|scan-v|scan-b"]` (`aria-checked`); `[data-fx-check="grain|dither|chroma|scan|vig"]` (native checkbox, `aria-label` “Grain on” …); `[data-action="fx-off"]`;
   `#fx-hint` (`— ALL OFF` / `— 2 ON`); `[data-wp="phone|laptop|4k|ultra|square"]` (`role=radio`, `aria-checked`);
   `[data-action="export"]` (the one export button; `export-wallpaper` is gone); `#wp-dims`; `localStorage` `gh.fx.v1` = `{v:1, fx, wp, cs:{w,h}}` (`cs` optional on read).
+
+- v6: `[data-node]` also carries `data-lock` and `data-hide` (`true|false`, set by the first frame); `.node.is-locked` / `.is-hidden`.
+  `[data-action="randomize|vary|harmony|extract|lock|hide|solo"]` (`harmony` carries `data-harmony="any|analog|compl|triad|split|mono"`; `vary` has `aria-pressed`; `lock|hide|solo` are the panel `STATE` row, `aria-pressed`);
+  node menu items `[data-action="menu-lock|menu-hide|menu-solo"]`; VARY strip `[data-testid="vary"]` (`hidden` while closed) with
+  `[data-action="vary-pick"][data-vary="0–3"]`; file input `#extract-file`; `.stage.is-drop` while a file is dragged over; presets `[data-preset="cs21"…"cs25"]`.
+  CS-06 nodes carry `lock` / `hide` only when true. New built-in sets CS-21 … CS-25 (HULL BREACH, AFTERBURN, ICE CORE, RELAY GHOST, SALT FLAT); CS-06 … CS-13 are left free for the save library.
 
 ## Credits
 
