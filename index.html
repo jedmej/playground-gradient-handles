@@ -3,12 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#000000" />
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Cpath d='M6 12V6h6M20 6h6v6M26 20v6h-6M12 26H6v-6' fill='none' stroke='%23C0FE04' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23C0FE04'/%3E%3C/svg%3E"
     />
+    <script>
+      // Restore the collapsed spec panel and the colour theme before first paint (no flash, no transition).
+      try {
+        if (localStorage.getItem('gh.panel.v1') === '0') document.documentElement.classList.add('panel-off');
+      } catch (e) {}
+      (function () {
+        var t = null;
+        try {
+          t = localStorage.getItem('gh.theme.v1');
+        } catch (e) {}
+        if (t !== 'dark' && t !== 'light') t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', t);
+      })();
+    </script>
     <title>Gradient handles — a mesh-gradient handle study · NEWFRAME</title>
     <meta
       name="description"
@@ -29,11 +43,52 @@
         <span class="state-v" id="state-readout">IDLE</span>
         <b id="state-glyph">[—]</b>
       </div>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false" aria-keyshortcuts="M" title="Dark mode (M)">
+        <span class="mini-l">DARK</span> <b>[◐]</b>
+      </button>
+      <button class="panel-toggle" id="panel-toggle" type="button" aria-controls="spec" aria-expanded="true" aria-keyshortcuts="Backslash" title="Hide panel (\)">
+        <span class="mini-l">PANEL</span> <b>[»]</b>
+      </button>
     </header>
 
     <main class="body" id="top">
       <section class="stage-col" aria-label="Gradient field">
+        <div class="toolbar mono" id="toolbar" role="toolbar" aria-label="Actions">
+          <div class="tb-group tb-nodes" role="group" aria-label="Nodes">
+            <button class="mini tb-btn" id="add-node" data-action="add-node" type="button" title="Add a node at the emptiest spot (max 16)">
+              <span class="btn-label">Add node</span> <b>[+]</b>
+            </button>
+            <button class="mini tb-btn" id="remove-node" data-action="remove-node" type="button" title="Remove the selected node (Delete)" disabled>
+              <span class="btn-label">Remove node</span> <b>[−]</b>
+            </button>
+            <button class="mini tb-btn mini-draw" type="button" data-action="draw-mode" aria-pressed="false" title="Draw a stroke of colour (D)">
+              <span class="mini-l">DRAW</span> <b>[D]</b>
+            </button>
+          </div>
+          <div class="tb-group tb-history" role="group" aria-label="History">
+            <button class="mini tb-btn" id="undo" data-action="undo" type="button" title="Undo (⌘Z)" disabled>
+              <span class="btn-label">Undo</span> <b>[↶]</b>
+            </button>
+            <button class="mini tb-btn" id="reset" data-action="reset" type="button" title="Restore the current preset's positions and radii">
+              <span class="btn-label">Reset</span> <b>[↺]</b>
+            </button>
+          </div>
+          <div class="tb-group tb-export" role="group" aria-label="Export">
+            <button class="mini tb-btn tb-primary" id="export" data-action="export" type="button" aria-keyshortcuts="E" title="Export 3840×2160 PNG (E; ⇧ for a quick 2048 px copy)">
+              <span class="btn-label">Export</span> <b>[↓]</b>
+            </button>
+          </div>
+          <p class="status" id="status" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="stage-area" id="stage-area">
         <div class="stage-frame">
+          <button class="mini corner-btn corner-fx" type="button" data-action="fx-dial" title="FX dial: hold ⌥ and scroll on empty field, or press F">
+            <span class="mini-l">FX DIAL</span> <b>[F]</b>
+          </button>
+          <button class="mini corner-btn corner-preview" type="button" data-action="preview" aria-pressed="false" title="Preview: hide every control and see the bare wallpaper (P, Esc exits)">
+            <span class="mini-l">PREVIEW</span> <b>[P]</b>
+          </button>
           <span class="reg reg-tl" aria-hidden="true"></span>
           <span class="reg reg-tr" aria-hidden="true"></span>
           <span class="reg reg-bl" aria-hidden="true"></span>
@@ -46,22 +101,18 @@
             <div class="chip chip-node" id="chip-node" aria-hidden="true"></div>
             <div class="chip chip-radius" id="chip-radius" aria-hidden="true"></div>
           </div>
-          <button class="mini foot-fx foot-preview" type="button" data-action="preview" aria-pressed="false" title="Preview: hide every control and see the bare wallpaper (P, Esc exits)">
-            <span class="mini-l">PREVIEW</span> <b>[P]</b>
-          </button>
           <div class="stage-foot">
             <span class="foot-l" id="foot-serial">CUR // X —.——— Y —.———</span>
-            <span class="foot-rr">
-              <button class="mini foot-fx" type="button" data-action="fx-dial" title="FX dial: hold ⌥ and scroll on empty field, or press F">
-                <span class="mini-l">FX DIAL</span> <b>[F]</b>
-              </button>
-              <button class="mini mini-draw foot-draw" type="button" data-action="draw-mode" aria-pressed="false" title="Draw a stroke of colour">
-                <span class="mini-l">DRAW</span> <b>[D]</b>
-              </button>
-              <span class="foot-r" id="foot-dims">—×— PX</span>
-            </span>
+            <span class="foot-r" id="foot-dims">—×— PX</span>
           </div>
         </div>
+        </div>
+
+        <p class="keys" id="keys">
+          <span>TAB</span> focus <span>←↑→↓</span> nudge <span>[ ]</span> layer
+          <span class="k-fine"><span>SCROLL</span> radius <span>⇧ SCROLL</span> soft <span>DBL-CLICK</span> add <span>CLICK CORE</span> colour <span>D</span> draw <span>, .</span> rotate <span>DEL</span> remove <span>⌘Z</span> undo <span>E</span> export <span>F</span> FX dial <span>P</span> preview <span>M</span> dark <span>\</span> panel <span>ESC</span> back</span>
+          <span class="k-touch"><span>DOUBLE-TAP</span> add <span>TAP CORE</span> colour <span>DRAW</span> toggle <span>PINCH</span> radius <span>TAP + HOLD</span> menu <span>FX DIAL</span> effects <span>PREVIEW</span> bare</span>
+        </p>
       </section>
 
       <aside class="spec" id="spec" aria-label="Specification">
@@ -93,11 +144,6 @@
         <section class="spec-section" aria-labelledby="h-node">
           <div class="label label-row">
             <h2 id="h-node">NODE <span class="dim" id="node-hint">— HOVER / TAP A RETICLE</span></h2>
-            <span class="label-actions">
-              <button class="mini mini-draw" type="button" data-action="draw-mode" aria-pressed="false" title="Draw a stroke of colour (D)">
-                <span class="mini-l">DRAW</span> <b>[D]</b>
-              </button>
-            </span>
           </div>
           <div class="palette" id="palette" data-testid="palette" role="group" aria-label="Palette: current node colours"></div>
           <dl class="node-spec" id="node-spec">
@@ -175,14 +221,6 @@
               </dd>
             </div>
           </dl>
-          <div class="node-actions">
-            <button class="btn btn-ghost" id="add-node" data-action="add-node" type="button">
-              <span class="btn-label">Add node</span><b>[+]</b>
-            </button>
-            <button class="btn btn-ghost" id="remove-node" data-action="remove-node" type="button" disabled>
-              <span class="btn-label">Remove node</span><b>[−]</b>
-            </button>
-          </div>
         </section>
 
         <section class="spec-section fx-section" aria-labelledby="h-fx">
@@ -238,6 +276,13 @@
                 <span class="fx-knob" data-fx-knob="scan" role="slider" tabindex="0" aria-label="Scanlines" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
                 <span class="fx-read dim" data-fx-read="scan">OFF</span>
               </dd>
+              <dd class="fx-opts">
+                <span class="fx-seg" role="radiogroup" aria-label="Scanline direction">
+                  <button type="button" class="fx-opt" role="radio" aria-checked="true" data-fx-opt="scan-h" title="Horizontal scanlines" aria-label="Horizontal scanlines">H</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="scan-v" title="Vertical scanlines" aria-label="Vertical scanlines">V</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="scan-b" title="Both (grid)" aria-label="Both (grid)">B</button>
+                </span>
+              </dd>
             </div>
             <div class="fx-row last">
               <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="vig" aria-label="Vignette on"></dd>
@@ -269,30 +314,7 @@
             <button type="button" class="wp-swap" id="wp-swap" title="Swap width and height" aria-label="Swap width and height">⇄</button>
             <span class="wp-range dim" id="wp-range">16–16384 PX</span>
           </div>
-          <button class="btn btn-ghost wp-export" id="export-wallpaper" data-action="export-wallpaper" type="button">
-            <span class="btn-label">Export wallpaper</span><b>[↓]</b>
-          </button>
         </section>
-
-        <div class="actions">
-          <button class="btn btn-primary" id="export" data-action="export" type="button">
-            <span class="btn-label">Export PNG</span><b>[↓]</b>
-          </button>
-          <button class="btn btn-ghost" id="undo" data-action="undo" type="button" disabled>
-            <span class="btn-label">Undo</span><b>[↶]</b>
-          </button>
-          <button class="btn btn-ghost" id="reset" data-action="reset" type="button">
-            <span class="btn-label">Reset</span><b>[↺]</b>
-          </button>
-        </div>
-        <p class="status" id="status" role="status" aria-live="polite"></p>
-
-        <p class="keys">
-          <span>TAB</span> focus <span>←↑→↓</span> nudge <span>[ ]</span> layer
-          <span>SHIFT</span> ×10
-          <span class="k-fine"><span>SCROLL</span> <span>− =</span> radius <span>⇧ SCROLL</span> soft <span>DBL-CLICK</span> add <span>D</span> draw <span>, .</span> rotate <span>DEL</span> remove <span>⌘Z</span> undo</span>
-          <span class="k-touch"><span>DOUBLE-TAP</span> add <span>DRAW</span> toggle <span>PINCH</span> radius <span>TAP + HOLD</span> menu</span>
-        </p>
       </aside>
 
       <aside class="rail" aria-hidden="true">

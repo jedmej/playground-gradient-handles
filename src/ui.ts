@@ -82,7 +82,10 @@ export class UI {
   ) {
     store.say = (t) => this.say(t);
     this.buildPresets();
-    this.exportBtn.addEventListener('click', () => void this.exportPng());
+    // ⇧-click = quick 2048 px copy; a plain click is owned by WallpaperPanel (fxpanel.ts).
+    this.exportBtn.addEventListener('click', (e) => {
+      if (e.shiftKey) void this.exportPng();
+    });
     this.resetBtn.addEventListener('click', () => actions.reset());
     this.undoBtn.addEventListener('click', () => actions.undo());
     this.addBtn.addEventListener('click', () => actions.addAuto());
@@ -600,10 +603,10 @@ export class UI {
       this.say('Export failed. Your browser blocked the canvas or the download.');
     } finally {
       window.setTimeout(() => {
-        setText(label, 'Export PNG');
+        setText(label, 'Export');
         this.exportBtn.classList.remove('is-done');
         this.exportBtn.disabled = false;
-      }, 1800);
+      }, 1500);
     }
     emit(s);
   }

@@ -8,6 +8,16 @@
   --paper: #e9eae4;
   --paper-2: #dfe0d9;
   --ink: #0c0c0c;
+  /* Theme-aware roles (flip in dark): secondary text, dashed hairlines, hover washes, chip keyline. */
+  --soft: #1c1c1c;
+  --rule: #a4a59e;
+  --wash: rgba(0, 0, 0, 0.06);
+  --wash-2: rgba(0, 0, 0, 0.08);
+  --edge: rgba(0, 0, 0, 0.35);
+  /* Fixed plates: black chrome (bars, chips, status, hex field, menu) and its text. Never flip. */
+  --plate: #000;
+  --plate-fg: #e9eae4;
+  color-scheme: light;
 
   --display: 'Big Shoulders Display Variable', 'Arial Narrow', sans-serif;
   --sans: 'Inter Tight', system-ui, sans-serif;
@@ -31,6 +41,62 @@
     12 12;
 }
 
+/* ---------- dark theme ----------------------------------------------------
+   Set by data-theme on <html> (inline script in index.html, toggle in main.ts). The paper/ink roles flip;
+   SIGNAL, FLARE, the black chrome plates and the gradient canvas stay as they are. Text pairs: graphite on
+   paper 6.6:1, void on paper 12:1, plate-fg on plate 16:1. */
+:root[data-theme='dark'] {
+  --void: #dcddd6;
+  --graphite: #9b9c95;
+  --paper: #151613;
+  --paper-2: #1d1e1b;
+  --ink: #ecede7;
+  --soft: #c4c5be;
+  --rule: #4b4c47;
+  --wash: rgba(255, 255, 255, 0.07);
+  --wash-2: rgba(255, 255, 255, 0.1);
+  --edge: rgba(255, 255, 255, 0.4);
+  color-scheme: dark;
+}
+
+/* Black plates sitting on the dark ground get a hairline so they still read as plates. */
+:root[data-theme='dark'] .preset.is-active,
+:root[data-theme='dark'] .status.is-on,
+:root[data-theme='dark'] .btn-primary,
+:root[data-theme='dark'] .soft-bar {
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+
+/* Theme switch = one View Transition: the whole page crossfades as a single snapshot (borders, shadows and all).
+   Per-element transitions are suppressed while it runs so nothing animates underneath the snapshot. */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 300ms;
+  animation-timing-function: var(--ease);
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  animation-name: theme-vt-out;
+}
+::view-transition-new(root) {
+  animation-name: theme-vt-in;
+}
+@keyframes theme-vt-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes theme-vt-in {
+  from {
+    opacity: 0;
+  }
+}
+
 /* ---------- base --------------------------------------------------------- */
 *,
 *::before,
@@ -45,7 +111,7 @@ body {
 }
 
 html {
-  background: var(--void);
+  background: var(--plate);
   color: var(--ink);
   font-family: var(--sans);
   font-size: 14px;
@@ -133,8 +199,8 @@ b {
   align-items: center;
   gap: 28px;
   padding: 0 20px;
-  background: var(--void);
-  color: var(--paper);
+  background: var(--plate);
+  color: var(--plate-fg);
   font-size: 11px;
 }
 
@@ -171,7 +237,7 @@ b {
 }
 
 .nav-item:hover b {
-  color: var(--paper);
+  color: var(--plate-fg);
 }
 
 .state-readout {
@@ -189,17 +255,180 @@ b {
   min-width: 11ch;
 }
 
+/* PANEL [»] / [«]: collapses the spec column (main.ts). Desktop only; stacked mobile keeps the panel. */
+.panel-toggle,
+.theme-toggle {
+  margin-left: 20px;
+  display: inline-flex;
+  align-items: center;
+  height: var(--bar-h);
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--plate-fg);
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.panel-toggle:hover b,
+.theme-toggle:hover b { color: var(--plate-fg); }
+.panel-toggle:focus-visible,
+.theme-toggle:focus-visible { outline: 1px solid var(--signal); outline-offset: -4px; }
+/* DARK [◐] / [◑]: the glyph carries the state; aria-pressed announces it. */
+.theme-toggle { margin-left: 8px; }
+.theme-toggle[aria-pressed='true'] b { color: var(--signal); }
+
 /* ---------- stage -------------------------------------------------------- */
 .stage-col {
   grid-column: 1;
   grid-row: 2;
-  padding: 26px 24px 20px 26px;
   min-height: 0;
   min-width: 0;
-  /* The frame is centred: when a wallpaper target gives the stage its own aspect it letterboxes inside this box. */
+  /* Three bands: action toolbar (auto), artboard area (1fr), shortcut strip (auto). */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+/* The frame is centred in this box: when a wallpaper target gives the stage its own aspect it letterboxes here.
+   main.ts fitStage() measures this element, so toolbar and strip heights are already taken out. */
+.stage-area {
+  min-height: 0;
+  min-width: 0;
+  padding: 32px 24px 14px 26px; /* top: room for the FX DIAL / PREVIEW corner buttons */
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* ---------- toolbar: every global action, one row above the artboard ---------- */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 0;
+  padding: 9px 24px 9px 26px;
+  border-bottom: 1px solid var(--void);
+  min-width: 0;
+}
+
+.tb-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border-left: 1px solid var(--void);
+}
+
+/* Export sits alone at the far right (stays right-aligned if the row wraps); no divider before it. */
+.tb-group.tb-export {
+  margin-left: auto;
+  padding-right: 0;
+  border-left: 0;
+}
+
+.tb-group:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.toolbar .tb-btn {
+  margin: 0;
+  height: 28px;
+  padding: 0 7px;
+  gap: 5px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.tb-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tb-btn:disabled:hover {
+  background: none;
+  color: var(--void);
+}
+
+.tb-btn:disabled:hover b {
+  color: var(--graphite);
+}
+
+/* Export PNG keeps the emphasised plate. */
+.toolbar .tb-primary {
+  background: var(--plate);
+  color: var(--signal);
+}
+
+.toolbar .tb-primary b {
+  color: var(--signal);
+}
+
+.toolbar .tb-primary:hover {
+  background: var(--hull);
+  color: var(--signal);
+}
+
+.toolbar .tb-btn.is-done,
+.toolbar .tb-btn.is-done:hover {
+  background: var(--signal);
+  color: var(--plate);
+  border-color: var(--plate);
+}
+
+.toolbar .tb-btn.is-done b {
+  color: var(--plate);
+}
+
+/* FX DIAL (left) and PREVIEW (right): small corner buttons riding the artboard frame's top edge, so they follow
+   every re-fit (they are children of .stage-frame, positioned off its box). */
+.stage-frame .corner-btn {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  margin: 0;
+  height: 20px;
+  z-index: 2;
+}
+.corner-fx { left: 18px; }
+.corner-preview { right: 0; }
+.corner-preview[aria-pressed='true'],
+.corner-preview[aria-pressed='true']:hover {
+  background: var(--plate);
+  color: var(--signal);
+}
+.corner-preview[aria-pressed='true'] b {
+  color: var(--signal);
+}
+@media (pointer: coarse), (max-width: 959px) {
+  .stage-frame .corner-btn { height: 36px; padding: 0 12px; }
+}
+
+/* Export / error feedback: reserves no width while empty, sits at the row's end when shown. */
+.toolbar {
+  position: relative;
+}
+
+/* Floats over the toolbar's free right end so a message never wraps the row (or changes its height). */
+.toolbar .status {
+  position: absolute;
+  right: 124px; /* left of the Export button */
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 45%;
+  z-index: 1;
+  display: none;
+}
+
+.toolbar .status.is-on {
+  display: block;
+}
+
+/* ---------- shortcut strip: keyboard / touch hints under the artboard ---------- */
+.stage-col > .keys {
+  padding: 8px 24px 8px 26px;
+  border-top: 1px solid var(--void);
+  line-height: 1.5;
 }
 
 .stage-frame {
@@ -532,8 +761,8 @@ html[data-tool='draw'][data-drag] .stage {
   font-size: 10px;
   line-height: 1.1;
   letter-spacing: 0.05em;
-  background: var(--void);
-  color: var(--paper);
+  background: var(--plate);
+  color: var(--plate-fg);
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
@@ -548,7 +777,7 @@ html[data-tool='draw'][data-drag] .stage {
 .chip-node.is-engaged,
 .chip-radius {
   background: var(--flare);
-  color: var(--void);
+  color: var(--plate);
   font-weight: 600;
 }
 
@@ -586,7 +815,7 @@ html[data-tool='draw'][data-drag] .stage {
   font-size: 13.5px;
   line-height: 1.45;
   font-weight: 500;
-  color: var(--hull);
+  color: var(--soft);
   max-width: 32ch;
 }
 
@@ -640,7 +869,7 @@ html[data-tool='draw'][data-drag] .stage {
 }
 
 .mini:hover {
-  background: var(--void);
+  background: var(--plate);
   color: var(--signal);
 }
 
@@ -677,11 +906,11 @@ html[data-tool='draw'][data-drag] .stage {
 .mini-clear.is-armed:hover {
   background: var(--flare);
   border-color: var(--flare);
-  color: var(--void);
+  color: var(--plate);
 }
 
 .mini-clear.is-armed b {
-  color: var(--void);
+  color: var(--plate);
 }
 
 .presets {
@@ -699,7 +928,7 @@ html[data-tool='draw'][data-drag] .stage {
   margin: 0 -6px;
   font-size: 10.5px;
   text-align: left;
-  border-bottom: 1px dashed #a4a59e;
+  border-bottom: 1px dashed var(--rule);
   transition: background-color var(--t) var(--ease), color var(--t) var(--ease);
 }
 
@@ -709,11 +938,11 @@ html[data-tool='draw'][data-drag] .stage {
 }
 
 .preset:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--wash);
 }
 
 .preset.is-active {
-  background: var(--void);
+  background: var(--plate);
   color: var(--signal);
 }
 
@@ -723,7 +952,7 @@ html[data-tool='draw'][data-drag] .stage {
   grid-auto-columns: 1fr;
   height: 14px;
   width: 45px;
-  outline: 1px solid rgba(0, 0, 0, 0.35);
+  outline: 1px solid var(--edge);
 }
 
 .preset.is-empty {
@@ -732,7 +961,7 @@ html[data-tool='draw'][data-drag] .stage {
 
 .preset.is-empty .chips {
   outline-style: dashed;
-  outline-color: #a4a59e;
+  outline-color: var(--rule);
 }
 
 .preset.is-empty.is-active {
@@ -807,7 +1036,7 @@ html[data-tool='draw'][data-drag] .stage {
   justify-content: space-between;
   align-items: center;
   height: 26px;
-  border-bottom: 1px dashed #a4a59e;
+  border-bottom: 1px dashed var(--rule);
 }
 
 .node-spec > div.full {
@@ -836,7 +1065,7 @@ html[data-tool='draw'][data-drag] .stage {
   gap: 2px;
   margin-bottom: 10px;
   padding-bottom: 5px;
-  border-bottom: 1px dashed #a4a59e;
+  border-bottom: 1px dashed var(--rule);
 }
 
 .chip-btn {
@@ -845,7 +1074,7 @@ html[data-tool='draw'][data-drag] .stage {
   min-width: 0;
   height: 26px;
   background: var(--c, transparent);
-  outline: 1px solid rgba(0, 0, 0, 0.35);
+  outline: 1px solid var(--edge);
   outline-offset: -1px;
 }
 
@@ -949,11 +1178,11 @@ html[data-tool='draw'][data-drag] .stage {
 }
 
 .shape-btn:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--wash-2);
 }
 
 .shape-btn[aria-checked='true'] {
-  background: var(--void);
+  background: var(--plate);
   color: var(--signal);
 }
 
@@ -1007,7 +1236,7 @@ html[data-tool='draw'][data-drag] .stage {
 /* DRAW [D]: ghost until armed; armed = VOID plate with SIGNAL text. */
 .mini-draw[aria-pressed='true'],
 .mini-draw[aria-pressed='true']:hover {
-  background: var(--void);
+  background: var(--plate);
   color: var(--signal);
 }
 
@@ -1015,38 +1244,6 @@ html[data-tool='draw'][data-drag] .stage {
   color: var(--signal);
 }
 
-/* The stage-foot toggle only exists for touch, where there is no D key. */
-.foot-rr {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 10px;
-}
-
-.foot-draw {
-  display: none;
-}
-
-@media (pointer: coarse) {
-  :root {
-    --foot-row: 46px;
-  }
-
-  .stage-foot {
-    align-items: center;
-    padding-top: 3px;
-  }
-
-  .foot-rr {
-    align-items: center;
-  }
-
-  .foot-draw {
-    display: inline-flex;
-    margin: 0;
-    height: 40px;
-    padding: 0 12px;
-  }
-}
 
 /* No hover on touch: a tapped DRAW must not stay painted as "on". */
 @media (hover: none) {
@@ -1113,7 +1310,7 @@ html[data-tool='draw'][data-drag] .stage {
   justify-content: center;
   width: 40px;
   height: 28px;
-  background: var(--void);
+  background: var(--plate);
   cursor: pointer;
 }
 
@@ -1165,7 +1362,7 @@ html[data-tool='draw'][data-drag] .stage {
   align-items: center;
   height: 28px;
   padding: 0 8px;
-  background: var(--void);
+  background: var(--plate);
   border-bottom: 2px solid var(--hull);
   transition: border-color var(--t) var(--ease);
 }
@@ -1192,7 +1389,7 @@ html[data-tool='draw'][data-drag] .stage {
   border-radius: 0;
   outline: 0;
   background: transparent;
-  color: var(--paper);
+  color: var(--plate-fg);
   caret-color: var(--signal);
   font: inherit;
   text-transform: uppercase;
@@ -1212,18 +1409,6 @@ html[data-tool='draw'][data-drag] .stage {
   color: var(--flare);
 }
 
-.node-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.node-actions .btn {
-  height: 40px;
-  padding: 0 12px;
-}
-
 .btn:disabled {
   opacity: 0.4;
   cursor: default;
@@ -1231,22 +1416,6 @@ html[data-tool='draw'][data-drag] .stage {
 
 .btn-ghost:disabled:hover {
   background: none;
-}
-
-.actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px;
-  margin-top: auto;
-}
-
-.actions .btn-primary {
-  grid-column: 1 / -1;
-}
-
-.node-actions .btn,
-.actions .btn {
-  white-space: nowrap;
 }
 
 .btn-label {
@@ -1274,7 +1443,7 @@ html[data-tool='draw'][data-drag] .stage {
 }
 
 .btn-primary {
-  background: var(--void);
+  background: var(--plate);
   color: var(--signal);
 }
 
@@ -1284,7 +1453,7 @@ html[data-tool='draw'][data-drag] .stage {
 
 .btn-primary.is-done {
   background: var(--signal);
-  color: var(--void);
+  color: var(--plate);
 }
 
 .btn-primary:disabled {
@@ -1297,7 +1466,7 @@ html[data-tool='draw'][data-drag] .stage {
 }
 
 .btn-ghost:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--wash);
 }
 
 .btn-ghost b {
@@ -1311,7 +1480,7 @@ html[data-tool='draw'][data-drag] .stage {
   line-height: 18px;
   height: 20px;
   padding: 1px 8px;
-  background: var(--void);
+  background: var(--plate);
   color: var(--signal);
   text-transform: none;
   white-space: nowrap;
@@ -1338,9 +1507,9 @@ html[data-tool='draw'][data-drag] .stage {
 }
 
 .keys span {
-  border: 1px solid #a4a59e;
+  border: 1px solid var(--rule);
   padding: 1px 4px 0;
-  color: var(--hull);
+  color: var(--soft);
   font-size: 9px;
   letter-spacing: 0.06em;
 }
@@ -1376,7 +1545,7 @@ html[data-tool='draw'][data-drag] .stage {
   grid-column: 3;
   grid-row: 1 / 4;
   background: var(--signal);
-  color: var(--void);
+  color: var(--plate);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1391,8 +1560,8 @@ html[data-tool='draw'][data-drag] .stage {
   height: 13px;
   flex: none;
   background:
-    linear-gradient(var(--void), var(--void)) center / 1px 100% no-repeat,
-    linear-gradient(var(--void), var(--void)) center / 100% 1px no-repeat;
+    linear-gradient(var(--plate), var(--plate)) center / 1px 100% no-repeat,
+    linear-gradient(var(--plate), var(--plate)) center / 100% 1px no-repeat;
 }
 
 .barcode {
@@ -1407,7 +1576,7 @@ html[data-tool='draw'][data-drag] .stage {
   display: block;
   height: 2px;
   width: var(--len, 20px);
-  background: var(--void);
+  background: var(--plate);
   transition: width 120ms var(--ease);
 }
 
@@ -1419,19 +1588,19 @@ html[data-tool='draw'][data-drag] .stage {
 
 .pict-x {
   background:
-    linear-gradient(45deg, transparent calc(50% - 0.6px), var(--void) calc(50% - 0.6px), var(--void) calc(50% + 0.6px), transparent calc(50% + 0.6px)),
-    linear-gradient(-45deg, transparent calc(50% - 0.6px), var(--void) calc(50% - 0.6px), var(--void) calc(50% + 0.6px), transparent calc(50% + 0.6px));
+    linear-gradient(45deg, transparent calc(50% - 0.6px), var(--plate) calc(50% - 0.6px), var(--plate) calc(50% + 0.6px), transparent calc(50% + 0.6px)),
+    linear-gradient(-45deg, transparent calc(50% - 0.6px), var(--plate) calc(50% - 0.6px), var(--plate) calc(50% + 0.6px), transparent calc(50% + 0.6px));
 }
 
 .pict-box {
-  border: 1.5px solid var(--void);
-  background: radial-gradient(circle, var(--void) 2.5px, transparent 2.6px);
+  border: 1.5px solid var(--plate);
+  background: radial-gradient(circle, var(--plate) 2.5px, transparent 2.6px);
 }
 
 .pict-check,
 .check-chip {
   background:
-    repeating-conic-gradient(var(--void) 0 25%, transparent 0 50%) 0 0 / 6px 6px;
+    repeating-conic-gradient(var(--plate) 0 25%, transparent 0 50%) 0 0 / 6px 6px;
 }
 
 .rail-nums {
@@ -1489,8 +1658,8 @@ html[data-tool='draw'][data-drag] .stage {
   justify-content: space-between;
   gap: 16px;
   padding: 0 20px;
-  background: var(--void);
-  color: var(--paper);
+  background: var(--plate);
+  color: var(--plate-fg);
   font-size: 10px;
 }
 
@@ -1521,25 +1690,6 @@ html[data-tool='draw'][data-drag] .stage {
 @media (min-width: 960px) {
   .spec {
     overflow-x: hidden;
-  }
-  .node-actions,
-  .actions {
-    gap: 6px;
-  }
-  .node-actions {
-    margin-top: 8px;
-  }
-  .node-actions .btn,
-  .actions .btn {
-    height: 38px;
-    padding: 0 10px;
-    gap: 6px;
-  }
-  .actions {
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
-  }
-  .actions .btn-primary {
-    grid-column: auto;
   }
 }
 
@@ -1587,18 +1737,6 @@ html[data-tool='draw'][data-drag] .stage {
     height: 24px;
     width: 24px;
   }
-
-  /* Keep the shortcut legend on laptop heights; it is the only place the gestures are taught. */
-  .keys {
-    gap: 3px 5px;
-    line-height: 1.35;
-  }
-}
-
-@media (min-width: 960px) and (max-height: 760px) {
-  .keys {
-    display: none;
-  }
 }
 
 @media (min-width: 960px) and (max-height: 820px) {
@@ -1627,15 +1765,6 @@ html[data-tool='draw'][data-drag] .stage {
     height: 32px !important;
   }
 
-  .keys {
-    gap: 2px 4px;
-    line-height: 1.2;
-  }
-
-  .status {
-    flex-shrink: 0;
-  }
-
   .node-spec .shape-row {
     height: 28px;
   }
@@ -1653,11 +1782,6 @@ html[data-tool='draw'][data-drag] .stage {
   .swatch-btn,
   .hex-field {
     height: 26px;
-  }
-
-  .node-actions .btn,
-  .actions .btn {
-    height: 36px;
   }
 }
 
@@ -1696,11 +1820,34 @@ html[data-tool='draw'][data-drag] .stage {
   }
 }
 
-@media (pointer: coarse) and (min-width: 960px) {
-  .node-actions .btn,
-  .actions .btn {
-    height: 40px;
+/* Collapsed spec panel (desktop): the track animates to 0 so the stage column grows (ResizeObserver re-fits the
+   artboard), while the panel keeps its width and slides out under the rail. `inert` is set in main.ts. */
+@media (min-width: 960px) {
+  body {
+    transition: grid-template-columns 220ms var(--ease);
   }
+  html.panel-off body {
+    grid-template-columns: minmax(0, 1fr) 0 var(--rail-w);
+  }
+  .spec {
+    width: var(--spec-w);
+    transition: transform 220ms var(--ease), visibility 0s linear 0s;
+  }
+  html.panel-off .spec {
+    transform: translateX(100%);
+    visibility: hidden;
+    transition: transform 220ms var(--ease), visibility 0s linear 220ms;
+  }
+  .rail {
+    position: relative;
+    z-index: 2;
+  }
+}
+@media (max-width: 959px) {
+  .panel-toggle { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body, .spec { transition: none !important; }
 }
 
 /* ---------- mobile ------------------------------------------------------- */
@@ -1782,7 +1929,50 @@ html[data-tool='draw'][data-drag] .stage {
   }
 
   .stage-col {
-    padding: 14px 12px 6px 12px;
+    grid-template-rows: auto auto auto;
+  }
+
+  .stage-area {
+    padding: 50px 12px 6px 12px;
+  }
+
+  /* One scrollable row of actions (groups keep their dividers) instead of a four-row wrap. */
+  .toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 8px 12px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tb-group {
+    flex: none;
+  }
+
+  .toolbar .tb-btn {
+    height: 40px;
+    padding: 0 12px;
+  }
+
+  /* The scrolling row would clip it: float the plate as a toast instead. */
+  .toolbar .status.is-on {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 5;
+    top: auto;
+    transform: none;
+    margin: 0;
+    max-width: none;
+  }
+
+  .stage-col > .keys {
+    padding: 8px 12px 10px;
   }
 
   .stage-frame {
@@ -1854,26 +2044,6 @@ html[data-tool='draw'][data-drag] .stage {
     font-size: 16px; /* no iOS zoom-on-focus */
   }
 
-  .node-actions .btn {
-    height: 44px;
-  }
-
-  .actions {
-    margin-top: 4px;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    position: static;
-    padding-top: 0;
-    background: none;
-  }
-
-  .btn {
-    height: 48px;
-  }
-
-  .keys {
-    display: none;
-  }
-
   .foot {
     flex-wrap: wrap;
     height: auto;
@@ -1892,13 +2062,6 @@ html[data-tool='draw'][data-drag] .stage {
 @media (max-width: 400px) {
   .state-k {
     display: none;
-  }
-}
-
-/* Touch hints replace the keyboard ones, even where the hint row is otherwise hidden. */
-@media (pointer: coarse) {
-  .keys {
-    display: flex;
   }
 }
 
@@ -2120,7 +2283,7 @@ html[data-drag='lum'] .stage,
   gap: 2px;
   height: 16px;
   padding: 2px 3px;
-  background: var(--void);
+  background: var(--plate);
 }
 
 .soft-bar i {
@@ -2145,7 +2308,7 @@ html[data-drag='lum'] .stage,
   background: rgba(0, 0, 0, 0.995);
   outline: 1px solid var(--graphite);
   outline-offset: -1px;
-  color: var(--paper);
+  color: var(--plate-fg);
   font-family: var(--mono);
   font-size: 10.5px;
   letter-spacing: 0.06em;
@@ -2175,7 +2338,7 @@ html[data-drag='lum'] .stage,
   font: inherit;
   letter-spacing: inherit;
   text-transform: inherit;
-  color: var(--paper);
+  color: var(--plate-fg);
   text-align: left;
   cursor: default;
   outline: none;
@@ -2244,7 +2407,7 @@ html[data-drag='lum'] .stage,
   align-items: center;
   column-gap: 8px;
   height: 38px;
-  border-bottom: 1px dashed #a4a59e;
+  border-bottom: 1px dashed var(--rule);
 }
 
 .fx-row.last {
@@ -2429,7 +2592,7 @@ html[data-drag='lum'] .stage,
 /* Hover tint only where hover exists: a tapped chip must not stay grey on touch. */
 @media (hover: hover) {
   .fx-opt:hover:not([aria-checked='true']) {
-    background: rgba(0, 0, 0, 0.08);
+    background: var(--wash-2);
   }
 }
 
@@ -2494,7 +2657,7 @@ html[data-drag='lum'] .stage,
 /* Hover tint only where hover exists: a tapped chip must not stay grey on touch. */
 @media (hover: hover) {
   .wp-btn:hover:not([aria-checked='true']) {
-    background: rgba(0, 0, 0, 0.08);
+    background: var(--wash-2);
   }
 }
 
@@ -2551,7 +2714,7 @@ html[data-drag='lum'] .stage,
 }
 
 .wp-dim:focus-within {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--wash);
 }
 
 .wp-dim input.is-bad {
@@ -2593,11 +2756,6 @@ html[data-drag='lum'] .stage,
   .wp-range { display: none; }
 }
 
-.wp-export {
-  width: 100%;
-  height: 40px;
-}
-
 @media (min-width: 960px) and (max-height: 920px) {
   .fx-row { height: 36px; }
   .wp-btn { height: 44px; }
@@ -2607,7 +2765,6 @@ html[data-drag='lum'] .stage,
   .fx-row { height: 34px; }
   .fx-opt { height: 20px; }
   .wp-btn { height: 40px; gap: 4px; }
-  .wp-export { height: 36px; }
   .wp-group { margin-bottom: 6px; }
 }
 
@@ -2615,10 +2772,6 @@ html[data-drag='lum'] .stage,
   .fx-row { height: 32px; }
   .fx-knob { width: 28px; height: 28px; }
   .wp-btn { height: 38px; }
-}
-
-@media (max-width: 959px) {
-  .wp-export { height: 48px; }
 }
 
 /* Touch: the knob is 34 px to look at and ≥ 44 px to hit (the pseudo-element is part of the knob). */
@@ -2645,10 +2798,6 @@ html[data-drag='lum'] .stage,
 
   .wp-btn {
     height: 52px;
-  }
-
-  .wp-export {
-    height: 48px;
   }
 }
 
@@ -2703,22 +2852,22 @@ html[data-drag='lum'] .stage,
 
 /* Callout chip: the node coordinate tag, one per ring, in the ring's own bottom gap. */
 .gring .tag-bg,
-.fxempty .tag-bg { fill: var(--void); fill-opacity: 0.92; transition: fill var(--t) var(--ease); }
+.fxempty .tag-bg { fill: var(--plate); fill-opacity: 0.92; transition: fill var(--t) var(--ease); }
 .gring .tag-text,
 .fxempty .tag-text {
   font-family: var(--mono);
   font-size: var(--fx-fs, 9px);
   font-weight: 500;
   letter-spacing: 0.05em;
-  fill: var(--paper);
+  fill: var(--plate-fg);
   stroke: none;
   pointer-events: none;
 }
 .gring.is-off .tag-text { fill: var(--graphite); fill-opacity: 1; }
 .gring.is-hover .tag-bg, .fxdial .fxring:focus-visible .tag-bg { fill: var(--signal); fill-opacity: 1; }
-.gring.is-hover .tag-text, .fxdial .fxring:focus-visible .tag-text { fill: var(--void); font-weight: 600; }
+.gring.is-hover .tag-text, .fxdial .fxring:focus-visible .tag-text { fill: var(--plate); font-weight: 600; }
 .gring.is-drag .tag-bg { fill: var(--flare); fill-opacity: 1; }
-.gring.is-drag .tag-text { fill: var(--void); font-weight: 600; }
+.gring.is-drag .tag-text { fill: var(--plate); font-weight: 600; }
 
 /* Hover: the band thickens a touch, the others step back. */
 .gring.is-hover .base.ink { stroke-width: 1.5; stroke-opacity: 0.8; }
@@ -2747,9 +2896,9 @@ html[data-drag='lum'] .stage,
 .gring.is-drag .knob.ink { stroke-width: 2.4; }
 .gring.is-drag .knob.halo { stroke-width: 6; }
 
-.foot-fx { margin: 0; height: 20px; }
+/* Toolbar buttons are 40 px on touch. */
 @media (pointer: coarse) {
-  .foot-fx { height: 40px; padding: 0 12px; }
+  .toolbar .tb-btn { height: 40px; padding: 0 12px; }
 }
 
 /* OPAC row: the SOFT row's twin, label flush left. */
@@ -2829,19 +2978,21 @@ html[data-drag='lum'] .stage,
 /* ---------- PREVIEW [P]: bare wallpaper ---------- */
 /* `.stage-frame.is-preview` (main.ts) fades every control on the artboard and the stage furniture out; the canvas and
    the frame's box are untouched, so the field renders exactly as the export. Input is blocked in main.ts. */
-.foot-preview {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 4px);
-  margin: 0;
-  z-index: 2;
+/* `.stage-col.is-preview` (main.ts) hides the toolbar and the shortcut strip; PREVIEW (corner button) stays, FX DIAL
+   hides with the rest (the stage is inert). Layout does not shift: visibility, not display. */
+.stage-col .toolbar,
+.stage-col > .keys,
+.corner-fx {
+  transition: opacity 200ms var(--ease), visibility 0s linear 0s;
 }
-.foot-preview[aria-pressed='true'],
-.foot-preview[aria-pressed='true']:hover {
-  background: var(--void);
-  color: var(--signal);
+.stage-col.is-preview .toolbar,
+.stage-col.is-preview .corner-fx,
+.stage-col.is-preview > .keys {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 200ms var(--ease), visibility 0s linear 200ms;
 }
-.foot-preview[aria-pressed='true'] b { color: var(--signal); }
 .stage-frame .ruler,
 .stage-frame .reg,
 .stage-frame .stage-foot,
@@ -2861,12 +3012,15 @@ html[data-drag='lum'] .stage,
   outline-color: transparent;
   cursor: default;
 }
-@media (max-width: 959px) {
-  /* Touch-sized button (36 px) needs its own strip above the frame so it never sits on the top bar. */
-  .stage-col { padding-top: 46px; }
-  .foot-preview { bottom: calc(100% + 4px); height: 36px; }
-}
 @media (prefers-reduced-motion: reduce) {
+  .stage-col .toolbar,
+  .stage-col > .keys,
+  .corner-fx,
+  .stage-col.is-preview .toolbar,
+  .stage-col.is-preview .corner-fx,
+  .stage-col.is-preview > .keys {
+    transition: none;
+  }
   .stage-frame .ruler,
   .stage-frame .reg,
   .stage-frame .stage-foot,
