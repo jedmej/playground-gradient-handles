@@ -1,10 +1,11 @@
 import type { Actions } from './actions';
 import { parseHex } from './color';
-import { downloadBlob, renderOffscreen, stamp } from './exporter';
+import { library } from './custom';
+import { downloadBlob, quickSize, renderOffscreen, stamp } from './exporter';
 import type { Metrics } from './handles';
 import type { History } from './history';
 import { PRESETS, type Preset } from './presets';
-import { currentPreset, CUSTOM_INDEX, emit, MAX_NODES, MIN_NODES, nodeSerial, type Shape, type Store } from './store';
+import { currentPreset, CUSTOM_INDEX, emit, MAX_NODES, MIN_NODES, nodeSerial, SLOT_COUNT, slotSerial, type Shape, type Store } from './store';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -48,7 +49,10 @@ export class UI {
   private saveBtn = document.querySelector<HTMLButtonElement>('[data-action=save-custom]')!;
   private clearBtn = document.querySelector<HTMLButtonElement>('[data-action=clear-custom]')!;
   private clearLabel = this.clearBtn.querySelector<HTMLElement>('.mini-l')!;
-  private clearTimer = 0;
+  /** Disarm callbacks of every two-press CLEAR button (the header one and one per library slot). */
+  private disarmers = new Set<() => void>();
+  private slotEls: { main: HTMLButtonElement; thumb: HTMLElement; clear: HTMLButtonElement }[] = [];
+  private slotKeys: string[] = [];
   private drawBtns = [...document.querySelectorAll<HTMLButtonElement>('[data-action=draw-mode]')];
   private shapeBtns = [...document.querySelectorAll<HTMLButtonElement>('.shape-btn')];
   private rotBtns = [...document.querySelectorAll<HTMLButtonElement>('.mini-rot')];
@@ -57,6 +61,7 @@ export class UI {
   private nsLayer = $('ns-layer');
   private softSegs = [...document.querySelectorAll<HTMLElement>('#soft-bar i')];
   private softBtns = [...document.querySelectorAll<HTMLButtonElement>('.mini-soft[data-action^=soft]')];
+  private flagBtns = [...document.querySelectorAll<HTMLButtonElement>('.mini-flag')];
   private opacBtns = [...document.querySelectorAll<HTMLButtonElement>('.mini-soft[data-action^=opac]')];
   private nsOpac = $('ns-opac');
   private opacSegs = [...document.querySelectorAll<HTMLElement>('#opac-bar i')];
@@ -91,10 +96,13 @@ export class UI {
     this.addBtn.addEventListener('click', () => actions.addAuto());
     this.removeBtn.addEventListener('click', () => actions.removeSelected());
     this.saveBtn.addEventListener('click', () => {
-      this.disarmClear();
-      actions.saveCustom();
+      this.disarmAll();
+      this.saveSlot();
     });
-    this.bindClear();
+    this.bindArm(this.clearBtn, this.clearLabel, 'CLEAR', 'CLEAR?', () => `Press CLEAR again to delete ${slotSerial(this.store.presetIndex - CUSTOM_INDEX)}`, () => {
+      this.actions.clearCustom();
+      this.saveBtn.focus({ preventScroll: true });
+    });
     this.bindColor();
     for (const b of this.drawBtns) b.addEventListener('click', () => actions.toggleDraw());
     for (const b of this.shapeBtns) {
@@ -121,44 +129,82 @@ export class UI {
         if (i >= 0) actions.opacBy(i, b.dataset.action === 'opac-minus' ? -0.1 : 0.1);
       });
     }
+    for (const b of this.flagBtns) {
+      b.addEventListener('click', () => {
+        const i = actions.target;
+        if (i < 0) return;
+        if (b.dataset.action === 'lock') actions.toggleLock(i);
+        else if (b.dataset.action === 'hide') actions.toggleHide(i);
+        else actions.solo(i);
+      });
+    }
     store.listeners.add(() => this.sync());
     this.sync();
   }
 
-  /** CLEAR [×] needs a second press within 3 s: first press arms it (FLARE, "CLEAR?"), Esc/blur/timeout disarm. */
-  private bindClear(): void {
-    const b = this.clearBtn;
+  /** Two-press confirm: the first press arms the button (FLARE, `armedText`), Esc / blur / 3 s disarm, the second press confirms. */
+  private bindArm(b: HTMLButtonElement, label: HTMLElement, idle: string, armedText: string, hint: () => string, confirm: () => void): void {
+    let timer = 0;
+    const disarm = (): void => {
+      window.clearTimeout(timer);
+      if (b.dataset.armed !== 'true') return;
+      b.dataset.armed = 'false';
+      b.classList.remove('is-armed');
+      label.textContent = idle;
+      b.removeAttribute('aria-label');
+    };
+    this.disarmers.add(disarm);
     b.addEventListener('click', () => {
       if (b.dataset.armed === 'true') {
-        this.disarmClear();
-        this.actions.clearCustom();
-        this.saveBtn.focus({ preventScroll: true });
+        disarm();
+        confirm();
         return;
       }
       b.dataset.armed = 'true';
       b.classList.add('is-armed');
-      this.clearLabel.textContent = 'CLEAR?';
-      b.setAttribute('aria-label', 'Press again to clear CS-06');
-      this.say('Press CLEAR again to delete CS-06');
-      this.clearTimer = window.setTimeout(() => this.disarmClear(), 3000);
+      label.textContent = armedText;
+      b.setAttribute('aria-label', 'Press again to confirm: ' + hint());
+      this.say(hint());
+      timer = window.setTimeout(disarm, 3000);
     });
-    b.addEventListener('blur', () => this.disarmClear());
+    b.addEventListener('blur', disarm);
     b.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && b.dataset.armed === 'true') {
         e.stopPropagation();
-        this.disarmClear();
+        disarm();
       }
     });
   }
 
-  private disarmClear(): void {
-    const b = this.clearBtn;
-    window.clearTimeout(this.clearTimer);
-    if (b.dataset.armed !== 'true') return;
-    b.dataset.armed = 'false';
-    b.classList.remove('is-armed');
-    this.clearLabel.textContent = 'CLEAR';
-    b.removeAttribute('aria-label');
+  private disarmAll(): void {
+    for (const d of this.disarmers) d();
+  }
+
+  /** SAVE into `slot` (default: the active one, else the first empty) and render its thumbnail. */
+  private saveSlot(slot?: number): void {
+    const i = this.actions.saveCustom(slot);
+    if (i >= 0) void this.makeThumb(i);
+  }
+
+  /** Small PNG of the field as just saved, stored with the slot (best effort: a failure leaves the colour-chip fallback). */
+  private async makeThumb(i: number): Promise<void> {
+    const savedAt = library.savedAt(i);
+    const m = this.metrics;
+    const { w, h } = quickSize(m.w, m.h, 112);
+    try {
+      const res = await renderOffscreen(this.store, m, w, h, this.store.reducedMotion ? 0.5 : this.now() / 1000);
+      if (!res.ok) return;
+      const url = await new Promise<string>((ok, no) => {
+        const r = new FileReader();
+        r.onload = () => ok(String(r.result));
+        r.onerror = () => no(r.error);
+        r.readAsDataURL(res.blob);
+      });
+      library.setThumb(i, savedAt, url);
+      this.refreshSlots();
+    } catch {
+      /* no thumbnail */
+    }
   }
 
   private presetHtml(p: Preset | null): string {
@@ -174,12 +220,11 @@ export class UI {
 
   private buildPresets(): void {
     const host = $('presets');
-    const rows: (Preset | null)[] = [...PRESETS, this.store.custom];
-    rows.forEach((p, i) => {
+    PRESETS.forEach((p, i) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'preset';
-      b.dataset.preset = i === CUSTOM_INDEX ? 'cs06' : PRESETS[i].id;
+      b.dataset.preset = PRESETS[i].id;
       b.setAttribute('role', 'radio');
       b.innerHTML = this.presetHtml(p);
       b.addEventListener('click', () => {
@@ -190,22 +235,98 @@ export class UI {
       host.appendChild(b);
       this.presetButtons.push(b);
     });
-    this.refreshCustomRow();
+    this.buildSlots();
+    this.refreshSlots();
   }
 
-  private customKey = '\0';
+  /** The save library: CS-06 … CS-13 as a grid of thumbnail cards (load = the card, ↧ = save into it, × twice = clear it). */
+  private buildSlots(): void {
+    const host = $('slots');
+    for (let k = 0; k < SLOT_COUNT; k++) {
+      const serial = slotSerial(k);
+      const cell = document.createElement('div');
+      cell.className = 'slot';
+      cell.dataset.slot = String(k);
+      const main = document.createElement('button');
+      main.type = 'button';
+      main.className = 'slot-main';
+      main.dataset.preset = serial.toLowerCase().replace('-', '');
+      main.setAttribute('role', 'radio');
+      main.innerHTML =
+        `<span class="slot-thumb" aria-hidden="true"></span>` +
+        `<span class="slot-cap"><span class="slot-serial">${serial}</span><em class="preset-mod" hidden>MOD</em></span>`;
+      const idx = CUSTOM_INDEX + k;
+      main.addEventListener('click', () => {
+        const s = this.store;
+        if (s.presetIndex === idx && !s.modified) return;
+        this.actions.applyPresetAt(idx);
+      });
+      const acts = document.createElement('span');
+      acts.className = 'slot-acts';
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'mini slot-btn';
+      save.dataset.action = 'slot-save';
+      save.dataset.slot = String(k);
+      save.title = `Save the current field into ${serial}`;
+      save.setAttribute('aria-label', `Save the current field into ${serial}`);
+      save.innerHTML = '<b>[↧]</b>';
+      save.addEventListener('click', () => {
+        this.disarmAll();
+        this.saveSlot(k);
+      });
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'mini mini-clear slot-btn';
+      clear.dataset.action = 'slot-clear';
+      clear.dataset.slot = String(k);
+      clear.title = `Clear ${serial} (press twice)`;
+      clear.setAttribute('aria-label', `Clear ${serial}`);
+      clear.innerHTML = '<span class="mini-l">[×]</span>';
+      this.bindArm(clear, clear.firstElementChild as HTMLElement, '[×]', '[×]?', () => `Press × again to delete ${serial}`, () => {
+        this.actions.clearCustom(k);
+        save.focus({ preventScroll: true });
+      });
+      acts.append(save, clear);
+      cell.append(main, acts);
+      host.appendChild(cell);
+      this.presetButtons[idx] = main;
+      this.slotEls.push({ main, thumb: main.firstElementChild as HTMLElement, clear });
+      this.slotKeys.push('\0');
+    }
+  }
 
-  /** CS-06 row: empty/dimmed until a custom set has been saved; chips follow the saved colours. */
-  private refreshCustomRow(): void {
-    const c = this.store.custom;
-    const key = c ? c.colors.join() : '';
-    if (key === this.customKey) return;
-    this.customKey = key;
-    const b = this.presetButtons[CUSTOM_INDEX];
-    b.innerHTML = this.presetHtml(c);
-    b.classList.toggle('is-empty', !c);
-    if (!c) this.disarmClear();
-    this.clearBtn.hidden = !c;
+  /** Library cards: dashed + dimmed while empty; thumbnail (or, before it renders / for migrated sets, the colour chips) when filled. */
+  private refreshSlots(): void {
+    const slots = this.store.slots;
+    this.slotEls.forEach((el, k) => {
+      const p = slots[k];
+      const thumb = p ? library.thumb(k) : null;
+      const key = p ? `${p.colors.join()}|${thumb ? thumb.length : 0}|${library.savedAt(k)}` : '';
+      if (key === this.slotKeys[k]) return;
+      this.slotKeys[k] = key;
+      el.main.classList.toggle('is-empty', !p);
+      el.clear.hidden = !p;
+      if (!p) this.disarmAll();
+      const serial = slotSerial(k);
+      const when = library.savedAt(k);
+      const at = when ? new Date(when).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+      el.main.title = p ? `${serial} · ${pad2(p.colors.length)} nodes${at ? ' · saved ' + at : ''}` : `${serial} — empty`;
+      el.main.setAttribute('aria-label', p ? `${serial}, ${p.colors.length} nodes` : `${serial}, empty`);
+      el.thumb.replaceChildren();
+      el.thumb.style.background = '';
+      if (thumb) {
+        const img = document.createElement('img');
+        img.alt = '';
+        img.src = thumb;
+        el.thumb.appendChild(img);
+      } else if (p) {
+        const n = p.colors.length;
+        el.thumb.style.background = `linear-gradient(to right, ${p.colors.map((c, i) => `${c} ${(i / n) * 100}% ${((i + 1) / n) * 100}%`).join(', ')})`;
+      }
+    });
+    const active = this.store.presetIndex - CUSTOM_INDEX;
+    this.clearBtn.hidden = !(active >= 0 && slots[active]);
   }
 
   private rebuildBarcode(): void {
@@ -261,7 +382,7 @@ export class UI {
   /** Apply a colour to the edit target, opening one undo step per session. */
   private commitColor(hex: string): void {
     const i = this.actions.target;
-    if (i < 0 || this.store.nodes[i].hex === hex) return;
+    if (i < 0 || this.store.nodes[i].hex === hex || this.actions.isLocked(i)) return;
     if (this.colorSession !== this.store.nodes[i].uid) {
       this.actions.beginColor(i);
       this.colorSession = this.store.nodes[i].uid;
@@ -339,7 +460,7 @@ export class UI {
       this.endColorSession();
       this.setInvalid(false);
     }
-    const on = !!n;
+    const on = !!n && !n.lock;
     for (const el of [this.colorInput, this.hexInput]) if (el.disabled === on) el.disabled = !on;
     this.swatchBtn.classList.toggle('is-disabled', !on);
     this.hexField.classList.toggle('is-disabled', !on);
@@ -362,22 +483,31 @@ export class UI {
     const n = t >= 0 ? s.nodes[t] : null;
     const stroke = n?.shape === 'stroke';
     for (const b of this.shapeBtns) {
-      const dis = !n || stroke;
+      const dis = !n || stroke || n.lock;
       if (b.disabled !== dis) b.disabled = dis;
       b.setAttribute('aria-checked', String(!!n && !stroke && n.shape === b.dataset.shape));
     }
     this.shapeTag.hidden = !stroke;
     if (stroke) setText(this.shapeTag, `STROKE · ${pad2(n!.pts.length)} PTS`);
     this.shapeGroup.closest('.shape-row')!.classList.toggle('is-stroke', stroke);
-    const canRot = !!n && n.shape !== 'circle' && !stroke;
+    const canRot = !!n && n.shape !== 'circle' && !stroke && !n.lock;
     for (const b of this.rotBtns) if (b.disabled === canRot) b.disabled = !canRot;
     for (const b of this.softBtns) {
-      const dis = !n || (b.dataset.action === 'soft-minus' ? n.soft <= 0.0001 : n.soft >= 0.9999);
+      const dis = !n || n.lock || (b.dataset.action === 'soft-minus' ? n.soft <= 0.0001 : n.soft >= 0.9999);
       if (b.disabled !== dis) b.disabled = dis;
     }
     for (const b of this.opacBtns) {
-      const dis = !n || (b.dataset.action === 'opac-minus' ? n.opac <= 0.0001 : n.opac >= 0.9999);
+      const dis = !n || n.lock || (b.dataset.action === 'opac-minus' ? n.opac <= 0.0001 : n.opac >= 0.9999);
       if (b.disabled !== dis) b.disabled = dis;
+    }
+    // STATE row: LOCK / HIDE / SOLO follow the edit target (what pressing them would do next is in the pressed state).
+    for (const b of this.flagBtns) {
+      const a = b.dataset.action;
+      const on = !!n && (a === 'lock' ? n.lock : a === 'hide' ? n.hide : this.actions.isSolo(t));
+      const dis = !n || (a === 'hide' && !n.hide && s.nodes.every((m, k) => k === t || m.hide)) || (a === 'solo' && s.nodes.length < 2);
+      if (b.disabled !== dis) b.disabled = dis;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('is-on', on);
     }
     const draw = s.tool === 'draw';
     for (const b of this.drawBtns) {
@@ -391,7 +521,7 @@ export class UI {
   /** Called on store events: things that change rarely. */
   sync(): void {
     const s = this.store;
-    this.refreshCustomRow();
+    this.refreshSlots();
     this.presetButtons.forEach((b, i) => {
       const on = i === s.presetIndex;
       b.classList.toggle('is-active', on);
@@ -415,7 +545,7 @@ export class UI {
     this.addBtn.disabled = count >= MAX_NODES;
     this.removeBtn.disabled = target < 0 || count <= MIN_NODES;
     this.undoBtn.disabled = !this.history.canUndo;
-    this.saveBtn.classList.toggle('is-dirty', s.modified || s.presetIndex !== CUSTOM_INDEX);
+    this.saveBtn.classList.toggle('is-dirty', s.modified || s.presetIndex < CUSTOM_INDEX);
     this.syncColor();
     this.syncShape();
     s.nodes.forEach((n, i) => {

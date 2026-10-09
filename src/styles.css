@@ -172,7 +172,6 @@ b {
 .preset,
 .node-spec,
 .status,
-.keys,
 .stage-foot,
 .state-readout {
   font-family: var(--mono);
@@ -391,6 +390,22 @@ b {
   z-index: 2;
 }
 .corner-fx { left: 18px; }
+/* NODES (ADD NODE · REMOVE NODE · DRAW): centred on the frame's top edge between FX DIAL and PREVIEW, same style. */
+.stage-frame .frame-top {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: calc(50% + 9px); /* centred on the stage (the frame's first 18 px column is the y ruler) */
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+.frame-top .foot-btn { margin: 0; height: 20px; }
+.frame-top .foot-btn:disabled { opacity: 0.4; cursor: default; }
+@media (pointer: coarse), (max-width: 959px) {
+  .frame-top .foot-btn { height: 36px; padding: 0 12px; }
+}
 .corner-preview { right: 0; }
 .corner-preview[aria-pressed='true'],
 .corner-preview[aria-pressed='true']:hover {
@@ -424,12 +439,74 @@ b {
   display: block;
 }
 
-/* ---------- shortcut strip: keyboard / touch hints under the artboard ---------- */
-.stage-col > .keys {
-  padding: 8px 24px 8px 26px;
+/* ---------- stage bar under the artboard: GENERATE (Random, Harmony, Vary) + SHORTCUTS [?] ---------- */
+.stage-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  padding: 7px 24px 7px 26px;
   border-top: 1px solid var(--void);
-  line-height: 1.5;
 }
+.stage-bar .tb-btn {
+  margin: 0;
+  height: 28px;
+  padding: 0 7px;
+  gap: 5px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.stage-bar .keys-btn { margin: 0; height: 20px; }
+.keys-btn[aria-pressed='true'],
+.keys-btn[aria-pressed='true']:hover { background: var(--plate); color: var(--signal); }
+.keys-btn[aria-pressed='true'] b { color: var(--signal); }
+@media (pointer: coarse), (max-width: 959px) {
+  .stage-bar .keys-btn { height: 36px; padding: 0 12px; }
+}
+.keys-wrap { position: relative; margin-left: auto; }
+
+/* SHORTCUTS popup: the node menu's plate, a vertical key → action list, opening up from its button. */
+.keys-pop {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  min-width: 232px;
+  max-height: min(80vh, 640px);
+  overflow-y: auto;
+  padding: 0 0 4px;
+  /* Not quite opaque, like the node menu (a fully opaque plate over WebGL confused Chrome's culling). */
+  background: rgba(0, 0, 0, 0.995);
+  outline: 1px solid var(--graphite);
+  outline-offset: -1px;
+  color: var(--plate-fg);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.keys-pop[hidden] { display: none; }
+.keys-list { margin: 0; padding: 0; }
+.keys-list > div {
+  display: flex;
+  flex-direction: row-reverse; /* action on the left, key on the right */
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  height: 20px;
+  padding: 0 10px;
+}
+.keys-list dt {
+  padding: 1px 5px 0;
+  border: 1px solid var(--hull);
+  color: var(--plate-fg);
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+.keys-list dd { margin: 0; color: var(--graphite); text-align: left; }
+.keys-list > div:hover dd { color: var(--signal); }
+.keys-pop .k-touch { display: none; }
 
 .stage-frame {
   position: relative;
@@ -552,12 +629,11 @@ html[data-tool='draw'][data-drag] .stage {
 .stage-foot {
   grid-column: 2;
   grid-row: 3;
-  /* A narrow (portrait) stage wraps the readouts onto a second line instead of overflowing. */
-  flex-wrap: wrap;
-  gap: 0 14px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
+  /* Cursor readout | GENERATE (centred) | stage size. A narrow (portrait) stage wraps onto more lines. */
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  gap: 4px 14px;
+  align-items: center;
   font-size: 10px;
   color: var(--graphite);
   padding-top: 7px;
@@ -565,6 +641,29 @@ html[data-tool='draw'][data-drag] .stage {
 
 .foot-l {
   color: var(--ink);
+}
+.foot-l, .foot-r { white-space: nowrap; }
+.foot-r { justify-self: end; }
+
+/* GENERATE under the artboard: RANDOM · HARMONY · VARY in the FX DIAL / PREVIEW corner-button style. */
+.foot-gen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-self: center;
+}
+.foot-gen .foot-btn { margin: 0; height: 20px; }
+.foot-gen .foot-sep { width: 1px; align-self: stretch; margin: 0 4px; background: var(--void); }
+.foot-gen .foot-btn[aria-pressed='true'],
+.foot-gen .foot-btn[aria-pressed='true']:hover { background: var(--plate); color: var(--signal); }
+.foot-gen .foot-btn[aria-pressed='true'] b { color: var(--signal); }
+@media (pointer: coarse), (max-width: 959px) {
+  .foot-gen .foot-btn { height: 36px; padding: 0 12px; }
+  .stage-foot { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .foot-gen { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+  /* Readouts on one line, the 36 px TOOLS + GENERATE buttons under them (two rows on a phone): the foot row grows. */
+  :root { --foot-row: 104px; }
+  .foot-gen .foot-sep { display: none; }
 }
 
 .reg {
@@ -1495,47 +1594,14 @@ html[data-tool='draw'][data-drag] .stage {
   visibility: visible;
 }
 
-.keys {
-  font-size: 9.5px;
-  color: var(--graphite);
-  text-transform: none;
-  letter-spacing: 0.02em;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 6px;
-  align-items: center;
-}
-
-.keys span {
-  border: 1px solid var(--rule);
-  padding: 1px 4px 0;
-  color: var(--soft);
-  font-size: 9px;
-  letter-spacing: 0.06em;
-}
-
-.keys .k-fine,
-.keys .k-touch {
-  display: contents;
-  border: 0;
-  padding: 0;
-  font-size: inherit;
-  letter-spacing: inherit;
-  color: inherit;
-}
-
-.keys .k-touch {
-  display: none;
-}
-
 /* Same switch for the intro copy: "Double-click" on mouse, "Double-tap" on touch. */
 .t-touch {
   display: none;
 }
 
 @media (pointer: coarse) {
-  .keys .k-fine { display: none; }
-  .keys .k-touch { display: contents; }
+  .keys-pop .k-fine { display: none; }
+  .keys-pop .k-touch { display: block; }
   .t-fine { display: none; }
   .t-touch { display: inline; }
 }
@@ -1933,7 +1999,13 @@ html[data-tool='draw'][data-drag] .stage {
   }
 
   .stage-area {
-    padding: 50px 12px 6px 12px;
+    /* Two rows above the frame: NODES (ADD / REMOVE / DRAW) over the FX DIAL / PREVIEW corners. */
+    padding: 94px 12px 6px 12px;
+  }
+  .stage-frame .frame-top {
+    bottom: calc(100% + 46px);
+    left: 18px;
+    transform: none;
   }
 
   /* One scrollable row of actions (groups keep their dividers) instead of a four-row wrap. */
@@ -1971,7 +2043,7 @@ html[data-tool='draw'][data-drag] .stage {
     max-width: none;
   }
 
-  .stage-col > .keys {
+  .stage-bar {
     padding: 8px 12px 10px;
   }
 
@@ -2294,7 +2366,7 @@ html[data-drag='lum'] .stage,
 .fx-row {
   display: grid;
   /* checkbox | label | knob | readout | options: columns share one x on every row */
-  grid-template-columns: 14px 54px auto 5.6ch auto;
+  grid-template-columns: 14px 60px auto 5.6ch auto;
   justify-content: start;
   align-items: center;
   column-gap: 8px;
@@ -2705,8 +2777,9 @@ html[data-drag='lum'] .stage,
 .fxdial .halo { fill: none; stroke: #000; stroke-opacity: 0.6; stroke-width: 3; stroke-linecap: butt; }
 .fxdial .ink { fill: none; stroke: #fff; stroke-width: 1; stroke-linecap: butt; }
 .fxdial .fxring { outline: none; pointer-events: none; transition: opacity 60ms linear; }
+/* Colour flips at once when a gauge is magnetized / released (a fade read as lag); only the stroke weight eases. */
 .gring .halo, .gring .ink {
-  transition: stroke-width var(--t) var(--ease), stroke var(--t) var(--ease), stroke-opacity var(--t) var(--ease);
+  transition: stroke-width 80ms var(--ease);
 }
 
 /* Bezel */
@@ -2744,7 +2817,7 @@ html[data-drag='lum'] .stage,
 
 /* Callout chip: the node coordinate tag, one per ring, in the ring's own bottom gap. */
 .gring .tag-bg,
-.fxempty .tag-bg { fill: var(--plate); fill-opacity: 0.92; transition: fill var(--t) var(--ease); }
+.fxempty .tag-bg { fill: var(--plate); fill-opacity: 0.92; }
 .gring .tag-text,
 .fxempty .tag-text {
   font-family: var(--mono);
@@ -2756,9 +2829,10 @@ html[data-drag='lum'] .stage,
   pointer-events: none;
 }
 .gring.is-off .tag-text { fill: var(--graphite); fill-opacity: 1; }
-.gring.is-hover .tag-bg, .fxdial .fxring:focus-visible .tag-bg { fill: var(--signal); fill-opacity: 1; }
+.fxdial .fxring:focus-visible .tag-bg { fill: var(--signal); fill-opacity: 1; }
 .gring.is-hover .tag-text, .fxdial .fxring:focus-visible .tag-text { fill: var(--plate); font-weight: 600; }
-.gring.is-drag .tag-bg { fill: var(--flare); fill-opacity: 1; }
+/* Magnetized (hovered) reads as engaged at once: the same FLARE as a drag or wheel burst. */
+.gring.is-hover .tag-bg, .gring.is-drag .tag-bg { fill: var(--flare); fill-opacity: 1; }
 .gring.is-drag .tag-text { fill: var(--plate); font-weight: 600; }
 
 /* Hover: the band thickens a touch, the others step back. */
@@ -2766,9 +2840,10 @@ html[data-drag='lum'] .stage,
 .gring.is-hover .base.halo { stroke-width: 4; }
 .gring.is-hover .fill.ink { stroke-width: 3; }
 .gring.is-hover .fill.halo { stroke-width: 6; }
-.gring.is-hover .knob.ink { stroke: var(--signal); stroke-width: 2.2; }
+.gring.is-hover .knob.ink { stroke: var(--flare); stroke-width: 2.2; }
+.gring.is-hover .fill.ink { stroke: var(--flare); }
 .gring.is-hover .knob.halo { stroke-width: 5; }
-.gring.is-hover .gticks.ink { stroke: var(--signal); }
+.gring.is-hover .gticks.ink { stroke: var(--flare); }
 .fxdial.has-hover .fxring:not(.is-hover) { opacity: calc(var(--pa, 1) * 0.7); }
 .fxdial .fxring:focus-visible .base.ink { stroke-width: 1.5; stroke-opacity: 0.9; }
 .fxdial .fxring:focus-visible .knob.ink { stroke: var(--signal); }
@@ -2816,12 +2891,19 @@ html[data-drag='lum'] .stage,
   transition: opacity 120ms var(--ease), background-color var(--t) var(--ease), color var(--t) var(--ease), filter 200ms var(--ease);
 }
 .stage .fxdial .fxring { transition: opacity 60ms linear, filter 200ms var(--ease); }
+/* Hand-off between dials: the gauges inside a bezel / the dial trade the dim fast both ways, so the newly grabbed one
+   lights as quickly as its FLARE appears. */
+.stage .handles .node .ring > .gauge,
+.stage .fxdial .fxring,
+.stage.ui-focus .node .ring > .gauge,
+.stage.ui-focus .fxdial .fxring { transition-duration: 60ms, 80ms; }
 
-.stage.ui-focus .handles > :not(.is-focus),
+.stage.ui-focus .handles > :not(.is-focus):not(.tools-layer),
 .stage.ui-focus .chip.is-on:not(.is-focus),
 .stage.ui-focus > .fxdial:not(.is-focus),
-/* inside the node being adjusted: everything but the active control */
-.stage.ui-focus .node.is-focus > :not(.ring),
+/* inside the node being adjusted: everything but the active control (a moving node keeps its reticle, drops its gauges) */
+.stage.ui-focus .node.is-focus:not(.focus-node) > :not(.ring):not(.lead),
+.stage.ui-focus .node.focus-node .ring > .gauge,
 .stage.ui-focus .node.focus-soft .ring > :not(.gauge.soft),
 .stage.ui-focus .node.focus-opac .ring > :not(.gauge.opac),
 .stage.ui-focus .node.focus-rot .ring > :not(.gauge.rot),
@@ -2873,13 +2955,15 @@ html[data-drag='lum'] .stage,
 /* `.stage-col.is-preview` (main.ts) hides the toolbar and the shortcut strip; PREVIEW (corner button) stays, FX DIAL
    hides with the rest (the stage is inert). Layout does not shift: visibility, not display. */
 .stage-col .toolbar,
-.stage-col > .keys,
-.corner-fx {
+.stage-col > .stage-bar,
+.corner-fx,
+.frame-top {
   transition: opacity 200ms var(--ease), visibility 0s linear 0s;
 }
 .stage-col.is-preview .toolbar,
 .stage-col.is-preview .corner-fx,
-.stage-col.is-preview > .keys {
+.stage-col.is-preview .frame-top,
+.stage-col.is-preview > .stage-bar {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -2906,11 +2990,13 @@ html[data-drag='lum'] .stage,
 }
 @media (prefers-reduced-motion: reduce) {
   .stage-col .toolbar,
-  .stage-col > .keys,
+  .stage-col > .stage-bar,
   .corner-fx,
+  .frame-top,
   .stage-col.is-preview .toolbar,
   .stage-col.is-preview .corner-fx,
-  .stage-col.is-preview > .keys {
+  .stage-col.is-preview .frame-top,
+  .stage-col.is-preview > .stage-bar {
     transition: none;
   }
   .stage-frame .ruler,
@@ -2942,3 +3028,531 @@ html[data-drag='lum'] .stage,
 .node .csw { pointer-events: none; will-change: opacity; }
 .node .csw-halo { stroke: #000; stroke-opacity: 0.6; stroke-width: 4; }
 .node .csw-ink { stroke: #fff; stroke-width: 1.25; stroke-opacity: 0.95; }
+
+/* ---------- v6 Tools: SNAP [G], MIRROR [Y], PICK [I] ---------- */
+/* Armed = VOID plate with SIGNAL text, like DRAW. MIRROR also prints its mode (OFF / X / Y / XY) after the key. */
+.mini-tool[aria-pressed='true'],
+.mini-tool[aria-pressed='true']:hover,
+.mini-pick[aria-pressed='true'],
+.mini-pick[aria-pressed='true']:hover {
+  background: var(--plate);
+  color: var(--signal);
+}
+.mini-tool[aria-pressed='true'] b,
+.mini-pick[aria-pressed='true'] b,
+.mini-tool[aria-pressed='true'] .tool-mode {
+  color: var(--signal);
+}
+.tool-mode {
+  min-width: 2.2em;
+  color: var(--graphite);
+  font-weight: 500;
+}
+.mini-pick { margin: 0 0 0 auto; height: 28px; }
+.mini-pick:disabled { opacity: 0.4; cursor: default; }
+.mini-pick:disabled:hover { background: none; color: var(--void); }
+.mini-pick:disabled:hover b { color: var(--graphite); }
+@media (hover: none) {
+  .mini-tool[aria-pressed='false']:hover,
+  .mini-pick[aria-pressed='false']:hover { background: none; color: var(--void); }
+  .mini-tool[aria-pressed='false']:hover b,
+  .mini-pick[aria-pressed='false']:hover b { color: var(--graphite); }
+}
+
+/* Artboard furniture (handles layer: hidden in preview, never rendered into an export). */
+.tools-layer .tl-grid { fill: none; stroke: #f2f3ee; stroke-width: 1; opacity: 0; transition: opacity 120ms var(--ease); mix-blend-mode: difference; }
+.tools-layer.grid-on .tl-minor { opacity: 0.12; }
+.tools-layer.grid-on .tl-major { opacity: 0.28; }
+.tools-layer .tl-halo { fill: none; stroke: #000; stroke-opacity: 0.55; stroke-width: 3; }
+.tools-layer .tl-guide { fill: none; stroke: var(--signal); stroke-width: 1; }
+.tools-layer .tl-axis { fill: none; stroke: #f2f3ee; stroke-width: 1; stroke-dasharray: 6 4; }
+
+/* EYEDROPPER armed: crosshair over every node too, and a live loupe chip (swatch + hex) by the pointer. */
+.stage.is-eyedrop,
+.stage.is-eyedrop * { cursor: var(--cur-cross), crosshair !important; }
+.chip-loupe {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--plate);
+  color: var(--plate-fg);
+  font-weight: 600;
+}
+.chip-loupe i {
+  display: block;
+  width: 12px;
+  height: 12px;
+  outline: 1px solid var(--graphite);
+}
+
+/* ---------- v6 Generate: RANDOM / VARY, node LOCK / HIDE, palette EXTRACT ---------- */
+/* VARY strip: a VOID plate over the foot of the stage, four thumbnails of the same field. */
+.vary-strip {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  z-index: 5;
+  width: min(calc(100% - 16px), 560px);
+  transform: translateX(-50%);
+  padding: 0 0 6px;
+  /* Not fully opaque on purpose, like the node menu (see .node-menu). */
+  background: rgba(0, 0, 0, 0.995);
+  outline: 1px solid var(--graphite);
+  outline-offset: -1px;
+  color: var(--plate-fg);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: default;
+  touch-action: manipulation;
+}
+.vary-strip[hidden] { display: none; }
+.vary-headrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 6px;
+  border-bottom: 1px solid var(--hull);
+}
+.vary-head {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px 5px;
+  color: var(--graphite);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* ROLL [R] / [V]: top-right of the strip, the corner-button type. */
+.vary-roll { margin: 0; height: 18px; flex: none; }
+@media (pointer: coarse) {
+  .vary-roll { height: 32px; padding: 0 10px; }
+}
+.vary-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px 6px 0;
+}
+.vary-cell { position: relative; min-width: 0; }
+.vary-cell .vary-btn { width: 100%; }
+/* Padlock: keeps this take through rolls. A VOID corner plate like the R-1 / V-1 serial (flush, no keyline) and a
+   square-cut glyph: open shackle by default, closed + SIGNAL plate once locked. */
+.vary-lock {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: var(--plate);
+  color: var(--plate-fg);
+  cursor: pointer;
+}
+.vary-lock svg, .vary-save svg { display: block; }
+/* SAVE (top-left): the padlock's twin corner plate with a square-cut floppy; lit SIGNAL once the take is saved. */
+.vary-save {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: var(--plate);
+  color: var(--plate-fg);
+  cursor: pointer;
+}
+.vary-save .sv-body, .vary-save .sv-label { fill: none; stroke: currentColor; stroke-width: 1.1; stroke-linejoin: miter; }
+.vary-save .sv-shutter { fill: currentColor; }
+.vary-save:hover, .vary-save:focus-visible { color: var(--signal); }
+.vary-save.is-on { background: var(--signal); color: var(--plate); }
+.vary-lock .lk-open, .vary-lock .lk-shut { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: square; stroke-linejoin: miter; }
+.vary-lock .lk-bd { fill: none; stroke: currentColor; stroke-width: 1.2; }
+.vary-lock .lk-key { fill: currentColor; }
+.vary-lock .lk-shut { display: none; }
+.vary-lock:hover, .vary-lock:focus-visible { color: var(--signal); }
+.vary-lock.is-on { background: var(--signal); color: var(--plate); }
+.vary-lock.is-on .lk-open { display: none; }
+.vary-lock.is-on .lk-shut { display: inline; }
+.vary-lock.is-on .lk-bd { fill: currentColor; }
+.vary-lock.is-on .lk-key { fill: var(--signal); }
+.vary-cell:has(.vary-lock.is-on) .vary-btn { outline: 1px solid var(--signal); outline-offset: -1px; }
+@media (pointer: coarse) {
+  .vary-lock, .vary-save { width: 32px; height: 32px; }
+}
+.vary-btn {
+  position: relative;
+  display: block;
+  min-width: 0;
+  padding: 0;
+  background: var(--hull);
+  outline: 1px solid var(--hull);
+  outline-offset: -1px;
+  cursor: pointer;
+  aspect-ratio: var(--vary-aspect, 1.78);
+  max-height: 30vh;
+  overflow: hidden;
+}
+.vary-btn img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.vary-btn.is-loading img { visibility: hidden; }
+.vary-btn.is-loading { cursor: progress; }
+.vary-btn:hover,
+.vary-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: -2px;
+}
+.vary-serial {
+  position: absolute;
+  bottom: 0;
+  padding: 2px 4px 1px;
+  background: var(--plate);
+  color: var(--plate-fg);
+  font: inherit;
+}
+.vary-serial { left: 0; }
+.vary-btn:hover .vary-serial,
+.vary-btn:focus-visible .vary-serial { color: var(--signal); }
+
+/* A file dragged over the stage: EXTRACT target. */
+.stage.is-drop::after {
+  content: 'DROP IMAGE → PALETTE';
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+  outline: 2px dashed var(--signal);
+  outline-offset: -10px;
+  color: var(--signal);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+}
+
+/* Colour set: FROM IMAGE [↥] and its hint. */
+.extract-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.extract-row .mini { margin: 0; }
+.extract-hint {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+/* NODE panel: STATE row (LOCK / HIDE / SOLO), the SHAPE row's treatment. */
+.node-spec .flag-row {
+  height: 32px;
+  gap: 8px;
+  justify-content: flex-start;
+}
+.flag-row dd {
+  gap: 6px;
+  margin-left: auto;
+}
+.mini-flag {
+  height: 24px;
+  margin: 0;
+  padding: 0 6px;
+  gap: 4px;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+}
+.mini-flag[aria-pressed='true'],
+.mini-flag[aria-pressed='true']:hover {
+  background: var(--plate);
+  color: var(--signal);
+}
+.mini-flag[aria-pressed='true'] b { color: var(--signal); }
+.mini-flag:disabled { opacity: 0.4; cursor: default; }
+.mini-flag:disabled:hover { background: none; color: var(--void); }
+@media (hover: none) {
+  .mini-flag[aria-pressed='false']:hover { background: none; color: var(--void); }
+  .mini-flag[aria-pressed='false']:hover b { color: var(--graphite); }
+}
+@media (pointer: coarse) {
+  .node-spec .flag-row { height: auto; flex-wrap: wrap; padding: 4px 0; row-gap: 4px; }
+  .mini-flag { height: 40px; padding: 0 12px; }
+}
+
+/* LOCK: a small padlock off the reticle's corner. HIDE: the reticle goes ghost (hollow core, dashed brackets). */
+.node .lock-g { opacity: 0; pointer-events: none; }
+.node.is-locked .lock-g { opacity: 1; }
+.node .lock-sh.halo,
+.node .lock-sh.ink { fill: none; }
+.node .lock-sh.halo { stroke: #000; stroke-opacity: 0.6; stroke-width: 3.5; }
+.node .lock-bd.halo { fill: #000; fill-opacity: 0.6; stroke: #000; stroke-opacity: 0.6; stroke-width: 2; }
+.node .lock-sh.ink { stroke: #f2f3ee; stroke-width: 1.25; }
+.node .lock-bd.ink { fill: #f2f3ee; stroke: none; }
+.node.is-hover.is-locked .lock-bd.ink,
+.node.is-selected.is-locked .lock-bd.ink { fill: var(--signal); }
+.node.is-hidden .ret.ink,
+.node.is-hidden .ret.halo { stroke-dasharray: 2 2; opacity: 0.7; }
+.node.is-hidden .core.ink { fill: none; stroke: #f2f3ee; stroke-width: 1; }
+.node.is-hidden .core.halo { fill-opacity: 0.25; }
+.node.is-hidden .out-p.ink { stroke-opacity: 0.55; }
+
+/* ---------- v6 Output: toolbar group, save library, CODE panel ---------- */
+/* SHARE / COPY / CODE sit before EXPORT in the right-pinned group; the status plate floats left of the whole group. */
+.toolbar .status { right: 360px; max-width: 34%; }
+
+/* Library: CS-06 … CS-13 as a 4-up grid of thumbnail cards under the five factory sets. */
+.slots {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 6px;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--void);
+}
+.slot { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.slot-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 3px;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  text-align: left;
+  border: 1px solid var(--rule);
+  transition: background-color var(--t) var(--ease), color var(--t) var(--ease), border-color var(--t) var(--ease);
+}
+.slot-main:hover { background: var(--wash); border-color: var(--void); }
+/* The thumbnail covers most of the card, so hover also shows on it: keyline to INK, serial brightens. */
+.slot-main:hover .slot-thumb { outline-color: var(--void); }
+.slot-main:hover .slot-serial { color: var(--void); }
+.slot-main.is-active:hover .slot-thumb { outline-color: var(--signal); }
+.slot-main.is-active:hover .slot-serial { color: var(--signal); }
+.slot-main.is-active { background: var(--plate); border-color: var(--plate); color: var(--signal); }
+.slot-thumb {
+  display: block;
+  aspect-ratio: 3 / 2;
+  width: 100%;
+  overflow: hidden;
+  outline: 1px solid var(--edge);
+  outline-offset: -1px;
+}
+.slot-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.slot-main.is-empty { color: var(--graphite); border-style: dashed; }
+.slot-main.is-empty .slot-thumb { outline-style: dashed; outline-color: var(--rule); background: none; }
+.slot-main.is-empty.is-active { color: var(--signal); }
+.slot-main.is-active .slot-thumb { outline-color: var(--signal); }
+.slot-cap { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; }
+.slot-serial { color: var(--graphite); }
+.slot-main.is-active .slot-serial { color: var(--signal); opacity: 0.8; }
+.slot-cap .preset-mod { font-size: 7.5px; }
+.slot-acts { display: flex; gap: 3px; }
+.slot-btn { flex: 1; justify-content: center; height: 22px; margin: 0; padding: 0 2px; gap: 0; }
+.slot-btn[hidden] { display: none; }
+.slot-main:focus-visible { outline: 1px solid var(--signal); outline-offset: 1px; }
+@media (pointer: coarse) {
+  .slot-btn { height: 32px; }
+}
+@media (max-width: 420px) {
+  .slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* CODE [X]: a native modal <dialog> (focus held inside, page inert, Esc closes). Black plate head, paper body, black code well. */
+.code-dlg {
+  width: min(760px, calc(100vw - 24px));
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid var(--void);
+  background: var(--paper);
+  color: var(--void);
+  font-family: var(--mono);
+  text-transform: uppercase;
+  overflow: hidden;
+}
+.code-dlg[open] { display: flex; flex-direction: column; }
+.code-dlg::backdrop { background: rgba(0, 0, 0, 0.55); }
+.code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px 6px 14px;
+  background: var(--plate);
+  color: var(--signal);
+}
+.code-head h2 { font: inherit; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; }
+.code-head .dim { color: var(--plate-fg); opacity: 0.6; font-weight: 500; }
+.code-head .mini { margin: 0; border-color: var(--signal); color: var(--signal); }
+.code-head .mini b { color: var(--signal); }
+.code-head .mini:hover { background: var(--signal); color: var(--plate); }
+.code-head .mini:hover b { color: var(--plate); }
+.code-tabs { display: flex; gap: 0; padding: 10px 14px 0; border-bottom: 1px solid var(--void); }
+.code-tab {
+  height: 28px;
+  padding: 0 14px;
+  margin-bottom: -1px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--graphite);
+  border: 1px solid transparent;
+}
+.code-tab:hover { color: var(--void); }
+.code-tab[aria-selected='true'] { background: var(--plate); color: var(--signal); border-color: var(--plate); }
+.code-tab:focus-visible { outline: 1px solid var(--signal); outline-offset: -3px; }
+.code-note { margin: 0; padding: 8px 14px; font-size: 10px; line-height: 1.5; letter-spacing: 0.04em; color: var(--graphite); text-transform: none; }
+.code-note.is-approx::first-line { color: var(--flare); font-weight: 700; }
+.code-panel { flex: 1 1 auto; min-height: 120px; margin: 0 14px; overflow: auto; background: var(--plate); outline: 1px solid var(--void); }
+.code-view {
+  margin: 0;
+  padding: 12px 14px;
+  min-width: max-content;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--plate-fg);
+  tab-size: 2;
+}
+.code-view:focus-visible { outline: 1px solid var(--signal); outline-offset: -2px; }
+.code-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px 12px; }
+.code-meta { font-size: 10px; letter-spacing: 0.08em; }
+.code-foot .mini { margin: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .code-dlg[open] { animation: code-in 160ms var(--ease); }
+  @keyframes code-in { from { opacity: 0; transform: translateY(6px); } }
+}
+
+/* ---------- FX dial: ADD chip + menu, REMOVE squares ---------- */
+/* REMOVE: a FLARE square with an X, right of each ring's label chip. Hover fills it. */
+.fxdial .fx-x rect { fill: var(--plate); fill-opacity: 0.92; stroke: var(--flare); stroke-width: 1; transition: fill var(--t) var(--ease); }
+.fxdial .fx-x path { fill: none; stroke: var(--flare); stroke-width: 1.4; stroke-linecap: square; }
+.fxdial .fx-x.is-hover rect { fill: var(--flare); fill-opacity: 1; }
+.fxdial .fx-x.is-hover path { stroke: var(--plate); }
+.fxdial .fxring.is-off .fx-x { display: none; }
+/* ADD: a square chip in the label language, one spacing under the outermost label. SIGNAL while hovered or open. */
+.fxdial .fx-add .add-glyph { fill: none; stroke: var(--plate-fg); stroke-width: 1.5; stroke-linecap: square; }
+.fxdial .fx-add.is-hover .tag-bg { fill: var(--signal); fill-opacity: 1; }
+.fxdial .fx-add.is-hover .add-glyph { stroke: var(--plate); }
+.stage.fx-btn, .stage.fx-btn * { cursor: pointer !important; }
+/* The ADD menu reuses the node menu's plate; effects already on are hidden. Above the dial. */
+.fx-menu { z-index: 7; min-width: 168px; }
+.fx-menu .menu-item[hidden] { display: none; }
+
+/* VARY axes: checkbox chips under the strip head (COMPOSITION · COLOURS · EFFECTS), any mix, at least one on. */
+.vary-axes {
+  display: flex;
+  gap: 6px;
+  padding: 6px 6px 0;
+}
+.vary-axes[hidden] { display: none; }
+.vary-axis {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px 0 6px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: var(--graphite);
+  outline: 1px solid var(--hull);
+  outline-offset: -1px;
+  cursor: pointer;
+}
+.vary-axis i {
+  width: 9px;
+  height: 9px;
+  outline: 1px solid var(--graphite);
+  outline-offset: -1px;
+}
+.vary-axis.is-on { color: var(--plate-fg); }
+.vary-axis.is-on i { background: var(--signal); outline-color: var(--signal); }
+.vary-axis:hover,
+.vary-axis:focus-visible { color: var(--signal); outline-color: var(--signal); }
+@media (pointer: coarse) {
+  .vary-axis { height: 36px; padding: 0 12px 0 10px; }
+}
+
+/* Value chip: a small upright plate on each gauge's arc at its value (`50`, `045°`), sliding round with the knob.
+   FLARE while magnetized, dragged or wheeled. */
+.gring .val-bg { fill: var(--plate); fill-opacity: 0.92; }
+.gring .val-text {
+  font-family: var(--mono);
+  font-size: calc(var(--fx-fs, 9px) * 0.9);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  fill: var(--plate-fg);
+  stroke: none;
+  pointer-events: none;
+}
+.gring.is-hover .val-bg, .gring.is-drag .val-bg { fill: var(--flare); fill-opacity: 1; }
+.gring.is-hover .val-text, .gring.is-drag .val-text { fill: var(--plate); }
+
+/* Engaged: playing with one node (selected) or the FX dial (open) steps everything else back like `ui-focus` does,
+   so the thing in hand reads alone. The node's own coordinate chip, snap guides and the canvas never dim. */
+.stage.node-engaged .handles > .node:not(.is-engaged),
+.stage.fx-open .handles > .node {
+  filter: opacity(0.2);
+  transition-duration: 100ms;
+}
+
+/* Artboard menu: a triangle marks the right-click point (its tip is where ADD NODE drops the node) while open. */
+.board-mark {
+  position: absolute;
+  left: -20px;
+  top: -20px;
+  z-index: 4;
+  width: 40px;
+  height: 40px;
+  pointer-events: none;
+}
+.board-mark[hidden] { display: none; }
+.board-mark svg { display: block; overflow: visible; }
+.board-mark path { stroke-linejoin: miter; }
+.board-mark path.halo { fill: none; stroke: #000; stroke-opacity: 0.6; stroke-width: 3.5; }
+.board-mark path.ink { fill: var(--signal); stroke: none; }
+
+/* VIEW [eye] beside ROLL: on (SIGNAL plate), a hovered take fills the artboard. */
+.vary-view { margin: 0; height: 18px; flex: none; gap: 5px; }
+.vary-view svg { display: block; }
+.vary-view .eye-lid { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linejoin: miter; }
+.vary-view .eye-pupil { fill: currentColor; }
+.vary-view.is-on, .vary-view.is-on:hover { background: var(--plate); color: var(--signal); outline-color: var(--signal); }
+@media (pointer: coarse) {
+  .vary-view { height: 32px; padding: 0 10px; }
+}
+/* The full-size preview of a hovered take: over the canvas and the handles, under the strip; never takes input. */
+.vary-full {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.vary-full[hidden] { display: none; }
+
+/* Leader to an offset gauge stack (node near an edge): dashed INK over a halo, a small bracket at the stack's centre. */
+.node .lead { pointer-events: none; }
+.node .lead .halo { fill: none; stroke: #000; stroke-opacity: 0.55; stroke-width: 3; }
+.node .lead .ink { fill: none; stroke: #f2f3ee; stroke-width: 1.1; }
+.node .lead .lead-l.ink { stroke-dasharray: 3 3; }
+.node.is-hover .lead .ink, .node.is-selected .lead .ink { stroke: var(--signal); }

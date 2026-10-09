@@ -1,5 +1,6 @@
 import { hexToLab, type Lab } from './color';
 import { copyFx, FX_DEFAULT, type FxState } from './fx';
+import type { Harmony } from './generate';
 import { PRESETS, type Preset } from './presets';
 import { DEFAULT_CUSTOM, DEFAULT_WALLPAPER, type CustomSize, type WallpaperId } from './wallpaper';
 
@@ -12,6 +13,10 @@ export const MAX_NODES = 16;
 export const MIN_NODES = 2;
 /** Preset index of the user slot (CS-06). */
 export const CUSTOM_INDEX = PRESETS.length;
+/** The save library: CS-06 … CS-13 are preset indexes CUSTOM_INDEX … CUSTOM_INDEX + SLOT_COUNT − 1. */
+export const SLOT_COUNT = 8;
+export const SLOT_FIRST = 6;
+export const slotSerial = (i: number): string => `CS-${String(SLOT_FIRST + i).padStart(2, '0')}`;
 export const DEFAULT_RADIUS = 0.28;
 /** Reach of a freshly drawn stroke: wide and soft. */
 export const STROKE_RADIUS = 0.16;
@@ -53,6 +58,10 @@ export interface NodeState {
   drot: number;
   /** Strokes only: polyline offsets from (x, y) in short-side units. Empty for every other shape. */
   pts: [number, number][];
+  /** LOCK: drags, wheel, keys, RANDOM, VARY and EXTRACT leave the node alone (it stays selectable). */
+  lock: boolean;
+  /** HIDE: excluded from the field (render and export); the reticle stays, ghosted. */
+  hide: boolean;
   /** Set on creation; the view plays its "acquire" animation once and clears it. */
   fresh: boolean;
 }
@@ -70,6 +79,9 @@ export interface NodeSpec {
   pts?: [number, number][];
   soft?: number;
   opac?: number;
+  /** Only present when true (see NodeState). */
+  lock?: boolean;
+  hide?: boolean;
 }
 
 export interface Dim {
@@ -90,8 +102,10 @@ export const EASE = (t: number): number => {
 export interface Store {
   nodes: NodeState[];
   presetIndex: number;
-  /** User preset (CS-06), if one has been saved. */
+  /** User preset (CS-06), if one has been saved. Always the same object as `slots[0]`. */
   custom: Preset | null;
+  /** The save library: CS-06 … CS-13 (`SLOT_COUNT` entries, null = empty). */
+  slots: (Preset | null)[];
   /** True once the active preset has been edited. */
   modified: boolean;
   selected: number | null;
@@ -117,6 +131,8 @@ export interface Store {
   wallpaper: WallpaperId;
   /** Last custom wallpaper size in px (persisted with the target, not undoable). */
   wpCustom: CustomSize;
+  /** Colour-harmony rule RANDOM uses (UI state, not undoable). */
+  harmony: Harmony;
   listeners: Set<() => void>;
   /** Status line hook; the UI installs it. */
   say: (text: string) => void;
@@ -153,6 +169,8 @@ export function makeNode(spec: NodeSpec, fresh = false): NodeState {
     rot: spec.rot ?? 0,
     drot: spec.rot ?? 0,
     pts: spec.shape === 'stroke' ? copyPts(spec.pts) : [],
+    lock: !!spec.lock,
+    hide: !!spec.hide,
     fresh,
   };
 }
@@ -164,6 +182,7 @@ export function createStore(): Store {
     nodes,
     presetIndex: 0,
     custom: null,
+    slots: Array.from({ length: SLOT_COUNT }, () => null),
     modified: false,
     selected: null,
     focused: null,
@@ -181,6 +200,7 @@ export function createStore(): Store {
     fx: copyFx(FX_DEFAULT),
     wallpaper: DEFAULT_WALLPAPER,
     wpCustom: { ...DEFAULT_CUSTOM },
+    harmony: 'any',
     listeners: new Set(),
     say: () => {},
     cancelDraw: () => {},
@@ -202,12 +222,14 @@ export function presetSpecs(p: Preset): NodeSpec[] {
     }
     if (ex?.soft !== undefined) spec.soft = ex.soft;
     if (ex?.opac !== undefined) spec.opac = ex.opac;
+    if (ex?.lock) spec.lock = true;
+    if (ex?.hide) spec.hide = true;
     return spec;
   });
 }
 
 export function getPreset(store: Store, index: number): Preset | null {
-  return index === CUSTOM_INDEX ? store.custom : (PRESETS[index] ?? null);
+  return index >= CUSTOM_INDEX ? (store.slots[index - CUSTOM_INDEX] ?? null) : (PRESETS[index] ?? null);
 }
 
 export function currentPreset(store: Store): Preset {
@@ -215,13 +237,14 @@ export function currentPreset(store: Store): Preset {
 }
 
 export function snapshotSpecs(store: Store): NodeSpec[] {
-  return store.nodes.map((n) => ({ x: n.x, y: n.y, r: n.r, hex: n.hex, shape: n.shape, rot: n.rot, pts: copyPts(n.pts), soft: n.soft, opac: n.opac }));
+  return store.nodes.map((n) => ({ x: n.x, y: n.y, r: n.r, hex: n.hex, shape: n.shape, rot: n.rot, pts: copyPts(n.pts), soft: n.soft, opac: n.opac, lock: n.lock, hide: n.hide }));
 }
 
 /** Like `snapshotSpecs`, but carrying per-node identity (for undo/redo). */
 export function snapshotIdentified(store: Store): NodeSpec[] {
   return store.nodes.map((n) => ({
     uid: n.uid, x: n.x, y: n.y, r: n.r, hex: n.hex, shape: n.shape, rot: n.rot, pts: copyPts(n.pts), soft: n.soft, opac: n.opac,
+    lock: n.lock, hide: n.hide,
   }));
 }
 
@@ -242,6 +265,8 @@ function applyShape(n: NodeState, s: NodeSpec): void {
   n.pts = n.shape === 'stroke' ? copyPts(s.pts) : [];
   n.soft = Math.min(1, Math.max(0, s.soft ?? defaultSoft(n.shape)));
   n.opac = clamp01(s.opac ?? 1);
+  n.lock = !!s.lock;
+  n.hide = !!s.hide;
 }
 
 /** Drop every index that no longer points at a node. */

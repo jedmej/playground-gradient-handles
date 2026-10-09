@@ -1,4 +1,4 @@
-import { clearCustom, saveCustom } from './custom';
+import { library, type Doc } from './custom';
 import type { History } from './history';
 import type { Metrics } from './handles';
 import {
@@ -13,10 +13,14 @@ import {
   MIN_NODES,
   moveNodeTo,
   nodeSerial,
+  reconcile,
+  type NodeSpec,
   PAPER_HEX,
   R_MAX,
   R_MIN,
   removeNodeAt,
+  SLOT_COUNT,
+  slotSerial,
   snapshotSpecs,
   tweenNodeTo,
   type LayerMove,
@@ -24,7 +28,8 @@ import {
   type Store,
 } from './store';
 import { fieldHexAt } from './field';
-import { copyFx, FX_DEFAULT, fxActive, fxFromPos, fxMaxPos, fxPos, fxStatus, onValue, rememberFx, sameFx, type DitherMode, type FxId, type GrainSize, type ScanDir } from './fx';
+import { addGroup, mirrorSpots, pairNodes, tools } from './tools';
+import { copyFx, FX_IDS, fxActive, fxFromPos, fxMaxPos, fxOptId, fxPos, fxStatus, fxWithOption, onValue, rememberFx, sameFx, type FxId, type FxOpt, type FxState } from './fx';
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 
@@ -54,7 +59,8 @@ export class Actions {
     return i !== null && i < s.nodes.length ? i : -1;
   }
 
-  addAt(nx: number, ny: number): boolean {
+  /** `mirror`: with symmetry on (tools.ts), also drop the partner node(s); one undo step, MAX_NODES respected. */
+  addAt(nx: number, ny: number, mirror = false): boolean {
     const s = this.store;
     if (s.nodes.length >= MAX_NODES) {
       s.say(`NODE LIMIT ${MAX_NODES}`);
@@ -63,13 +69,23 @@ export class Actions {
     const x = Math.min(1, Math.max(0, nx));
     const y = Math.min(1, Math.max(0, ny));
     const hex = fieldHexAt(s, x, y, this.metrics);
+    const spots = mirror ? mirrorSpots(x, y).slice(0, MAX_NODES - s.nodes.length - 1) : [];
+    const partnerHex = spots.map((p) => fieldHexAt(s, p.x, p.y, this.metrics));
     this.history.mark('ADD NODE');
     const i = addNode(s, { x, y, r: DEFAULT_RADIUS, hex });
+    if (spots.length) {
+      const group = [{ uid: s.nodes[i].uid, fx: false, fy: false }];
+      spots.forEach((p, k) => {
+        const j = addNode(s, { x: p.x, y: p.y, r: DEFAULT_RADIUS, hex: partnerHex[k] });
+        group.push({ uid: s.nodes[j].uid, fx: p.fx, fy: p.fy });
+      });
+      addGroup(group);
+    }
     s.selected = i;
     s.armed = i;
     s.hover = { kind: 'idle', index: -1 };
     emit(s);
-    s.say(`Added ${nodeSerial(i)} · ${pad(s.nodes.length)} nodes`);
+    s.say(`Added ${nodeSerial(i)}${spots.length ? ` + ${spots.length} MIRROR` : ''} · ${pad(s.nodes.length)} nodes`);
     return true;
   }
 
@@ -111,6 +127,14 @@ export class Actions {
     return i >= 0 && this.removeAt(i);
   }
 
+  /** Is node `i` locked? Says so on the status line, so every guarded edit explains why nothing happened. */
+  isLocked(i: number): boolean {
+    const n = this.store.nodes[i];
+    if (!n?.lock) return false;
+    this.store.say(`${nodeSerial(i)} · LOCKED · L to unlock`);
+    return true;
+  }
+
   /** Open an undo step for a colour-editing session (call once per session, before the first change). */
   beginColor(i: number): void {
     this.history.mark(`COLOUR ${nodeSerial(i)}`);
@@ -119,7 +143,7 @@ export class Actions {
   setColor(i: number, hex: string): void {
     const s = this.store;
     const n = s.nodes[i];
-    if (!n || n.hex === hex) return;
+    if (!n || n.hex === hex || this.isLocked(i)) return;
     tweenNodeTo(s, n, hex, this.now(), 240);
     s.modified = true;
     emit(s);
@@ -137,7 +161,7 @@ export class Actions {
   resize(i: number, next: (r: number) => number): void {
     const s = this.store;
     const n = s.nodes[i];
-    if (!n) return;
+    if (!n || this.isLocked(i)) return;
     const t = this.now();
     if (t - this.lastRadius > 700) this.history.mark(`RADIUS ${nodeSerial(i)}`);
     this.lastRadius = t;
@@ -149,7 +173,7 @@ export class Actions {
   softBy(i: number, delta: number): void {
     const s = this.store;
     const n = s.nodes[i];
-    if (!n) return;
+    if (!n || this.isLocked(i)) return;
     const t = this.now();
     if (t - this.lastSoft > 700) this.history.mark(`SOFT ${nodeSerial(i)}`);
     this.lastSoft = t;
@@ -162,7 +186,7 @@ export class Actions {
   opacBy(i: number, delta: number): void {
     const s = this.store;
     const n = s.nodes[i];
-    if (!n) return;
+    if (!n || this.isLocked(i)) return;
     const t = this.now();
     if (t - this.lastOpac > 700) this.history.mark(`OPAC ${nodeSerial(i)}`);
     this.lastOpac = t;
@@ -228,14 +252,11 @@ export class Actions {
     this.fxChanged(id);
   }
 
-  fxOption(opt: 'grain-fine' | 'grain-coarse' | 'dither-bayer' | 'dither-blue' | 'scan-h' | 'scan-v' | 'scan-b'): void {
+  fxOption(opt: FxOpt): void {
     const s = this.store;
-    const next = { ...s.fx };
-    if (opt.startsWith('grain')) next.grainSize = opt.slice(6) as GrainSize;
-    else if (opt.startsWith('scan')) next.scanDir = opt.slice(5) as ScanDir;
-    else next.ditherMode = opt.slice(7) as DitherMode;
+    const next = fxWithOption(s.fx, opt);
     if (sameFx(next, s.fx)) return;
-    const id: FxId = opt.startsWith('grain') ? 'grain' : opt.startsWith('scan') ? 'scan' : 'dither';
+    const id = fxOptId(opt);
     this.history.mark(`FX ${id.toUpperCase()}`);
     this.lastFxId = null;
     s.fx = next;
@@ -248,9 +269,134 @@ export class Actions {
     rememberFx(s.fx);
     this.history.mark('FX OFF');
     this.lastFxId = null;
-    s.fx = copyFx({ ...FX_DEFAULT, grainSize: s.fx.grainSize, ditherMode: s.fx.ditherMode, scanDir: s.fx.scanDir });
+    // Every amount goes to 0 (WARP back to the house look); the option choices stay.
+    const next = copyFx(s.fx);
+    for (const id of FX_IDS) next[id] = 0;
+    s.fx = next;
     this.fxChanged(null);
     s.say('FX OFF');
+  }
+
+
+  // ----- GENERATE: lock / hide / solo, RANDOM, VARY, EXTRACT ------------------------------
+
+  private soloPrev: Map<number, boolean> | null = null;
+
+  /** LOCK ↔ UNLOCK node `i`: it stays selectable but no edit, RANDOM, VARY or EXTRACT touches it. One undo step. */
+  toggleLock(i: number): void {
+    const s = this.store;
+    const n = s.nodes[i];
+    if (!n || s.drag.kind !== 'none' || s.drawing) return;
+    const serial = nodeSerial(i);
+    this.history.mark(`${n.lock ? 'UNLOCK' : 'LOCK'} ${serial}`);
+    n.lock = !n.lock;
+    s.modified = true;
+    emit(s);
+    s.say(`${serial} · ${n.lock ? 'LOCKED' : 'UNLOCKED'}`);
+  }
+
+  private visibleCount(): number {
+    return this.store.nodes.filter((n) => !n.hide).length;
+  }
+
+  /** HIDE ↔ SHOW node `i`: hidden nodes leave the field (and the export); the last visible node cannot be hidden. */
+  toggleHide(i: number): void {
+    const s = this.store;
+    const n = s.nodes[i];
+    if (!n || s.drag.kind !== 'none' || s.drawing) return;
+    const serial = nodeSerial(i);
+    if (!n.hide && this.visibleCount() <= 1) {
+      s.say('KEEP ONE NODE VISIBLE');
+      return;
+    }
+    this.history.mark(`${n.hide ? 'SHOW' : 'HIDE'} ${serial}`);
+    n.hide = !n.hide;
+    s.modified = true;
+    emit(s);
+    s.say(`${serial} · ${n.hide ? 'HIDDEN' : 'SHOWN'}`);
+  }
+
+  /** Is node `i` the only visible one? */
+  isSolo(i: number): boolean {
+    const nodes = this.store.nodes;
+    return nodes.length > 1 && !!nodes[i] && !nodes[i].hide && nodes.every((n, k) => k === i || n.hide);
+  }
+
+  /** SOLO node `i` (hide every other node); again to bring back what was hidden before. One undo step. */
+  solo(i: number): void {
+    const s = this.store;
+    const n = s.nodes[i];
+    if (!n || s.nodes.length < 2 || s.drag.kind !== 'none' || s.drawing) return;
+    const serial = nodeSerial(i);
+    if (this.isSolo(i)) {
+      this.history.mark(`UNSOLO ${serial}`);
+      const prev = this.soloPrev;
+      for (const m of s.nodes) m.hide = prev?.get(m.uid) ?? false;
+      this.soloPrev = null;
+      s.modified = true;
+      emit(s);
+      s.say(`${serial} · SOLO OFF`);
+      return;
+    }
+    this.history.mark(`SOLO ${serial}`);
+    this.soloPrev = new Map(s.nodes.map((m) => [m.uid, m.hide]));
+    s.nodes.forEach((m, k) => (m.hide = k !== i));
+    s.modified = true;
+    emit(s);
+    s.say(`${serial} · SOLO`);
+  }
+
+  /** Glide the live nodes to `specs` (index-matched, colours tween ~600 ms like a preset switch). One undo step. */
+  private adopt(label: string, specs: NodeSpec[]): void {
+    const s = this.store;
+    this.history.mark(label);
+    reconcile(s, specs, this.now(), true, 600);
+    s.modified = true;
+    if (tools.mirror !== 'off') pairNodes(s, this.metrics); // new layout: pair again
+    emit(s);
+  }
+
+  /** Adopt one RANDOM thumbnail (a fresh composition, locked nodes already kept in it). One undo step `RANDOM`. */
+  adoptRandom(specs: NodeSpec[], status: string): void {
+    const s = this.store;
+    if (s.drag.kind !== 'none' || s.drawing) return;
+    this.adopt('RANDOM', specs);
+    s.say(status);
+  }
+
+  /** Adopt one VARY thumbnail's specs (identified, so every node keeps its identity). One undo step `VARY`. */
+  adoptVariant(specs: NodeSpec[], n: number, fx: FxState | null = null): void {
+    const s = this.store;
+    if (s.drag.kind !== 'none' || s.drawing) return;
+    // FX first, so the one `VARY` undo step (marked in adopt) covers both. The mark snapshots before either change.
+    this.history.mark('VARY');
+    if (fx) s.fx = copyFx(fx);
+    reconcile(s, specs, this.now(), true, 600);
+    s.modified = true;
+    if (tools.mirror !== 'off') pairNodes(s, this.metrics);
+    emit(s);
+    if (fx) this.fxChanged(null);
+    s.say(`VARY · V-${n}`);
+  }
+
+  /** EXTRACT: recolour every unlocked node from `hexes` (dark → light, assigned top → bottom). One undo step. */
+  applyExtract(hexes: string[]): void {
+    const s = this.store;
+    const free = s.nodes.map((_, i) => i).filter((i) => !s.nodes[i].lock);
+    if (free.length === 0) {
+      s.say('EXTRACT · EVERY NODE IS LOCKED');
+      return;
+    }
+    if (hexes.length === 0) return;
+    // Lightest at the top of the stage: node order by y (then x) takes the colours light → dark.
+    const order = [...free].sort((a, b) => s.nodes[a].y - s.nodes[b].y || s.nodes[a].x - s.nodes[b].x);
+    const light = [...hexes].reverse();
+    this.history.mark('EXTRACT');
+    const t = this.now();
+    order.forEach((ni, k) => tweenNodeTo(s, s.nodes[ni], light[k % light.length], t, 600));
+    s.modified = true;
+    emit(s);
+    s.say(`EXTRACT · ${pad(order.length)} COLOURS`);
   }
 
   /** Move node `i` through the layer stack. One undo step; the same node stays selected. */
@@ -275,7 +421,7 @@ export class Actions {
   setShape(i: number, shape: Shape): void {
     const s = this.store;
     const n = s.nodes[i];
-    if (!n || n.shape === 'stroke' || shape === 'stroke' || n.shape === shape) return;
+    if (!n || n.shape === 'stroke' || shape === 'stroke' || n.shape === shape || this.isLocked(i)) return;
     this.history.mark(`SHAPE ${nodeSerial(i)}`);
     n.shape = shape;
     s.modified = true;
@@ -287,7 +433,7 @@ export class Actions {
   rotate(i: number, deg: number): void {
     const s = this.store;
     const n = s.nodes[i];
-    if (!n || n.shape === 'circle' || n.shape === 'stroke') return;
+    if (!n || n.shape === 'circle' || n.shape === 'stroke' || this.isLocked(i)) return;
     const t = this.now();
     if (t - this.lastRot > 700) this.history.mark(`ROT ${nodeSerial(i)}`);
     this.lastRot = t;
@@ -322,11 +468,12 @@ export class Actions {
     const s = this.store;
     const p = getPreset(s, index);
     if (!p) {
-      s.say('CS-06 is empty — press SAVE');
+      s.say(`${slotSerial(Math.max(0, index - CUSTOM_INDEX))} is empty — press ↧ to save into it`);
       return;
     }
     this.history.mark(`PRESET ${p.serial}`);
     applyPreset(s, index, this.now(), true);
+    if (tools.mirror !== 'off') pairNodes(s, this.metrics); // new layout: pair again
     s.say(`${p.serial} ${p.name}`);
   }
 
@@ -336,31 +483,83 @@ export class Actions {
     if (!p) return;
     this.history.mark('RESET');
     applyPreset(s, s.presetIndex, this.now(), true);
+    if (tools.mirror !== 'off') pairNodes(s, this.metrics);
     s.say('Reset to ' + p.serial);
   }
 
-  saveCustom(): void {
+  /** The slot SAVE targets: the active one, else the first empty one, else -1 (library full). */
+  saveTarget(): number {
     const s = this.store;
-    const { preset, persisted } = saveCustom(snapshotSpecs(s), s.fx);
-    s.custom = preset;
-    s.presetIndex = CUSTOM_INDEX;
-    s.modified = false;
-    emit(s);
-    s.say(`Saved CS-06 · ${pad(s.nodes.length)} nodes` + (persisted ? '' : ' (this session only)'));
+    if (s.presetIndex >= CUSTOM_INDEX) return s.presetIndex - CUSTOM_INDEX;
+    return s.slots.findIndex((p) => !p);
   }
 
-  /** Delete the saved CS-06 set. The field itself is left alone; if CS-06 was active it becomes CS-01 + MOD. */
-  clearCustom(): void {
+  /** Store the field in slot `i` (default: `saveTarget()`). Returns the slot written, or -1. */
+  saveCustom(i = this.saveTarget()): number {
     const s = this.store;
-    if (!s.custom) return;
-    const ok = clearCustom();
-    s.custom = null;
-    if (s.presetIndex === CUSTOM_INDEX) {
+    if (i < 0 || i >= SLOT_COUNT) {
+      s.say('LIBRARY FULL — pick a slot to overwrite (↧)');
+      return -1;
+    }
+    const { preset, persisted } = library.save(i, snapshotSpecs(s), s.fx);
+    s.slots[i] = preset;
+    if (i === 0) s.custom = preset;
+    s.presetIndex = CUSTOM_INDEX + i;
+    s.modified = false;
+    emit(s);
+    s.say(`Saved ${slotSerial(i)} · ${pad(s.nodes.length)} nodes` + (persisted ? '' : ' (this session only: storage full or blocked)'));
+    return i;
+  }
+
+  /**
+   * Save a RANDOM / VARY take straight into the first empty library slot without adopting it: the field, the active
+   * set and the undo history are untouched. Returns the slot written, or -1 when the library is full.
+   */
+  saveTake(specs: NodeSpec[], fx: FxState | null, label: string): number {
+    const s = this.store;
+    const i = s.slots.findIndex((p) => !p);
+    if (i < 0) {
+      s.say('LIBRARY FULL — clear a slot first');
+      return -1;
+    }
+    const { preset, persisted } = library.save(i, specs, fx ?? s.fx);
+    s.slots[i] = preset;
+    if (i === 0) s.custom = preset;
+    emit(s);
+    s.say(`${label} → ${slotSerial(i)}` + (persisted ? '' : ' (this session only: storage full or blocked)'));
+    return i;
+  }
+
+  /** Delete the saved set in slot `i` (default: the active slot). The field itself is left alone; if it was active it becomes CS-01 + MOD. */
+  clearCustom(i = this.store.presetIndex - CUSTOM_INDEX): void {
+    const s = this.store;
+    if (i < 0 || i >= SLOT_COUNT || !s.slots[i]) return;
+    const ok = library.clear(i);
+    s.slots[i] = null;
+    if (i === 0) s.custom = null;
+    if (s.presetIndex === CUSTOM_INDEX + i) {
       s.presetIndex = 0;
       s.modified = true;
     }
     emit(s);
-    s.say(ok ? 'CS-06 cleared' : 'CS-06 cleared (storage unavailable)');
+    s.say(ok ? `${slotSerial(i)} cleared` : `${slotSerial(i)} cleared (storage unavailable)`);
+  }
+
+  /** Load a parsed document (share link): one undo step. Wallpaper target is not undoable, like the panel's. */
+  applyDoc(doc: Doc, label: string): void {
+    const s = this.store;
+    this.history.mark(label);
+    if (doc.fx) {
+      s.fx = copyFx(doc.fx);
+      rememberFx(s.fx);
+    }
+    if (doc.wp) s.wallpaper = doc.wp;
+    if (doc.cs) s.wpCustom = { ...doc.cs };
+    s.selected = s.focused = s.armed = null;
+    reconcile(s, doc.nodes, this.now(), true, 320);
+    s.modified = true;
+    if (tools.mirror !== 'off') pairNodes(s, this.metrics); // new layout: pair again
+    emit(s);
   }
 
   undo(): void {
@@ -400,6 +599,17 @@ export class Actions {
         if ((k === 'd' || k === 'D') && !e.repeat) {
           e.preventDefault();
           this.toggleDraw();
+          return;
+        }
+        if ((k === 'l' || k === 'L') && !e.repeat && !e.shiftKey && this.target >= 0) {
+          e.preventDefault();
+          this.toggleLock(this.target);
+          return;
+        }
+        if ((k === 'h' || k === 'H') && !e.repeat && this.target >= 0) {
+          e.preventDefault();
+          if (e.shiftKey) this.solo(this.target);
+          else this.toggleHide(this.target);
           return;
         }
         if (k === 'Escape' && this.store.tool === 'draw') {

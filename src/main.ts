@@ -10,16 +10,20 @@ import { FxDial } from './fxdial';
 import { FxPanel, WallpaperPanel } from './fxpanel';
 import { GradientRenderer } from './gradient';
 import { Actions } from './actions';
-import { loadCustom } from './custom';
+import { library } from './custom';
+import { Explore } from './explore';
 import { createMetrics, Handles } from './handles';
 import { History } from './history';
 import { FieldBuffers, packField } from './field';
+import { Output } from './output';
 import { createStore, EASE } from './store';
+import { ToolsOverlay, ToolsUI } from './tools';
 import { drawRulers, UI } from './ui';
 import { wallpaperTarget } from './wallpaper';
 
 const store = createStore();
-store.custom = loadCustom();
+store.slots = library.load();
+store.custom = store.slots[0];
 const savedFx = loadFxStorage();
 if (savedFx) {
   store.fx = savedFx.fx;
@@ -107,8 +111,12 @@ const actions = new Actions(store, history, metrics, now);
 const handles = new Handles(store, stage, svg, chipNode, chipRadius, metrics, actions, history);
 const ui = new UI(store, handles.metrics, now, () => ({ ...handles.pointer, inside: handles.pointerInside }), actions, history);
 actions.bindKeys();
+const toolsOverlay = new ToolsOverlay(svg, handles.metrics);
+const toolsUi = new ToolsUI(store, actions, history, stage, handles.metrics, isPreview);
+new Explore(store, actions, stage, handles.metrics, now);
 new FxPanel(store, actions, history);
 new WallpaperPanel(store, handles.metrics, now);
+new Output(store, actions, handles.metrics, now, isPreview);
 const fxDial = new FxDial(store, actions, history, stage, handles.metrics, (x, y) => handles.emptyAt(x, y), () => handles.busy());
 
 import.meta.hot?.dispose(() => fxDial.destroy());
@@ -286,6 +294,53 @@ window.addEventListener('keydown', (e) => {
   setTheme(!isDark());
 });
 
+// ----- SHORTCUTS [?]: the key list lives in a popup under the artboard (closed by default). Hovering the button peeks
+// it (it goes again when the pointer leaves the button and the list); a click or ? pins it open (aria-pressed) until
+// a second click / ?, Esc or a press outside.
+const keysBtn = document.getElementById('keys-btn') as HTMLButtonElement;
+const keysPop = document.getElementById('keys') as HTMLElement;
+const keysWrap = keysBtn.parentElement as HTMLElement;
+let keysPinned = false;
+let keysPeekTimer = 0;
+const showKeys = (open: boolean): void => {
+  window.clearTimeout(keysPeekTimer);
+  keysPop.hidden = !open;
+  keysBtn.setAttribute('aria-expanded', String(open));
+};
+const pinKeys = (pin: boolean): void => {
+  keysPinned = pin;
+  keysBtn.setAttribute('aria-pressed', String(pin));
+  showKeys(pin);
+};
+keysBtn.setAttribute('aria-pressed', 'false');
+keysBtn.addEventListener('click', () => pinKeys(!keysPinned));
+keysWrap.addEventListener('pointerenter', (e) => {
+  if (e.pointerType === 'mouse' && !keysPinned) showKeys(true);
+});
+keysWrap.addEventListener('pointerleave', (e) => {
+  if (e.pointerType !== 'mouse' || keysPinned) return;
+  // A short grace period bridges the gap between the button and the list above it.
+  keysPeekTimer = window.setTimeout(() => {
+    if (!keysPinned && !keysWrap.matches(':hover')) showKeys(false);
+  }, 180);
+});
+window.addEventListener('pointerdown', (e) => {
+  if (!keysPop.hidden && !keysWrap.contains(e.target as Node)) pinKeys(false);
+}, { capture: true });
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !keysPop.hidden) {
+    e.preventDefault();
+    e.stopPropagation();
+    pinKeys(false);
+    return;
+  }
+  if (e.key !== '?' || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target as HTMLElement | null;
+  if (t?.closest?.(TYPING) || t?.closest?.('[data-fx-knob], [data-fx-ring]')) return;
+  e.preventDefault();
+  pinKeys(!keysPinned);
+}, { capture: true });
+
 let last = now();
 function tick(): void {
   const t = now();
@@ -310,6 +365,8 @@ function tick(): void {
   renderer?.render({ ...buffers, time: store.reducedMotion ? 0.5 : t / 1000, grain: 0.04 }, store.fx);
   persistFx(store.fx, store.wallpaper, store.wpCustom);
 
+  toolsOverlay.frame();
+  toolsUi.frame();
   ui.frame();
   fxDial.frame();
   requestAnimationFrame(tick);

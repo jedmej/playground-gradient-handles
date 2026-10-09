@@ -54,17 +54,6 @@
     <main class="body" id="top">
       <section class="stage-col" aria-label="Gradient field">
         <div class="toolbar mono" id="toolbar" role="toolbar" aria-label="Actions">
-          <div class="tb-group tb-nodes" role="group" aria-label="Nodes">
-            <button class="mini tb-btn" id="add-node" data-action="add-node" type="button" title="Add a node at the emptiest spot (max 16)">
-              <span class="btn-label">Add node</span> <b>[+]</b>
-            </button>
-            <button class="mini tb-btn" id="remove-node" data-action="remove-node" type="button" title="Remove the selected node (Delete)" disabled>
-              <span class="btn-label">Remove node</span> <b>[−]</b>
-            </button>
-            <button class="mini tb-btn mini-draw" type="button" data-action="draw-mode" aria-pressed="false" title="Draw a stroke of colour (D)">
-              <span class="mini-l">DRAW</span> <b>[D]</b>
-            </button>
-          </div>
           <div class="tb-group tb-history" role="group" aria-label="History">
             <button class="mini tb-btn" id="undo" data-action="undo" type="button" title="Undo (⌘Z)" disabled>
               <span class="btn-label">Undo</span> <b>[↶]</b>
@@ -74,6 +63,15 @@
             </button>
           </div>
           <div class="tb-group tb-export" role="group" aria-label="Export">
+            <button class="mini tb-btn" id="share" data-action="share" type="button" aria-keyshortcuts="U" title="Copy a link that restores this exact gradient (U)">
+              <span class="btn-label">Share</span> <b>[U]</b>
+            </button>
+            <button class="mini tb-btn" id="copy-png" data-action="copy-png" type="button" aria-keyshortcuts="C" title="Copy the PNG (2048 px, FX included) to the clipboard (C)">
+              <span class="btn-label">Copy</span> <b>[C]</b>
+            </button>
+            <button class="mini tb-btn" id="code-export" data-action="code-export" type="button" aria-keyshortcuts="X" aria-haspopup="dialog" title="Export as GLSL, JSON, CSS or SVG (X)">
+              <span class="btn-label">Code</span> <b>[X]</b>
+            </button>
             <button class="mini tb-btn tb-primary" id="export" data-action="export" type="button" aria-keyshortcuts="E" title="Export 3840×2160 PNG (E; ⇧ for a quick 2048 px copy)">
               <span class="btn-label">Export</span> <b>[↓]</b>
             </button>
@@ -86,6 +84,17 @@
           <button class="mini corner-btn corner-fx" type="button" data-action="fx-dial" title="FX dial: hold ⌥ and scroll on empty field, or press F">
             <span class="mini-l">FX DIAL</span> <b>[F]</b>
           </button>
+          <div class="frame-top" role="group" aria-label="Nodes">
+            <button class="mini foot-btn" id="add-node" data-action="add-node" type="button" title="Add a node at the emptiest spot (max 16)">
+              <span class="mini-l">ADD NODE</span> <b>[+]</b>
+            </button>
+            <button class="mini foot-btn" id="remove-node" data-action="remove-node" type="button" title="Remove the selected node (Delete)" disabled>
+              <span class="mini-l">REMOVE NODE</span> <b>[−]</b>
+            </button>
+            <button class="mini foot-btn mini-draw" type="button" data-action="draw-mode" aria-pressed="false" title="Draw a stroke of colour (D)">
+              <span class="mini-l">DRAW</span> <b>[D]</b>
+            </button>
+          </div>
           <button class="mini corner-btn corner-preview" type="button" data-action="preview" aria-pressed="false" title="Preview: hide every control and see the bare wallpaper (P, Esc exits)">
             <span class="mini-l">PREVIEW</span> <b>[P]</b>
           </button>
@@ -103,16 +112,75 @@
           </div>
           <div class="stage-foot">
             <span class="foot-l" id="foot-serial">CUR // X —.——— Y —.———</span>
+            <div class="foot-gen" role="group" aria-label="Tools and generate">
+              <button class="mini foot-btn mini-tool" type="button" data-action="snap" aria-pressed="false" aria-keyshortcuts="G" title="Snap node drags to the ruler grid and to other nodes (G; hold ⌘/Ctrl to invert while dragging)">
+                <span class="mini-l">SNAP</span> <b>[G]</b>
+              </button>
+              <button class="mini foot-btn mini-tool" type="button" data-action="mirror" aria-pressed="false" aria-keyshortcuts="Y" title="Mirror: OFF → X → Y → XY (Y). Moving a node moves its mirrored partner(s)">
+                <span class="mini-l">MIRROR</span> <b>[Y]</b> <span class="tool-mode">OFF</span>
+              </button>
+              <span class="foot-sep" aria-hidden="true"></span>
+              <button class="mini foot-btn" id="randomize" data-action="randomize" type="button" aria-keyshortcuts="R" aria-pressed="false" title="Four random compositions to pick from (R); harmony chips in the strip — locked nodes stay">
+                <span class="mini-l">RANDOM</span> <b>[R]</b>
+              </button>
+              <button class="mini foot-btn" id="vary" data-action="vary" type="button" aria-pressed="false" aria-keyshortcuts="V" title="Variations of this field (V) — locked nodes stay">
+                <span class="mini-l">VARY</span> <b>[V]</b>
+              </button>
+            </div>
             <span class="foot-r" id="foot-dims">—×— PX</span>
           </div>
         </div>
         </div>
 
-        <p class="keys" id="keys">
-          <span>TAB</span> focus <span>←↑→↓</span> nudge <span>[ ]</span> layer
-          <span class="k-fine"><span>SCROLL</span> radius <span>⇧ SCROLL</span> soft <span>DBL-CLICK</span> add <span>CLICK CORE</span> colour <span>D</span> draw <span>, .</span> rotate <span>DEL</span> remove <span>⌘Z</span> undo <span>E</span> export <span>F</span> FX dial <span>P</span> preview <span>M</span> dark <span>\</span> panel <span>ESC</span> back</span>
-          <span class="k-touch"><span>DOUBLE-TAP</span> add <span>TAP CORE</span> colour <span>DRAW</span> toggle <span>PINCH</span> radius <span>TAP + HOLD</span> menu <span>FX DIAL</span> effects <span>PREVIEW</span> bare</span>
-        </p>
+        <div class="stage-bar" id="stage-bar">
+          <div class="keys-wrap">
+            <button class="mini keys-btn" id="keys-btn" data-action="keys" type="button" aria-expanded="false" aria-controls="keys" aria-keyshortcuts="?" title="Keyboard shortcuts: hover to peek, click (or ?) to pin">
+              <span class="mini-l">SHORTCUTS</span> <b>[?]</b>
+            </button>
+            <div class="keys-pop" id="keys" role="dialog" aria-label="Shortcuts" hidden>
+              <div class="menu-head">SHORTCUTS</div>
+              <dl class="keys-list k-fine">
+                <div><dt>TAB</dt><dd>focus</dd></div>
+                <div><dt>←↑→↓</dt><dd>nudge (⇧ ×10)</dd></div>
+                <div><dt>[ ]</dt><dd>layer</dd></div>
+                <div><dt>SCROLL</dt><dd>radius</dd></div>
+                <div><dt>⇧ SCROLL</dt><dd>soft</dd></div>
+                <div><dt>DBL-CLICK</dt><dd>add node</dd></div>
+                <div><dt>CLICK CORE</dt><dd>colour</dd></div>
+                <div><dt>D</dt><dd>draw</dd></div>
+                <div><dt>G</dt><dd>snap</dd></div>
+                <div><dt>Y</dt><dd>mirror</dd></div>
+                <div><dt>I</dt><dd>pick colour</dd></div>
+                <div><dt>R</dt><dd>random</dd></div>
+                <div><dt>V</dt><dd>vary</dd></div>
+                <div><dt>L</dt><dd>lock</dd></div>
+                <div><dt>H</dt><dd>hide (⇧ solo)</dd></div>
+                <div><dt>, .</dt><dd>rotate</dd></div>
+                <div><dt>DEL</dt><dd>remove</dd></div>
+                <div><dt>⌘Z</dt><dd>undo (⇧ redo)</dd></div>
+                <div><dt>E</dt><dd>export</dd></div>
+                <div><dt>U</dt><dd>share link</dd></div>
+                <div><dt>C</dt><dd>copy PNG</dd></div>
+                <div><dt>X</dt><dd>code</dd></div>
+                <div><dt>F</dt><dd>FX dial</dd></div>
+                <div><dt>P</dt><dd>preview</dd></div>
+                <div><dt>M</dt><dd>dark</dd></div>
+                <div><dt>\</dt><dd>panel</dd></div>
+                <div><dt>?</dt><dd>shortcuts</dd></div>
+                <div><dt>ESC</dt><dd>back</dd></div>
+              </dl>
+              <dl class="keys-list k-touch">
+                <div><dt>DOUBLE-TAP</dt><dd>add node</dd></div>
+                <div><dt>TAP CORE</dt><dd>colour</dd></div>
+                <div><dt>DRAW</dt><dd>toggle</dd></div>
+                <div><dt>PINCH</dt><dd>radius</dd></div>
+                <div><dt>TAP + HOLD</dt><dd>menu</dd></div>
+                <div><dt>FX DIAL</dt><dd>effects</dd></div>
+                <div><dt>PREVIEW</dt><dd>bare</dd></div>
+              </dl>
+            </div>
+          </div>
+        </div>
       </section>
 
       <aside class="spec" id="spec" aria-label="Specification">
@@ -130,15 +198,23 @@
           <div class="label label-row">
             <h2 id="h-presets">COLOUR SET</h2>
             <span class="label-actions">
-              <button class="mini mini-clear" type="button" data-action="clear-custom" title="Clear the saved CS-06 set" hidden>
+              <button class="mini mini-clear" type="button" data-action="clear-custom" title="Clear the active saved set (press twice)" hidden>
                 <span class="mini-l">CLEAR</span> <b>[×]</b>
               </button>
-              <button class="mini" type="button" data-action="save-custom" title="Save the current field to CS-06">
+              <button class="mini" type="button" data-action="save-custom" title="Save the current field into the active slot, else the first empty one">
                 SAVE <b>[↧]</b>
               </button>
             </span>
           </div>
           <div class="presets" id="presets" role="radiogroup" aria-label="Colour set"></div>
+          <div class="slots" id="slots" role="radiogroup" aria-label="Saved sets"></div>
+          <div class="extract-row">
+            <button class="mini" type="button" data-action="extract" title="Take a palette from an image (it never leaves this browser). You can also drop an image on the stage.">
+              <span class="mini-l">FROM IMAGE</span> <b>[↥]</b>
+            </button>
+            <span class="extract-hint dim"><span class="t-fine">OR DROP ONE ON THE STAGE</span></span>
+            <input id="extract-file" type="file" accept="image/*" hidden />
+          </div>
         </section>
 
         <section class="spec-section" aria-labelledby="h-node">
@@ -195,6 +271,14 @@
                 <button type="button" class="mini mini-rot" data-action="rot-plus" aria-label="Rotate +15°" title="Rotate +15° ( . )" disabled>[+]</button>
               </dd>
             </div>
+            <div class="full flag-row">
+              <dt>STATE</dt>
+              <dd>
+                <button type="button" class="mini mini-flag" data-action="lock" aria-pressed="false" title="Lock: no edit, Random or Vary touches this node (L)" disabled><span class="mini-l">LOCK</span> <b>[L]</b></button>
+                <button type="button" class="mini mini-flag" data-action="hide" aria-pressed="false" title="Hide this node from the field and the export (H)" disabled><span class="mini-l">HIDE</span> <b>[H]</b></button>
+                <button type="button" class="mini mini-flag" data-action="solo" aria-pressed="false" title="Solo: hide every other node (⇧H)" disabled><span class="mini-l">SOLO</span> <b>[⇧H]</b></button>
+              </dd>
+            </div>
             <div class="full last colour-row">
               <dt>COLOUR</dt>
               <dd>
@@ -218,6 +302,9 @@
                     disabled
                   />
                 </span>
+                <button class="mini mini-pick" type="button" data-action="eyedropper" aria-pressed="false" aria-keyshortcuts="I" title="Eyedropper: click the field to copy its colour onto this node (I; ⇧I picks from anywhere on screen, Chromium)" disabled>
+                  <span class="mini-l">PICK</span> <b>[I]</b>
+                </button>
               </dd>
             </div>
           </dl>
@@ -284,12 +371,102 @@
                 </span>
               </dd>
             </div>
-            <div class="fx-row last">
+            <div class="fx-row">
               <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="vig" aria-label="Vignette on"></dd>
               <dt>VIG</dt>
               <dd class="fx-ctl">
                 <span class="fx-knob" data-fx-knob="vig" role="slider" tabindex="0" aria-label="Vignette" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
                 <span class="fx-read dim" data-fx-read="vig">OFF</span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="halftone" aria-label="Halftone on"></dd>
+              <dt>HALFTONE</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="halftone" role="slider" tabindex="0" aria-label="Halftone dot screen" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="halftone">OFF</span>
+              </dd>
+              <dd class="fx-opts">
+                <span class="fx-seg" role="radiogroup" aria-label="Halftone cell size">
+                  <button type="button" class="fx-opt" role="radio" aria-checked="true" data-fx-opt="halftone-fine">FINE</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="halftone-coarse">COARSE</button>
+                </span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="pixel" aria-label="Pixel on"></dd>
+              <dt>PIXEL</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="pixel" role="slider" tabindex="0" aria-label="Pixel mosaic block size" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="pixel">OFF</span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="ascii" aria-label="ASCII on"></dd>
+              <dt>ASCII</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="ascii" role="slider" tabindex="0" aria-label="ASCII glyph cells" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="ascii">OFF</span>
+              </dd>
+              <dd class="fx-opts">
+                <span class="fx-seg" role="radiogroup" aria-label="ASCII cell size">
+                  <button type="button" class="fx-opt" role="radio" aria-checked="true" data-fx-opt="ascii-fine">FINE</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="ascii-coarse">COARSE</button>
+                </span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="map" aria-label="Map on"></dd>
+              <dt>MAP</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="map" role="slider" tabindex="0" aria-label="Posterize / gradient map" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="map">OFF</span>
+              </dd>
+              <dd class="fx-opts">
+                <span class="fx-seg" role="radiogroup" aria-label="Map mode">
+                  <button type="button" class="fx-opt" role="radio" aria-checked="true" data-fx-opt="map-post" title="Posterize" aria-label="Posterize">PST</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="map-duo" title="Duotone from the darkest and lightest node" aria-label="Duotone from the darkest and lightest node">DUO</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="map-tri" title="Tritone from the darkest, middle and lightest node" aria-label="Tritone from the darkest, middle and lightest node">TRI</button>
+                </span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="glow" aria-label="Glow on"></dd>
+              <dt>GLOW</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="glow" role="slider" tabindex="0" aria-label="Glow (bloom)" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="glow">OFF</span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="grade" aria-label="Grade on"></dd>
+              <dt>GRADE</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="grade" role="slider" tabindex="0" aria-label="Colour grade" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="grade">OFF</span>
+              </dd>
+              <dd class="fx-opts">
+                <span class="fx-seg" role="radiogroup" aria-label="Grade look">
+                  <button type="button" class="fx-opt" role="radio" aria-checked="true" data-fx-opt="grade-punch" title="Punch: contrast and saturation" aria-label="Punch: contrast and saturation">P</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="grade-warm" title="Warm" aria-label="Warm">W</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="grade-cool" title="Cool" aria-label="Cool">C</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="grade-fade" title="Fade: lifted blacks" aria-label="Fade: lifted blacks">F</button>
+                </span>
+              </dd>
+            </div>
+            <div class="fx-row last">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="warp" aria-label="Warp on"></dd>
+              <dt>WARP</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="warp" role="slider" tabindex="0" aria-label="Field warp strength" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="standard"></span>
+                <span class="fx-read dim" data-fx-read="warp">STD</span>
+              </dd>
+              <dd class="fx-opts">
+                <span class="fx-seg" role="radiogroup" aria-label="Warp scale">
+                  <button type="button" class="fx-opt" role="radio" aria-checked="true" data-fx-opt="warp-lo" title="Broad warp" aria-label="Broad warp">LO</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="warp-mid" title="House warp scale" aria-label="House warp scale">MID</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="warp-hi" title="Tight warp" aria-label="Tight warp">HI</button>
+                </span>
               </dd>
             </div>
           </dl>

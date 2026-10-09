@@ -1,11 +1,12 @@
 import { wheelUp } from './wheel';
-import { G_SPAN, G_START, gaugeHit, gaugeSpacing, layoutGauge, makeGauge, renderGauge, type GaugeParts } from './gauge';
+import { gaugeHit, gaugeSpacing, layoutGauge, makeGauge, renderGauge, stackGap, type GaugeParts, type Sweep } from './gauge';
 import { colorStateOf, createColorPage, layoutColorPage, renderColorPage, withAxis, type ColorAxis, type ColorPage, type ColorState } from './colorpage';
 import type { Actions } from './actions';
 import type { History } from './history';
 import { BODY_Q, nodeQ, outlinePoints } from './field';
 import { centroid, distToPolyline, pathLength, rdp, simplifyTo, type Pt } from './geom';
-import { NodeMenu } from './menu';
+import { BoardMenu, NodeMenu } from './menu';
+import { endPlace, placeNode } from './tools';
 import {
   addNode,
   emit,
@@ -94,6 +95,20 @@ interface NodeView {
   /** COLOUR page (HUE / SAT / LUM gauges + core swatch) and its 0…1 page-flip progress (0 = default OPAC / SOFT / ROT). */
   cp: ColorPage;
   pg: number;
+  /**
+   * Gauge stack offset from the core (px, eased). Near an edge the OPAC / SOFT / ROT (and COLOUR) stack slides inward
+   * until it fits the stage; a dashed leader runs from the reticle to a small bracket at the stack's own centre.
+   */
+  gox: number;
+  goy: number;
+  /** 0…1: on open, the offset centre first slides out from the core (leader following), then the stack opens there. */
+  slide: number;
+  lead: SVGGElement;
+  leadHalo: SVGPathElement;
+  leadInk: SVGPathElement;
+  leadMark: SVGPathElement;
+  leadMarkHalo: SVGPathElement;
+  leadKey: string;
   bracket: number;
   ringOp: number;
   lastR: number;
@@ -139,6 +154,9 @@ function arcPath(cx: number, cy: number, r: number, angle: number, span: number)
     `A${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(cx + r * Math.cos(a1)).toFixed(2)} ${(cy + r * Math.sin(a1)).toFixed(2)}`
   );
 }
+
+/** Seconds the offset gauge centre takes to slide out from the core before its stack opens there. */
+const SLIDE_S = 0.45;
 
 function approach(current: number, target: number, k: number, dt: number, snap: boolean): number {
   if (snap) return target;
@@ -202,6 +220,7 @@ export class Handles {
   private lastPointerType = 'mouse';
   private keyMenuAt = -Infinity;
   private menu: NodeMenu;
+  private boardMenu: BoardMenu;
 
   constructor(
     private store: Store,
@@ -244,6 +263,7 @@ export class Handles {
     window.addEventListener('pointerdown', () => svg.classList.remove('kb'), { capture: true });
 
     this.menu = new NodeMenu(store, stage, actions, (i) => this.views[i]?.g.focus({ preventScroll: true }));
+    this.boardMenu = new BoardMenu(store, stage, actions, () => ({ w: this.metrics.w, h: this.metrics.h }));
 
     stage.addEventListener('pointerdown', this.onDown);
     stage.addEventListener('pointermove', this.onMove);
@@ -279,17 +299,19 @@ export class Handles {
     });
 
     // OPAC / SOFT / ROT: the FX dial's gauge, on fixed radii packed round the core (see gauge.ts).
-    const gp = makeGauge('gauge soft');
-    const op = makeGauge('gauge opac');
-    const rp = makeGauge('gauge rot');
-    layoutGauge(gp, this.gr.soft, this.gr.sp);
-    layoutGauge(op, this.gr.opac, this.gr.sp);
-    layoutGauge(rp, this.gr.rot, this.gr.sp);
+    const gp = makeGauge('gauge soft', 'SOFT');
+    const op = makeGauge('gauge opac', 'OPAC');
+    const rp = makeGauge('gauge rot', 'ROT');
+    // Both pages share one bottom gap: every ring ends on the same bearing, sized by the ring that needs the most room.
+    const half = this.gaugeHalf(op, gp, rp);
+    layoutGauge(gp, this.gr.soft, this.gr.sp, half);
+    layoutGauge(op, this.gr.opac, this.gr.sp, half);
+    layoutGauge(rp, this.gr.rot, this.gr.sp, half);
     const gauge = gp.g;
     const opG = op.g;
     const rotD = rp.g;
     const cp = createColorPage();
-    layoutColorPage(cp, this.gr.rot, this.gr.soft, this.gr.opac, this.gr.sp);
+    layoutColorPage(cp, this.gr.rot, this.gr.soft, this.gr.opac, this.gr.sp, half);
     for (const c of [cp.lum, cp.sat, cp.hue]) c.p.g.style.opacity = '0';
     ring.append(opG, gauge, rotD, cp.lum.p.g, cp.sat.p.g, cp.hue.p.g);
 
@@ -308,13 +330,32 @@ export class Handles {
     const outInk = el('path', { class: 'ink out-p' });
     outG.append(outHalo, outInk);
     outG.style.opacity = '0';
-    g.append(ring, outG, focusHalo, focus, holdHalo, holdInk, retHalo, retInk, cp.sw, coreHalo, coreInk);
+    // LOCK glyph: a small padlock off the reticle's top-right corner (shown by `.is-locked`).
+    const lockG = el('g', { class: 'lock-g', transform: 'translate(17 -17)' });
+    const lockD = 'M-2.5 0V-2.2a2.5 2.5 0 0 1 5 0V0';
+    lockG.append(
+      el('path', { class: 'halo lock-sh', d: lockD }), el('rect', { class: 'halo lock-bd', x: -3.5, y: 0, width: 7, height: 5.5 }),
+      el('path', { class: 'ink lock-sh', d: lockD }), el('rect', { class: 'ink lock-bd', x: -3.5, y: 0, width: 7, height: 5.5 }),
+    );
+    // Leader to the offset gauge stack (see NodeView.gox): dashed line + a small bracket at the stack's centre.
+    const lead = el('g', { class: 'lead' });
+    const leadHalo = el('path', { class: 'halo lead-l' });
+    const leadInk = el('path', { class: 'ink lead-l' });
+    const leadMarkHalo = el('path', { class: 'halo lead-m' });
+    const leadMark = el('path', { class: 'ink lead-m' });
+    const mk = bracketPath(6, 3);
+    leadMarkHalo.setAttribute('d', mk);
+    leadMark.setAttribute('d', mk);
+    lead.append(leadHalo, leadInk, leadMarkHalo, leadMark);
+    lead.style.opacity = '0';
+    g.append(ring, lead, outG, focusHalo, focus, holdHalo, holdInk, retHalo, retInk, cp.sw, coreHalo, coreInk, lockG);
 
     const view: NodeView = {
       outG, outHalo, outInk, outKey: '', outPts: null, shape: '', npts: -1,
       uid: n.uid, g, ring, ringHalo, ringInk, ticksHalo, ticksInk, bearings, retHalo, retInk, focus,
       gauge, gaugeParts: gp, gaugeOp: 0, rotD, rotP: rp, rotOp: 0, lastRotR: -1, lastRotA: -9, opG, opParts: op, opOp: 0, lastOpRi: -1, lastOpac: -1, lastRi: -1, lastSoft: -1, softAttr: '', layerAttr: '',
       holdHalo, holdInk, holding: false, cp, pg: 0,
+      gox: 0, goy: 0, slide: 0, lead, leadHalo, leadInk, leadMark, leadMarkHalo, leadKey: '',
       // Fresh nodes "acquire": brackets start wide and settle, the ring eases in.
       bracket: n.fresh && !this.store.reducedMotion ? 22 : 11,
       ringOp: 0, lastR: -1, lastBracket: -1, cls: '',
@@ -372,10 +413,11 @@ export class Handles {
     if (Math.abs(sp - this.gr.sp) > 0.01) {
       this.gr = { sp, opac: r0, soft: r0 + sp, rot: r0 + 2 * sp };
       for (const v of this.views) {
-        layoutGauge(v.opParts, this.gr.opac, sp);
-        layoutGauge(v.gaugeParts, this.gr.soft, sp);
-        layoutGauge(v.rotP, this.gr.rot, sp);
-        layoutColorPage(v.cp, this.gr.rot, this.gr.soft, this.gr.opac, sp);
+        const half = this.gaugeHalf(v.opParts, v.gaugeParts, v.rotP);
+        layoutGauge(v.opParts, this.gr.opac, sp, half);
+        layoutGauge(v.gaugeParts, this.gr.soft, sp, half);
+        layoutGauge(v.rotP, this.gr.rot, sp, half);
+        layoutColorPage(v.cp, this.gr.rot, this.gr.soft, this.gr.opac, sp, half);
       }
     }
     this.svg.setAttribute('viewBox', `0 0 ${m.w} ${m.h}`);
@@ -396,7 +438,16 @@ export class Handles {
   /** How far from the centre a node still counts as "under the pointer": its size ring or its outermost gauge, whichever is larger. */
   private reachR(i: number, ringR: number): number {
     if (this.store.tool !== 'edit') return ringR;
-    return Math.max(ringR, (this.rotShown(i) || this.onColor(i) ? this.gr.rot : this.gr.soft) + 12);
+    const v = this.views[i];
+    const off = v ? Math.hypot(v.gox, v.goy) : 0;
+    return Math.max(ringR, off + (this.rotShown(i) || this.onColor(i) ? this.gr.rot : this.gr.soft) + 12);
+  }
+
+  /** Centre of node `i`'s gauge stack: the core, or the point it slid to so the dials fit the stage (NodeView.gox). */
+  private gaugeAt(i: number): { x: number; y: number } {
+    const p = this.px(i);
+    const v = this.views[i];
+    return v ? { x: p.x + v.gox, y: p.y + v.goy } : p;
   }
 
   private hitSizes(): { core: number; band: number } {
@@ -473,20 +524,23 @@ export class Handles {
   }
 
   /** Are node `i`'s gauges on screen (and so grabbable)? Edit tool only: they sit at fixed radii, whatever the node's size. */
-  private gaugeShown(_i: number): boolean {
-    return this.store.tool === 'edit';
+  private gaugeShown(i: number): boolean {
+    return this.store.tool === 'edit' && !this.store.nodes[i]?.lock;
   }
 
   /** Something is active (a selected / focused node or stroke, an open node menu, a stroke being drawn): the next empty click only clears it. */
   busy(): boolean {
     const s = this.store;
-    return s.selected !== null || s.focused !== null || s.drawing || this.menu.isOpen || this.colorUid !== null;
+    // The artboard menu counts while open and for a moment after it closes: the press that picks an item or dismisses it
+    // (its own window listener closes it first) must not also summon the FX dial.
+    const board = this.boardMenu.isOpen || performance.now() - this.boardMenu.closedAt < 350;
+    return s.selected !== null || s.focused !== null || s.drawing || this.menu.isOpen || board || this.colorUid !== null;
   }
 
   /** Is node `i` on the COLOUR page (edit tool only)? */
   private onColor(i: number): boolean {
     const n = this.store.nodes[i];
-    return !!n && this.colorUid === n.uid && this.store.tool === 'edit';
+    return !!n && this.colorUid === n.uid && this.store.tool === 'edit' && !n.lock;
   }
 
   /** The unrounded colour of node `i`, kept across edits (see colorpage.ts). */
@@ -500,6 +554,7 @@ export class Handles {
   private setColorPage(i: number, on: boolean): void {
     const n = this.store.nodes[i];
     if (!n) return;
+    if (on && this.actions.isLocked(i)) return;
     if (on) {
       this.colorUid = n.uid;
       this.colorOf(i);
@@ -538,8 +593,20 @@ export class Handles {
     let bestD = Infinity;
     for (let i = 0; i < this.store.nodes.length; i++) {
       const p = this.px(i);
-      const d = Math.hypot(x - p.x, y - p.y);
-      if (d <= core && d < bestD) {
+      let d = Math.hypot(x - p.x, y - p.y);
+      // An offset gauge stack's centre bracket is a second core for its node: hover, click (COLOUR page), drag.
+      const v = this.views[i];
+      let reach = core;
+      if (v && Math.hypot(v.gox, v.goy) > 6 && this.revealed(i) && this.store.tool === 'edit') {
+        // With its stack slid off, the reticle has the room around it to itself: a wider core (the gauges skip it too).
+        reach = core * 2 + 4;
+        if (Math.hypot(v.gox, v.goy) > 18) {
+          const c = this.gaugeAt(i);
+          const dc = Math.hypot(x - c.x, y - c.y);
+          if (dc <= core) d = Math.min(d, dc);
+        }
+      }
+      if (d <= reach && d < bestD) {
         best = i;
         bestD = d;
       }
@@ -556,8 +623,16 @@ export class Handles {
       for (let i = 0; i < this.store.nodes.length; i++) {
         if (!this.revealed(i) || this.onColor(i) !== colorKind) continue;
         if (!(kind === 'rot' ? this.rotShown(i) : this.gaugeShown(i))) continue;
-        const p = this.px(i);
-        const d = gaugeHit(ri, x - p.x, y - p.y, this.gr.sp);
+        const c = this.gaugeAt(i);
+        const v = this.views[i];
+        if (v && Math.hypot(v.gox, v.goy) > 6) {
+          // An offset stack: not grabbable until it has finished sliding out and opened, and never right over the node's
+          // own reticle (a ring can pass across it), so reaching for the core to move the node always grabs the node.
+          if (v.slide < 1) continue;
+          const p = this.px(i);
+          if (Math.hypot(x - p.x, y - p.y) <= core * 2 + 4) continue;
+        }
+        const d = gaugeHit(ri, x - c.x, y - c.y, this.gr.sp);
         if (d !== null && d < bd) {
           bi = i;
           bd = d;
@@ -569,8 +644,8 @@ export class Handles {
     let bestR = -1;
     let bestRD = Infinity;
     for (let i = 0; i < this.store.nodes.length; i++) {
-      // Only circles show the dotted size ring; other shapes resize by scroll / pinch / keys (their own outline is the extent).
-      if (!this.revealed(i) || this.store.nodes[i].shape !== 'circle') continue;
+      // Only circles show the dotted size ring; other shapes resize by scroll / pinch / keys.
+      if (!this.revealed(i) || this.store.nodes[i].shape !== 'circle' || this.store.nodes[i].lock) continue;
       const p = this.px(i);
       const d = Math.abs(Math.hypot(x - p.x, y - p.y) - p.r);
       if (d <= band && d < bestRD) {
@@ -769,6 +844,18 @@ export class Handles {
     e.preventDefault();
 
     const wasSelected = s.selected;
+    if (res.index >= 0 && s.nodes[res.index]?.lock) {
+      // LOCK: the node can be selected (and, on touch, held for its menu) but never grabbed.
+      const li = res.index;
+      s.selected = li;
+      s.armed = li;
+      this.lastTap = null;
+      this.views[li].g.focus({ preventScroll: true });
+      if (e.pointerType === 'touch' && wasSelected === li) this.hold = { start: performance.now(), x, y, uid: s.nodes[li].uid };
+      this.actions.isLocked(li);
+      emit(s);
+      return;
+    }
     if (res.kind === 'body') {
       // Grab the shape/stroke anywhere on its body: the same move drag as the core, with the grab offset kept.
       const p = this.px(res.index);
@@ -862,7 +949,7 @@ export class Handles {
       const slop = touch ? TAP_SLOP : CLICK_SLOP;
       if (prev && t - prev.t < win && Math.hypot(x - prev.x, y - prev.y) < slop) {
         this.lastTap = null;
-        this.actions.addAt(x / this.metrics.w, y / this.metrics.h);
+        this.actions.addAt(x / this.metrics.w, y / this.metrics.h, true);
       } else {
         this.lastTap = { t, x, y };
       }
@@ -895,8 +982,8 @@ export class Handles {
     if (s.drag.kind === 'node') {
       const n = s.nodes[s.drag.index];
       if (!n) return;
-      n.x = Math.min(1, Math.max(0, (x + this.dragOffset.x) / this.metrics.w));
-      n.y = Math.min(1, Math.max(0, (y + this.dragOffset.y) / this.metrics.h));
+      // SNAP / MIRROR (tools.ts): ⌘/Ctrl inverts snapping for this drag; partners follow the primary node.
+      placeNode(s, this.metrics, n, (x + this.dragOffset.x) / this.metrics.w, (y + this.dragOffset.y) / this.metrics.h, e.metaKey || e.ctrlKey);
       return;
     }
     if (s.drag.kind === 'ring') {
@@ -925,23 +1012,41 @@ export class Handles {
     this.hoverAt(x, y);
   };
 
-  /** Pointer angle around the node → 0–1 along the 270° arc. In the bottom gap the value sticks to the end it came from. */
-  private applySoft(i: number, x: number, y: number): void {
-    const n = this.store.nodes[i];
-    if (!n) return;
-    const p = this.px(i);
-    const u = (((Math.atan2(y - p.y, x - p.x) - G_START) % TAU) + TAU) % TAU;
+  /**
+   * One half-gap for a node's whole gauge stack (OPAC / SOFT / ROT and, on the same radii, LUM / SAT / HUE): the
+   * largest any of them needs (`stackGap`), so all six end on the same bearing. The COLOUR page's names are the same
+   * length class, so its gauges are measured through their default-page twins.
+   */
+  private gaugeHalf(op: GaugeParts, soft: GaugeParts, rot: GaugeParts): number {
+    const g = this.gr;
+    return stackGap([[op, g.opac], [soft, g.soft], [rot, g.rot]], g.sp);
+  }
+
+  /**
+   * Pointer offset → 0–1 along a gauge's own sweep. In the bottom gap the value sticks to the end it came from, and
+   * leaving the gap on the far side holds that end until the pointer comes back round (no snap across the gap).
+   */
+  private arcT(sw: Sweep, dx: number, dy: number): number {
+    const u = (((Math.atan2(dy, dx) - sw.a0) % TAU) + TAU) % TAU;
     let t: number;
-    if (u > G_SPAN) {
+    if (u > sw.span) {
       t = this.softPrev > 0.5 ? 1 : 0;
       this.softGap = true;
     } else {
-      t = u / G_SPAN;
-      // Leaving the gap on the far side would snap across it: hold the old end until the pointer comes back round.
+      t = u / sw.span;
       if (this.softGap && Math.abs(t - this.softPrev) > 0.5) t = this.softPrev;
       else this.softGap = false;
     }
     this.softPrev = t;
+    return t;
+  }
+
+  /** Pointer angle around the node → 0–1 along the 270° arc. In the bottom gap the value sticks to the end it came from. */
+  private applySoft(i: number, x: number, y: number): void {
+    const n = this.store.nodes[i];
+    if (!n) return;
+    const p = this.gaugeAt(i);
+    const t = this.arcT(this.views[i].gaugeParts.sw, x - p.x, y - p.y);
     n.soft = Math.round(t * 1000) / 1000;
   }
 
@@ -949,18 +1054,8 @@ export class Handles {
   private applyOpac(i: number, x: number, y: number): void {
     const n = this.store.nodes[i];
     if (!n) return;
-    const p = this.px(i);
-    const u = (((Math.atan2(y - p.y, x - p.x) - G_START) % TAU) + TAU) % TAU;
-    let t: number;
-    if (u > G_SPAN) {
-      t = this.softPrev > 0.5 ? 1 : 0;
-      this.softGap = true;
-    } else {
-      t = u / G_SPAN;
-      if (this.softGap && Math.abs(t - this.softPrev) > 0.5) t = this.softPrev;
-      else this.softGap = false;
-    }
-    this.softPrev = t;
+    const p = this.gaugeAt(i);
+    const t = this.arcT(this.views[i].opParts.sw, x - p.x, y - p.y);
     n.opac = Math.round(t * 1000) / 1000;
     this.store.modified = true;
   }
@@ -968,18 +1063,8 @@ export class Handles {
   /** HUE / SAT / LUM drag: the same 270° arc mapping as SOFT (the gap holds the end the value came from). */
   private applyColor(i: number, axis: ColorAxis, x: number, y: number): void {
     if (!this.store.nodes[i]) return;
-    const p = this.px(i);
-    const u = (((Math.atan2(y - p.y, x - p.x) - G_START) % TAU) + TAU) % TAU;
-    let t: number;
-    if (u > G_SPAN) {
-      t = this.softPrev > 0.5 ? 1 : 0;
-      this.softGap = true;
-    } else {
-      t = u / G_SPAN;
-      if (this.softGap && Math.abs(t - this.softPrev) > 0.5) t = this.softPrev;
-      else this.softGap = false;
-    }
-    this.softPrev = t;
+    const p = this.gaugeAt(i);
+    const t = this.arcT(this.views[i].cp[axis].p.sw, x - p.x, y - p.y);
     this.setAxis(i, axis, t);
   }
 
@@ -987,18 +1072,8 @@ export class Handles {
   private applyRot(i: number, x: number, y: number, snap: boolean): void {
     const n = this.store.nodes[i];
     if (!n) return;
-    const p = this.px(i);
-    const u = (((Math.atan2(y - p.y, x - p.x) - G_START) % TAU) + TAU) % TAU;
-    let t: number;
-    if (u > G_SPAN) {
-      t = this.softPrev > 0.5 ? 1 : 0;
-      this.softGap = true;
-    } else {
-      t = u / G_SPAN;
-      if (this.softGap && Math.abs(t - this.softPrev) > 0.5) t = this.softPrev;
-      else this.softGap = false;
-    }
-    this.softPrev = t;
+    const p = this.gaugeAt(i);
+    const t = this.arcT(this.views[i].rotP.sw, x - p.x, y - p.y);
     let a = Math.min(t, 0.9999) * TAU;
     if (snap) a = Math.round(a / ROT_STEP) * ROT_STEP;
     n.rot = ((a % TAU) + TAU) % TAU;
@@ -1042,6 +1117,23 @@ export class Handles {
       const d = Math.hypot(x - p.x, y - p.y);
       if (d > this.reachR(s.armed, p.r) + this.hitSizes().band * 1.6) s.armed = null;
     }
+    // Moving onto a different control ends a wheel burst at once: its dim focus, zone lock and FLARE flash would
+    // otherwise hold the old dial for up to 900 ms after the pointer has already moved on.
+    const wf = this.wheelFocus;
+    const fl = this.flash;
+    if (wf || this.wheelLock || fl) {
+      const h = s.hover;
+      const kind = h.kind === 'soft' || h.kind === 'rot' || h.kind === 'opac' || h.kind === 'hue' || h.kind === 'sat' || h.kind === 'lum' ? h.kind : 'ring';
+      const uid = h.index >= 0 ? s.nodes[h.index]?.uid : undefined;
+      const ref = wf
+        ?? (this.wheelLock ? { uid: this.wheelLock.uid, kind: this.wheelLock.kind === 'node' ? 'ring' : this.wheelLock.kind } : null)
+        ?? { uid: fl!.uid, kind: fl!.kind === 'r' ? 'ring' : fl!.kind };
+      if (h.kind === 'idle' || uid !== ref.uid || kind !== ref.kind) {
+        this.wheelFocus = null;
+        this.wheelLock = null;
+        this.flash = null;
+      }
+    }
     if (prev.kind !== s.hover.kind || prev.index !== s.hover.index) emit(s);
   }
 
@@ -1079,6 +1171,7 @@ export class Handles {
     } else {
       this.history.commit('');
     }
+    endPlace();
     s.drag = { kind: 'none', index: -1 };
     if (e.pointerType === 'touch') {
       s.hover = { kind: 'idle', index: -1 };
@@ -1122,6 +1215,7 @@ export class Handles {
     this.pointerId = null;
     this.pointerInside = false;
     if (s.drag.kind !== 'none') this.history.commit(this.dragLabel());
+    endPlace();
     s.drag = { kind: 'none', index: -1 };
     s.hover = { kind: 'idle', index: -1 };
     emit(s);
@@ -1151,12 +1245,13 @@ export class Handles {
       const ri = s.nodes.findIndex((n) => n.uid === pr.uid);
       if (ri >= 0) s.selected = ri;
     }
-    if (this.pinch || s.tool !== 'edit' || s.selected === null || s.selected >= s.nodes.length) return;
+    if (this.pinch || s.tool !== 'edit' || s.selected === null || s.selected >= s.nodes.length || s.nodes[s.selected].lock) return;
     const d0 = this.pinchDistance();
     if (d0 < 12) return;
     if (s.drag.kind !== 'none') {
       this.history.commit(this.dragLabel());
       s.drag = { kind: 'none', index: -1 };
+      endPlace();
     }
     this.pointerId = null;
     this.lastTap = null;
@@ -1227,6 +1322,10 @@ export class Handles {
     if (i < 0) return;
     e.preventDefault();
     s.armed = i;
+    if (s.nodes[i].lock) {
+      this.actions.isLocked(i);
+      return;
+    }
     const zone0 = hit.kind;
     const colorZone = zone0 === 'hue' || zone0 === 'sat' || zone0 === 'lum';
     const zone = e.ctrlKey ? 'r' : (e.shiftKey || e.altKey) && !colorZone ? 'soft' : zone0;
@@ -1283,6 +1382,7 @@ export class Handles {
     if (performance.now() - this.keyMenuAt < 400 || this.lastPointerType === 'touch') return;
     if (s.tool !== 'edit' || s.drawing || s.drag.kind !== 'none') {
       this.menu.close();
+      this.boardMenu.close();
       return;
     }
     this.updateMetrics();
@@ -1290,9 +1390,16 @@ export class Handles {
     const y = e.clientY - this.metrics.top;
     const hit = this.pick(x, y);
     if (hit.index < 0) {
+      // Off every node: the artboard's own menu (ADD NODE · DRAW).
       this.menu.close();
+      if (s.selected !== null) {
+        s.selected = null;
+        emit(s);
+      }
+      this.boardMenu.open(x, y);
       return;
     }
+    this.boardMenu.close();
     s.selected = hit.index;
     s.armed = hit.index;
     emit(s);
@@ -1332,6 +1439,10 @@ export class Handles {
       return;
     }
     const mutating = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key);
+    if (mutating && this.actions.isLocked(i)) {
+      e.preventDefault();
+      return;
+    }
     if (mutating) this.actions.nudge(i);
     let handled = true;
     switch (e.key) {
@@ -1356,15 +1467,16 @@ export class Handles {
     }
     if (handled) {
       e.preventDefault();
+      if (mutating) placeNode(s, m, n, n.x, n.y, null); // mirror partners follow a nudge; no snapping
       emit(s);
     }
   }
 
   // ----- per-frame ----------------------------------------------------------
 
-  /** Dashed core outline for non-circle nodes; the path is rebuilt only when its inputs change. */
+  /** Dashed path of a stroke node (ellipse / box / capsule draw no outline: the field shows their shape); rebuilt only when its inputs change. */
   private updateOutline(v: NodeView, n: NodeState, rPx: number): void {
-    const op = n.shape === 'circle' ? 0 : Math.min(1, v.ringOp * 2);
+    const op = n.shape !== 'stroke' ? 0 : Math.min(1, v.ringOp * 2);
     v.outG.style.opacity = op < 0.005 ? '0' : op.toFixed(3);
     if (op < 0.005) return;
     const min = this.metrics.min;
@@ -1419,6 +1531,10 @@ export class Handles {
     if (['soft', 'rot', 'opac', 'hue', 'sat', 'lum', 'ring'].includes(s.drag.kind) && s.drag.index < s.nodes.length) {
       focusIdx = s.drag.index;
       focusKind = s.drag.kind;
+    } else if (s.drag.kind === 'node' && s.drag.index < s.nodes.length && (!this.coreDown || this.coreDown.moved)) {
+      // Moving a node (past the click slop, so a plain click on the core never flashes the dim).
+      focusIdx = s.drag.index;
+      focusKind = 'node';
     } else if (this.wheelFocus) {
       const wi = performance.now() <= this.wheelFocus.until ? s.nodes.findIndex((nn) => nn.uid === this.wheelFocus!.uid) : -1;
       if (wi >= 0) {
@@ -1428,6 +1544,13 @@ export class Handles {
     }
     // The FX dial owns `ui-focus` while it is adjusted (`fx-focus`): never clear it from here.
     this.stage.classList.toggle('ui-focus', focusIdx >= 0 || this.stage.classList.contains('fx-focus'));
+    // Engaged: while a node is hovered or selected in the edit tool (its bezel is the thing being played with), the
+    // other nodes step back (CSS `.node-engaged`); the hovered one wins over the selection. The FX dial does the same
+    // for every node while it is open (`.fx-open`).
+    const hovIdx = s.hover.kind !== 'idle' && s.hover.index >= 0 && s.hover.index < s.nodes.length ? s.hover.index : -1;
+    const selIdx = s.selected !== null && s.selected < s.nodes.length ? s.selected : -1;
+    const engagedIdx = s.tool === 'edit' && !s.drawing ? (hovIdx >= 0 ? hovIdx : selIdx) : -1;
+    this.stage.classList.toggle('node-engaged', engagedIdx >= 0);
 
     for (let i = 0; i < s.nodes.length; i++) {
       const n = s.nodes[i];
@@ -1536,7 +1659,7 @@ export class Handles {
       }
       // OPAC, SOFT, ROT: the FX dial's gauges at fixed radii (innermost first), each riding the bezel's staggered fade.
       {
-        const edit = s.tool === 'edit' ? 1 : 0;
+        const edit = s.tool === 'edit' && !n.lock ? 1 : 0;
         // Page flip: pg runs linearly 0 → 1 (COLOUR) in 0.36 s and back. The first half collapses the default gauges
         // outermost-first (the open stagger reversed), the second grows HUE / SAT / LUM in innermost-first, like opening.
         const wantColor = this.onColor(i);
@@ -1586,6 +1709,49 @@ export class Handles {
         v.rotP.g.classList.toggle('is-hover', isRotHover);
         v.rotP.g.classList.toggle('is-drag', isRotDrag || isRotFlash);
       }
+      // Gauge stack near an edge: slide it inward until the outermost dial (and its bottom name chip) fits the stage, and
+      // join it to the reticle with a dashed leader. Eased, so it glides as the node nears or leaves the edge.
+      {
+        const outer = this.rotShown(i) || this.onColor(i) ? this.gr.rot : this.gr.soft;
+        const R = outer + this.gr.sp * 0.6 + 4;
+        const Rb = outer + 16;
+        const tx = m.w < 2 * R ? m.w / 2 : Math.min(m.w - R, Math.max(R, x));
+        const ty = m.h < R + Rb ? (R + m.h - Rb) / 2 : Math.min(m.h - Rb, Math.max(R, y));
+        // Eased target offset; on open it is played out over SLIDE_S (marker and leader travel from the core), and only
+        // then does the stack open at its new centre. Closing resets it, so every reveal replays the move.
+        const far = Math.hypot(tx - x, ty - y) > 18;
+        v.slide = !wantOpen ? 0 : !far || snap ? 1 : Math.min(1, v.slide + dt / SLIDE_S);
+        const ease = 1 - Math.pow(1 - v.slide, 3);
+        v.gox = approach(v.gox, (tx - x) * ease, v.slide < 1 ? 60 : 18, dt, snap);
+        v.goy = approach(v.goy, (ty - y) * ease, v.slide < 1 ? 60 : 18, dt, snap);
+        // The stack waits for the slide: it fades and grows in over the last quarter of it.
+        const gate = far ? Math.min(1, Math.max(0, (v.slide - 0.75) / 0.25)) : 1;
+        const tr = `translate(${v.gox.toFixed(2)} ${v.goy.toFixed(2)})` + (gate < 1 ? ` scale(${(0.8 + 0.2 * gate).toFixed(3)})` : '');
+        for (const gg of [v.opG, v.gauge, v.rotD, v.cp.lum.p.g, v.cp.sat.p.g, v.cp.hue.p.g, v.cp.sw]) {
+          gg.setAttribute('transform', tr);
+          if (gate < 1) gg.style.opacity = (parseFloat(gg.style.opacity || '0') * gate).toFixed(3);
+        }
+        const dist = Math.hypot(v.gox, v.goy);
+        const show = dist > 6 && far && s.tool === 'edit' && !n.lock ? 1 : 0;
+        const leadOp = show * Math.min(1, v.slide * 4) * Math.min(1, (dist - 6) / 12);
+        v.lead.style.opacity = leadOp < 0.005 ? '0' : leadOp.toFixed(3);
+        if (leadOp >= 0.005) {
+          const ux = v.gox / dist;
+          const uy = v.goy / dist;
+          const key = `${v.gox.toFixed(1)}|${v.goy.toFixed(1)}`;
+          if (key !== v.leadKey) {
+            v.leadKey = key;
+            const a = 16; // clear of the reticle brackets
+            const b = Math.max(a, dist - 9); // stop at the marker
+            const d = `M${(ux * a).toFixed(1)} ${(uy * a).toFixed(1)}L${(ux * b).toFixed(1)} ${(uy * b).toFixed(1)}`;
+            v.leadHalo.setAttribute('d', d);
+            v.leadInk.setAttribute('d', d);
+            const at = `translate(${v.gox.toFixed(1)} ${v.goy.toFixed(1)})`;
+            v.leadMark.setAttribute('transform', at);
+            v.leadMarkHalo.setAttribute('transform', at);
+          }
+        }
+      }
       // Hide bearing labels that would fall outside the stage instead of letting them clip.
       {
         const lr = r + 23;
@@ -1626,13 +1792,18 @@ export class Handles {
         (isOpacFlash ? ' is-opac-flash' : '') +
         (v.pg > 0.005 ? ' is-colour' : '') +
         (cls0 ? ` is-focus focus-${focusKind}` : '') +
+        (engagedIdx === i ? ' is-engaged' : '') +
         (n.shape !== 'circle' ? ' no-ring' : '') +
+        (n.lock ? ' is-locked' : '') +
+        (n.hide ? ' is-hidden' : '') +
         (isSel ? ' is-selected' : '') +
         (isHold ? ' is-hold' : '') +
         (s.drag.kind === 'ring' && s.drag.index === i ? ' is-ring-drag' : '');
       if (cls !== v.cls) {
         v.cls = cls;
         v.g.setAttribute('class', cls);
+        v.g.dataset.lock = String(n.lock);
+        v.g.dataset.hide = String(n.hide);
       }
     }
 
@@ -1687,7 +1858,7 @@ export class Handles {
     // Serial / coordinate readout near the active node.
     if (activeNode >= 0 && activeNode < s.nodes.length) {
       const n = s.nodes[activeNode];
-      const text = `${nodeSerial(activeNode)} // X ${n.x.toFixed(3)} Y ${n.y.toFixed(3)}`;
+      const text = `${nodeSerial(activeNode)} // X ${n.x.toFixed(3)} Y ${n.y.toFixed(3)}${n.lock ? ' · LOCK' : ''}${n.hide ? ' · HIDE' : ''}`;
       if (text !== this.chipNodeText) {
         this.chipNodeText = text;
         this.chipNode.textContent = text;
@@ -1703,7 +1874,8 @@ export class Handles {
       const cy = flipY ? p.y - off - 18 : p.y + off;
       this.chipNode.style.transform = `translate(${cx.toFixed(1)}px, ${cy.toFixed(1)}px)`;
       this.chipNode.classList.add('is-on');
-      this.chipNode.classList.remove('is-focus'); // the coordinate tag always steps back while a control is adjusted
+      // The coordinate tag steps back while a control is adjusted, but it is the live readout while the node moves.
+      this.chipNode.classList.toggle('is-focus', s.drag.kind === 'node' && this.stage.classList.contains('ui-focus'));
       this.chipNode.classList.toggle('is-engaged', s.drag.kind === 'node');
     } else {
       this.chipNode.classList.remove('is-on');
