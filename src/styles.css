@@ -2704,7 +2704,6 @@ html[data-drag='lum'] .stage,
 
 .fxdial .halo { fill: none; stroke: #000; stroke-opacity: 0.6; stroke-width: 3; stroke-linecap: butt; }
 .fxdial .ink { fill: none; stroke: #fff; stroke-width: 1; stroke-linecap: butt; }
-.fxdial .fxpage { outline: none; }
 .fxdial .fxring { outline: none; pointer-events: none; transition: opacity 60ms linear; }
 .gring .halo, .gring .ink {
   transition: stroke-width var(--t) var(--ease), stroke var(--t) var(--ease), stroke-opacity var(--t) var(--ease);
@@ -2745,10 +2744,8 @@ html[data-drag='lum'] .stage,
 
 /* Callout chip: the node coordinate tag, one per ring, in the ring's own bottom gap. */
 .gring .tag-bg,
-.fxpage .tag-bg,
 .fxempty .tag-bg { fill: var(--plate); fill-opacity: 0.92; transition: fill var(--t) var(--ease); }
 .gring .tag-text,
-.fxpage .tag-text,
 .fxempty .tag-text {
   font-family: var(--mono);
   font-size: var(--fx-fs, 9px);
@@ -2759,8 +2756,8 @@ html[data-drag='lum'] .stage,
   pointer-events: none;
 }
 .gring.is-off .tag-text { fill: var(--graphite); fill-opacity: 1; }
-.gring.is-hover .tag-bg, .fxdial .fxring:focus-visible .tag-bg, .fxpage.is-hover .tag-bg, .fxdial .fxpage:focus-visible .tag-bg { fill: var(--signal); fill-opacity: 1; }
-.gring.is-hover .tag-text, .fxdial .fxring:focus-visible .tag-text, .fxpage.is-hover .tag-text, .fxdial .fxpage:focus-visible .tag-text { fill: var(--plate); font-weight: 600; }
+.gring.is-hover .tag-bg, .fxdial .fxring:focus-visible .tag-bg { fill: var(--signal); fill-opacity: 1; }
+.gring.is-hover .tag-text, .fxdial .fxring:focus-visible .tag-text { fill: var(--plate); font-weight: 600; }
 .gring.is-drag .tag-bg { fill: var(--flare); fill-opacity: 1; }
 .gring.is-drag .tag-text { fill: var(--plate); font-weight: 600; }
 

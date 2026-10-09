@@ -59,14 +59,6 @@ export const FX_IDS: readonly FxId[] = [
   'glow', 'grade', 'warp',
 ];
 
-/** The FX dial's pages: five rings fit its bezel, so twelve effects flip between three pages of at most five. */
-export const FX_PAGES: ReadonlyArray<{ name: string; ids: readonly FxId[] }> = [
-  { name: 'STOCK', ids: ['grain', 'dither', 'chroma', 'scan', 'vig'] },
-  { name: 'STYLE', ids: ['halftone', 'pixel', 'ascii', 'map'] },
-  { name: 'LOOK', ids: ['glow', 'grade', 'warp'] },
-];
-export const fxPageOf = (id: FxId): number => FX_PAGES.findIndex((p) => p.ids.includes(id));
-
 /** Field warp gain (× short side) at OFF and at knob 50: the constant the field shader always used. */
 export const WARP_HOUSE = 0.17;
 export const warpGain = (fx: FxState): number => (fx.warp <= 0 ? WARP_HOUSE : (WARP_HOUSE * (fx.warp - 1)) / 49);
