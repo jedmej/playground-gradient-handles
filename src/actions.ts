@@ -24,6 +24,7 @@ import {
   type Store,
 } from './store';
 import { fieldHexAt } from './field';
+import { addGroup, mirrorSpots, pairNodes, tools } from './tools';
 import { copyFx, FX_DEFAULT, fxActive, fxFromPos, fxMaxPos, fxPos, fxStatus, onValue, rememberFx, sameFx, type DitherMode, type FxId, type GrainSize, type ScanDir } from './fx';
 
 const pad = (n: number): string => String(n).padStart(2, '0');
@@ -54,7 +55,8 @@ export class Actions {
     return i !== null && i < s.nodes.length ? i : -1;
   }
 
-  addAt(nx: number, ny: number): boolean {
+  /** `mirror`: with symmetry on (tools.ts), also drop the partner node(s); one undo step, MAX_NODES respected. */
+  addAt(nx: number, ny: number, mirror = false): boolean {
     const s = this.store;
     if (s.nodes.length >= MAX_NODES) {
       s.say(`NODE LIMIT ${MAX_NODES}`);
@@ -63,13 +65,23 @@ export class Actions {
     const x = Math.min(1, Math.max(0, nx));
     const y = Math.min(1, Math.max(0, ny));
     const hex = fieldHexAt(s, x, y, this.metrics);
+    const spots = mirror ? mirrorSpots(x, y).slice(0, MAX_NODES - s.nodes.length - 1) : [];
+    const partnerHex = spots.map((p) => fieldHexAt(s, p.x, p.y, this.metrics));
     this.history.mark('ADD NODE');
     const i = addNode(s, { x, y, r: DEFAULT_RADIUS, hex });
+    if (spots.length) {
+      const group = [{ uid: s.nodes[i].uid, fx: false, fy: false }];
+      spots.forEach((p, k) => {
+        const j = addNode(s, { x: p.x, y: p.y, r: DEFAULT_RADIUS, hex: partnerHex[k] });
+        group.push({ uid: s.nodes[j].uid, fx: p.fx, fy: p.fy });
+      });
+      addGroup(group);
+    }
     s.selected = i;
     s.armed = i;
     s.hover = { kind: 'idle', index: -1 };
     emit(s);
-    s.say(`Added ${nodeSerial(i)} · ${pad(s.nodes.length)} nodes`);
+    s.say(`Added ${nodeSerial(i)}${spots.length ? ` + ${spots.length} MIRROR` : ''} · ${pad(s.nodes.length)} nodes`);
     return true;
   }
 
@@ -327,6 +339,7 @@ export class Actions {
     }
     this.history.mark(`PRESET ${p.serial}`);
     applyPreset(s, index, this.now(), true);
+    if (tools.mirror !== 'off') pairNodes(s, this.metrics); // new layout: pair again
     s.say(`${p.serial} ${p.name}`);
   }
 
@@ -336,6 +349,7 @@ export class Actions {
     if (!p) return;
     this.history.mark('RESET');
     applyPreset(s, s.presetIndex, this.now(), true);
+    if (tools.mirror !== 'off') pairNodes(s, this.metrics);
     s.say('Reset to ' + p.serial);
   }
 

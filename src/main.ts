@@ -15,6 +15,7 @@ import { createMetrics, Handles } from './handles';
 import { History } from './history';
 import { FieldBuffers, packField } from './field';
 import { createStore, EASE } from './store';
+import { ToolsOverlay, ToolsUI } from './tools';
 import { drawRulers, UI } from './ui';
 import { wallpaperTarget } from './wallpaper';
 
@@ -107,6 +108,8 @@ const actions = new Actions(store, history, metrics, now);
 const handles = new Handles(store, stage, svg, chipNode, chipRadius, metrics, actions, history);
 const ui = new UI(store, handles.metrics, now, () => ({ ...handles.pointer, inside: handles.pointerInside }), actions, history);
 actions.bindKeys();
+const toolsOverlay = new ToolsOverlay(svg, handles.metrics);
+const toolsUi = new ToolsUI(store, actions, history, stage, handles.metrics, isPreview);
 new FxPanel(store, actions, history);
 new WallpaperPanel(store, handles.metrics, now);
 const fxDial = new FxDial(store, actions, history, stage, handles.metrics, (x, y) => handles.emptyAt(x, y), () => handles.busy());
@@ -310,6 +313,8 @@ function tick(): void {
   renderer?.render({ ...buffers, time: store.reducedMotion ? 0.5 : t / 1000, grain: 0.04 }, store.fx);
   persistFx(store.fx, store.wallpaper, store.wpCustom);
 
+  toolsOverlay.frame();
+  toolsUi.frame();
   ui.frame();
   fxDial.frame();
   requestAnimationFrame(tick);
