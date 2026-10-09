@@ -44,6 +44,8 @@ export class FxDial {
   private emptyText = el('text', { 'text-anchor': 'middle' });
   private emptyBg!: SVGRectElement;
   private shown = new Set<FxId>();
+  /** The ring last stepped from the keyboard: kept (even at 0) until focus leaves it. */
+  private keyed: FxId | null = null;
   open = false;
   private cx = 0;
   private cy = 0;
@@ -150,6 +152,11 @@ export class FxDial {
     g.style.setProperty('--i', String(this.views.length));
     const v: RingView = Object.assign(gp, { id, key: '' });
     g.addEventListener('keydown', (e) => this.onRingKey(e, id));
+    g.addEventListener('blur', () => {
+      if (this.keyed !== id) return;
+      this.keyed = null; // a ring keyed to 0 goes once focus leaves it
+      this.sync();
+    });
     this.root.appendChild(g);
     return v;
   }
@@ -325,14 +332,19 @@ export class FxDial {
     return `${NAMES[id]} // ${v <= 0 ? (id === 'warp' ? 'STD' : 'OFF') : id === 'dither' ? `${v} LV` : v}`;
   }
 
-  /** Mirror the store: add rings for newly enabled effects (they stay while the dial is open), refresh values. */
+  /**
+   * Mirror the store: one ring per effect that is on, refresh values. A ring taken to 0 stays only while it is still in
+   * hand (dragged, wheeled or keyboard-focused), so it never vanishes under the pointer; it goes on release.
+   */
   private sync(force = false): void {
     if (!this.open) return;
     const fx = this.store.fx;
-    let grew = false;
-    for (const id of FX_IDS) if (fx[id] > 0 && !this.shown.has(id)) (this.shown.add(id), (grew = true));
+    const held = (id: FxId): boolean => id === this.drag?.id || id === this.wheelActive || id === this.keyed;
+    const next = new Set(FX_IDS.filter((id) => fx[id] > 0 || (this.shown.has(id) && held(id))));
+    const changed = next.size !== this.shown.size || [...next].some((id) => !this.shown.has(id));
+    this.shown = next;
     const box = `${this.metrics.w}x${this.metrics.h}`;
-    if (grew || force || box !== this.lastBox) {
+    if (changed || force || box !== this.lastBox) {
       this.lastBox = box;
       this.layout();
     }
@@ -646,6 +658,7 @@ export class FxDial {
     e.preventDefault();
     e.stopPropagation();
     this.lastActive = performance.now();
+    this.keyed = id;
     this.actions.fxGoto(id, Math.min(max, Math.max(0, to)));
   }
 }
