@@ -30,7 +30,7 @@ import {
 } from './store';
 import { fieldHexAt } from './field';
 import { addGroup, mirrorSpots, pairNodes, tools } from './tools';
-import { copyFx, FX_IDS, fxActive, fxFromPos, fxMaxPos, fxOptId, fxPos, fxStatus, fxWithOption, onValue, rememberFx, sameFx, type FxId, type FxOpt } from './fx';
+import { copyFx, FX_IDS, fxActive, fxFromPos, fxMaxPos, fxOptId, fxPos, fxStatus, fxWithOption, onValue, rememberFx, sameFx, type FxId, type FxOpt, type FxState } from './fx';
 import { HARMONY_LABEL, makeRng, newSeed, randomSpecs, seedLabel } from './generate';
 
 const pad = (n: number): string => String(n).padStart(2, '0');
@@ -370,10 +370,17 @@ export class Actions {
   }
 
   /** Adopt one VARY thumbnail's specs (identified, so every node keeps its identity). One undo step `VARY`. */
-  adoptVariant(specs: NodeSpec[], n: number): void {
+  adoptVariant(specs: NodeSpec[], n: number, fx: FxState | null = null): void {
     const s = this.store;
     if (s.drag.kind !== 'none' || s.drawing) return;
-    this.adopt('VARY', specs);
+    // FX first, so the one `VARY` undo step (marked in adopt) covers both. The mark snapshots before either change.
+    this.history.mark('VARY');
+    if (fx) s.fx = copyFx(fx);
+    reconcile(s, specs, this.now(), true, 600);
+    s.modified = true;
+    if (tools.mirror !== 'off') pairNodes(s, this.metrics);
+    emit(s);
+    if (fx) this.fxChanged(null);
     s.say(`VARY · V-${n}`);
   }
 

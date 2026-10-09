@@ -3323,3 +3323,37 @@ html[data-drag='lum'] .stage,
 /* The ADD menu reuses the node menu's plate; effects already on are hidden. Above the dial. */
 .fx-menu { z-index: 7; min-width: 168px; }
 .fx-menu .menu-item[hidden] { display: none; }
+
+/* VARY axes: checkbox chips under the strip head (COMPOSITION · COLOURS · EFFECTS), any mix, at least one on. */
+.vary-axes {
+  display: flex;
+  gap: 6px;
+  padding: 6px 6px 0;
+}
+.vary-axis {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px 0 6px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: var(--graphite);
+  outline: 1px solid var(--hull);
+  outline-offset: -1px;
+  cursor: pointer;
+}
+.vary-axis i {
+  width: 9px;
+  height: 9px;
+  outline: 1px solid var(--graphite);
+  outline-offset: -1px;
+}
+.vary-axis.is-on { color: var(--plate-fg); }
+.vary-axis.is-on i { background: var(--signal); outline-color: var(--signal); }
+.vary-axis:hover,
+.vary-axis:focus-visible { color: var(--signal); outline-color: var(--signal); }
+@media (pointer: coarse) {
+  .vary-axis { height: 36px; padding: 0 12px 0 10px; }
+}

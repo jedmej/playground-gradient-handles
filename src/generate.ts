@@ -1,4 +1,5 @@
 import { hexToOklch, maxChroma, oklchToHex } from './color';
+import { FX_IDS, fxWithOption, onValue, parseFx, type FxId, type FxOpt, type FxState } from './fx';
 import { copyPts, defaultSoft, MAX_NODES, MIN_NODES, R_MAX, R_MIN, type NodeSpec, type Shape } from './store';
 
 /** Colour-harmony rule for RANDOM: every colour is an OKLCH point on a hue relation to one base hue. */
@@ -121,27 +122,96 @@ export function randomSpecs(rng: () => number, rule: Harmony, existing: NodeSpec
   return out;
 }
 
+/** What VARY may change: the arrangement and node properties, the colours, the FX. Any mix of the three. */
+export interface VaryAxes {
+  comp: boolean;
+  color: boolean;
+  fx: boolean;
+}
+
 /**
- * A new composition over the same nodes, scaled by `k` (~0.8 gentle … 2 bold): every unlocked node keeps its colour
- * exactly and jitters in position, reach, softness, opacity and rotation; each variant may also mirror the whole
- * layout on x / y, so the four thumbnails read as different arrangements rather than near-copies. Locked nodes are
- * copied untouched. Specs keep their uid, so adopting one is an identity-matched restore.
+ * One VARY take over the same nodes, scaled by `k` (~0.8 gentle … 2 bold). Only the checked axes change:
+ * - comp: position, reach, softness, opacity and rotation jitter, sometimes a mirrored layout;
+ * - color: a shared hue turn, a reshuffle of colours between nodes, a light / dark swing, per-node hue / lightness /
+ *   chroma jitter (OKLCH, always in gamut);
+ * - fx: see `varyFx`.
+ * Locked nodes are copied untouched. Specs keep their uid, so adopting one is an identity-matched restore.
  */
-export function varySpecs(rng: () => number, nodes: NodeSpec[], k: number): NodeSpec[] {
+export function varySpecs(rng: () => number, nodes: NodeSpec[], k: number, axes: VaryAxes): NodeSpec[] {
   const p = (base: number): boolean => rng() < Math.min(0.95, base * k);
-  const flipX = p(0.2);
-  const flipY = p(0.15);
-  return nodes.map((n) => {
+  const free = nodes.map((n, i) => (n.lock ? -1 : i)).filter((i) => i >= 0);
+  const flipX = axes.comp && p(0.2);
+  const flipY = axes.comp && p(0.15);
+  const hueTurn = axes.color && p(0.35) ? jit(rng, 70 * k) : 0;
+  const lightSwing = axes.color && p(0.25) ? jit(rng, 0.1 * k) : 0;
+  const hexes = new Map<number, string>(free.map((i) => [i, nodes[i].hex]));
+  if (axes.color && free.length > 1 && p(0.3)) {
+    const order = [...free];
+    const swaps = Math.max(1, Math.round(free.length * Math.min(1, 0.3 * k)));
+    for (let t = 0; t < swaps; t++) {
+      const a = Math.floor(rng() * order.length);
+      const b = Math.floor(rng() * order.length);
+      [order[a], order[b]] = [order[b], order[a]];
+    }
+    free.forEach((i, j) => hexes.set(i, nodes[order[j]].hex));
+  }
+  return nodes.map((n, i) => {
     const out: NodeSpec = { ...n, pts: copyPts(n.pts) };
     if (n.lock) return out;
-    const bx = flipX ? 1 - n.x : n.x;
-    const by = flipY ? 1 - n.y : n.y;
-    out.x = clamp(bx + jit(rng, 0.16 * k), 0.02, 0.98);
-    out.y = clamp(by + jit(rng, 0.16 * k), 0.02, 0.98);
-    out.r = clamp(n.r * Math.exp(jit(rng, 0.45 * k)), R_MIN, R_MAX);
-    out.soft = clamp((n.soft ?? defaultSoft(n.shape)) + jit(rng, 0.25 * k), 0, 1);
-    if (n.opac !== undefined && n.opac < 1) out.opac = clamp(n.opac + jit(rng, 0.2 * k), 0.15, 1);
-    if (out.shape && out.shape !== 'circle' && out.shape !== 'stroke') out.rot = (n.rot ?? 0) + jit(rng, 0.5 * k);
+    if (axes.comp) {
+      const bx = flipX ? 1 - n.x : n.x;
+      const by = flipY ? 1 - n.y : n.y;
+      out.x = clamp(bx + jit(rng, 0.16 * k), 0.02, 0.98);
+      out.y = clamp(by + jit(rng, 0.16 * k), 0.02, 0.98);
+      out.r = clamp(n.r * Math.exp(jit(rng, 0.45 * k)), R_MIN, R_MAX);
+      out.soft = clamp((n.soft ?? defaultSoft(n.shape)) + jit(rng, 0.25 * k), 0, 1);
+      if (n.opac !== undefined && n.opac < 1) out.opac = clamp(n.opac + jit(rng, 0.2 * k), 0.15, 1);
+      if (out.shape && out.shape !== 'circle' && out.shape !== 'stroke') out.rot = (n.rot ?? 0) + jit(rng, 0.5 * k);
+    }
+    if (axes.color) {
+      const [L, C, h] = hexToOklch(hexes.get(i) ?? n.hex);
+      const L2 = clamp(L + lightSwing + jit(rng, 0.1 * k), 0.04, 0.97);
+      const h2 = wrap(h + hueTurn + jit(rng, 32 * k));
+      const C2 = Math.min(C * Math.exp(jit(rng, 0.35 * k)), maxChroma(L2, h2));
+      out.hex = oklchToHex(L2, C2, C < 0.01 ? h : h2);
+    }
     return out;
   });
+}
+
+/** Every option choice per effect, for VARY's option flips. */
+const FX_CHOICES: Partial<Record<FxId, FxOpt[]>> = {
+  grain: ['grain-fine', 'grain-coarse'],
+  dither: ['dither-bayer', 'dither-blue'],
+  scan: ['scan-h', 'scan-v', 'scan-b'],
+  halftone: ['halftone-fine', 'halftone-coarse'],
+  ascii: ['ascii-fine', 'ascii-coarse'],
+  grade: ['grade-punch', 'grade-warm', 'grade-cool', 'grade-fade'],
+  map: ['map-post', 'map-duo', 'map-tri'],
+  warp: ['warp-lo', 'warp-mid', 'warp-hi'],
+};
+
+/**
+ * VARY's FX axis: active effects move their amount (±30·k, never to off), sometimes flip their option; sometimes one
+ * more effect comes on at its usual value, and with three or more on, one may go off. Clamped by `parseFx`.
+ */
+export function varyFx(rng: () => number, fx: FxState, k: number): FxState {
+  const p = (base: number): boolean => rng() < Math.min(0.95, base * k);
+  let next: FxState = { ...fx };
+  const on = FX_IDS.filter((id) => fx[id] > 0);
+  for (const id of on) {
+    if (id === 'dither') next.dither = clamp(Math.round(fx.dither + jit(rng, 4 * k)), 2, 16);
+    else next[id] = clamp(Math.round(fx[id] + jit(rng, 30 * k)), 1, 100);
+    const opts = FX_CHOICES[id];
+    if (opts && p(0.25)) next = fxWithOption(next, opts[Math.floor(rng() * opts.length)]);
+  }
+  const off = FX_IDS.filter((id) => fx[id] <= 0 && id !== 'warp');
+  if (off.length && (on.length === 0 || p(0.35))) {
+    const id = off[Math.floor(rng() * off.length)];
+    next[id] = onValue(id);
+    const opts = FX_CHOICES[id];
+    if (opts) next = fxWithOption(next, opts[Math.floor(rng() * opts.length)]);
+  }
+  if (on.length >= 3 && p(0.2)) next[on[Math.floor(rng() * on.length)]] = 0;
+  return parseFx(next);
 }

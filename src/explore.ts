@@ -2,7 +2,8 @@ import type { Actions } from './actions';
 import { renderOffscreen } from './exporter';
 import { extractFromFile } from './extract';
 import type { Metrics } from './handles';
-import { HARMONIES, HARMONY_LABEL, makeRng, newSeed, seedLabel, varySpecs } from './generate';
+import { copyFx, type FxState } from './fx';
+import { HARMONIES, HARMONY_LABEL, makeRng, newSeed, seedLabel, varyFx, varySpecs, type VaryAxes } from './generate';
 import { makeNode, snapshotIdentified, type NodeSpec, type Store } from './store';
 
 const TYPING = 'input:not([type=color]):not([type=checkbox]), textarea, select, [contenteditable=""], [contenteditable="true"]';
@@ -10,6 +11,26 @@ const TYPING = 'input:not([type=color]):not([type=checkbox]), textarea, select, 
 const STRENGTH = [0.8, 1.15, 1.5, 2];
 /** Long side of a thumbnail render (px); the strip shows it at about half that. */
 const THUMB = 240;
+/** Which axes VARY changes (remembered per browser). */
+const AXES_KEY = 'gh.vary.v1';
+const AXES: Array<{ key: keyof VaryAxes; label: string }> = [
+  { key: 'comp', label: 'COMPOSITION' },
+  { key: 'color', label: 'COLOURS' },
+  { key: 'fx', label: 'EFFECTS' },
+];
+
+function loadAxes(): VaryAxes {
+  try {
+    const o = JSON.parse(localStorage.getItem(AXES_KEY) ?? 'null') as Partial<VaryAxes> | null;
+    if (o && typeof o === 'object') {
+      const a = { comp: o.comp === true, color: o.color === true, fx: o.fx === true };
+      if (a.comp || a.color || a.fx) return a;
+    }
+  } catch {
+    // storage unavailable: defaults
+  }
+  return { comp: true, color: false, fx: false };
+}
 
 /**
  * Starting points and exploration: RANDOM [R] + its harmony chip, VARY [V] (a strip of four mutated copies over the
@@ -21,7 +42,9 @@ export class Explore {
   private btns: HTMLButtonElement[] = [];
   private imgs: HTMLImageElement[] = [];
   private urls: string[] = [];
-  private variants: NodeSpec[][] = [];
+  private variants: Array<{ specs: NodeSpec[]; fx: FxState | null }> = [];
+  private axes = loadAxes();
+  private axisBtns: HTMLButtonElement[] = [];
   private token = 0;
   private sig = '';
   private harmonyBtn = document.querySelector<HTMLButtonElement>('[data-action=harmony]')!;
@@ -47,9 +70,28 @@ export class Explore {
     el.setAttribute('aria-label', 'Variations');
     el.dataset.testid = 'vary';
     el.hidden = true;
+    const top = document.createElement('div');
+    top.className = 'vary-top';
     this.head = document.createElement('div');
     this.head.className = 'vary-head';
-    el.appendChild(this.head);
+    // VARY axes: any mix of composition, colours and effects (at least one stays checked). Changing them rolls again.
+    const axes = document.createElement('div');
+    axes.className = 'vary-axes';
+    axes.setAttribute('role', 'group');
+    axes.setAttribute('aria-label', 'What to vary');
+    for (const a of AXES) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'vary-axis';
+      b.dataset.varyAxis = a.key;
+      b.innerHTML = `<i aria-hidden="true"></i>${a.label}`;
+      b.addEventListener('click', () => this.toggleAxis(a.key));
+      axes.appendChild(b);
+      this.axisBtns.push(b);
+    }
+    top.append(this.head, axes);
+    el.appendChild(top);
+    this.syncAxes();
     const row = document.createElement('div');
     row.className = 'vary-row';
     for (let k = 0; k < STRENGTH.length; k++) {
@@ -121,7 +163,35 @@ export class Explore {
   // ----- VARY -----------------------------------------------------------------
 
   private signature(): string {
-    return JSON.stringify(snapshotIdentified(this.store).map((n) => [n.uid, n.x, n.y, n.r, n.hex, n.shape, n.rot, n.soft, n.opac, n.lock, n.hide, n.pts?.length]));
+    return JSON.stringify([
+      snapshotIdentified(this.store).map((n) => [n.uid, n.x, n.y, n.r, n.hex, n.shape, n.rot, n.soft, n.opac, n.lock, n.hide, n.pts?.length]),
+      this.store.fx,
+    ]);
+  }
+
+  /** Flip one axis (the last checked one cannot be cleared), remember it, and roll a fresh set when open. */
+  private toggleAxis(key: keyof VaryAxes): void {
+    const next = { ...this.axes, [key]: !this.axes[key] };
+    if (!next.comp && !next.color && !next.fx) {
+      this.store.say('VARY · KEEP AT LEAST ONE');
+      return;
+    }
+    this.axes = next;
+    try {
+      localStorage.setItem(AXES_KEY, JSON.stringify(next));
+    } catch {
+      // not remembered this time
+    }
+    this.syncAxes();
+    if (this.isOpen) void this.open();
+  }
+
+  private syncAxes(): void {
+    this.axisBtns.forEach((b, i) => {
+      const on = this.axes[AXES[i].key];
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('is-on', on);
+    });
   }
 
   private revoke(): void {
@@ -141,7 +211,11 @@ export class Explore {
     }
     const token = ++this.token;
     const seed = newSeed();
-    this.variants = STRENGTH.map((k, j) => varySpecs(makeRng(seed + j * 7919), base, k));
+    const ax = this.axes;
+    this.variants = STRENGTH.map((k, j) => {
+      const rng = makeRng(seed + j * 7919);
+      return { specs: varySpecs(rng, base, k, ax), fx: ax.fx ? varyFx(rng, s.fx, k) : null };
+    });
     this.revoke();
     this.head.textContent = `VARIATIONS // 04 // SEED ${seedLabel(seed)} // 1–4 PICK · V ROLL · ESC`;
     for (const b of this.btns) b.classList.add('is-loading');
@@ -156,7 +230,8 @@ export class Explore {
     this.strip.style.setProperty('--vary-aspect', String(aspect));
     for (let j = 0; j < this.variants.length; j++) {
       // renderOffscreen reads the store's nodes (settled targets) and FX: hand it a copy carrying the variant.
-      const copy: Store = { ...s, nodes: this.variants[j].map((sp) => makeNode(sp)) };
+      const v = this.variants[j];
+      const copy: Store = { ...s, nodes: v.specs.map((sp) => makeNode(sp)), fx: v.fx ?? s.fx };
       const res = await renderOffscreen(copy, m, tw, th, s.reducedMotion ? 0.5 : this.now() / 1000);
       if (token !== this.token) return; // closed or re-rolled meanwhile
       if (!res.ok) continue;
@@ -180,10 +255,10 @@ export class Explore {
   }
 
   private pick(k: number): void {
-    const specs = this.variants[k];
-    if (!specs || this.btns[k].classList.contains('is-loading')) return;
+    const v = this.variants[k];
+    if (!v || this.btns[k].classList.contains('is-loading')) return;
     this.close();
-    this.actions.adoptVariant(specs, k + 1);
+    this.actions.adoptVariant(v.specs, k + 1, v.fx ? copyFx(v.fx) : null);
   }
 
   private onKey(e: KeyboardEvent): void {
