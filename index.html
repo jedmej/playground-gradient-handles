@@ -284,12 +284,102 @@
                 </span>
               </dd>
             </div>
-            <div class="fx-row last">
+            <div class="fx-row">
               <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="vig" aria-label="Vignette on"></dd>
               <dt>VIG</dt>
               <dd class="fx-ctl">
                 <span class="fx-knob" data-fx-knob="vig" role="slider" tabindex="0" aria-label="Vignette" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
                 <span class="fx-read dim" data-fx-read="vig">OFF</span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="halftone" aria-label="Halftone on"></dd>
+              <dt>HALFTONE</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="halftone" role="slider" tabindex="0" aria-label="Halftone dot screen" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="halftone">OFF</span>
+              </dd>
+              <dd class="fx-opts">
+                <span class="fx-seg" role="radiogroup" aria-label="Halftone cell size">
+                  <button type="button" class="fx-opt" role="radio" aria-checked="true" data-fx-opt="halftone-fine">FINE</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="halftone-coarse">COARSE</button>
+                </span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="pixel" aria-label="Pixel on"></dd>
+              <dt>PIXEL</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="pixel" role="slider" tabindex="0" aria-label="Pixel mosaic block size" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="pixel">OFF</span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="ascii" aria-label="ASCII on"></dd>
+              <dt>ASCII</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="ascii" role="slider" tabindex="0" aria-label="ASCII glyph cells" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="ascii">OFF</span>
+              </dd>
+              <dd class="fx-opts">
+                <span class="fx-seg" role="radiogroup" aria-label="ASCII cell size">
+                  <button type="button" class="fx-opt" role="radio" aria-checked="true" data-fx-opt="ascii-fine">FINE</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="ascii-coarse">COARSE</button>
+                </span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="map" aria-label="Map on"></dd>
+              <dt>MAP</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="map" role="slider" tabindex="0" aria-label="Posterize / gradient map" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="map">OFF</span>
+              </dd>
+              <dd class="fx-opts">
+                <span class="fx-seg" role="radiogroup" aria-label="Map mode">
+                  <button type="button" class="fx-opt" role="radio" aria-checked="true" data-fx-opt="map-post" title="Posterize" aria-label="Posterize">PST</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="map-duo" title="Duotone from the darkest and lightest node" aria-label="Duotone from the darkest and lightest node">DUO</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="map-tri" title="Tritone from the darkest, middle and lightest node" aria-label="Tritone from the darkest, middle and lightest node">TRI</button>
+                </span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="glow" aria-label="Glow on"></dd>
+              <dt>GLOW</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="glow" role="slider" tabindex="0" aria-label="Glow (bloom)" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="glow">OFF</span>
+              </dd>
+            </div>
+            <div class="fx-row">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="grade" aria-label="Grade on"></dd>
+              <dt>GRADE</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="grade" role="slider" tabindex="0" aria-label="Colour grade" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="off"></span>
+                <span class="fx-read dim" data-fx-read="grade">OFF</span>
+              </dd>
+              <dd class="fx-opts">
+                <span class="fx-seg" role="radiogroup" aria-label="Grade look">
+                  <button type="button" class="fx-opt" role="radio" aria-checked="true" data-fx-opt="grade-punch" title="Punch: contrast and saturation" aria-label="Punch: contrast and saturation">P</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="grade-warm" title="Warm" aria-label="Warm">W</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="grade-cool" title="Cool" aria-label="Cool">C</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="grade-fade" title="Fade: lifted blacks" aria-label="Fade: lifted blacks">F</button>
+                </span>
+              </dd>
+            </div>
+            <div class="fx-row last">
+              <dd class="fx-cbw"><input type="checkbox" class="fx-check" data-fx-check="warp" aria-label="Warp on"></dd>
+              <dt>WARP</dt>
+              <dd class="fx-ctl">
+                <span class="fx-knob" data-fx-knob="warp" role="slider" tabindex="0" aria-label="Field warp strength" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="standard"></span>
+                <span class="fx-read dim" data-fx-read="warp">STD</span>
+              </dd>
+              <dd class="fx-opts">
+                <span class="fx-seg" role="radiogroup" aria-label="Warp scale">
+                  <button type="button" class="fx-opt" role="radio" aria-checked="true" data-fx-opt="warp-lo" title="Broad warp" aria-label="Broad warp">LO</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="warp-mid" title="House warp scale" aria-label="House warp scale">MID</button>
+                  <button type="button" class="fx-opt" role="radio" aria-checked="false" data-fx-opt="warp-hi" title="Tight warp" aria-label="Tight warp">HI</button>
+                </span>
               </dd>
             </div>
           </dl>
