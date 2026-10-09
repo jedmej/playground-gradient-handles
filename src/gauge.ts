@@ -122,26 +122,43 @@ export function makeGauge(cls: string, name = '', pad = 0): GaugeParts {
 }
 
 /** Geometry for radius `r` with ring spacing `sp`: base arc, ticks, the chip in the bottom gap. Call when either changes. */
-export function layoutGauge(v: GaugeParts, r: number, sp: number): void {
+/**
+ * Half the bottom gap (radians) gauge `v` needs at radius `r` so its arc ends stay clear of its own `NAME[value]` chip
+ * (sized for the name plus a typical bracketed value, `[045°]`, and the FX dial's × square): the end may pass beside the
+ * chip or stop above it, whichever comes first. A stack of gauges takes the largest of these so every ring in it ends
+ * on the same bearing (`layoutGauge`'s `half`). Clamped to 10°…45° (340°…270° of travel).
+ */
+export function gaugeGap(v: GaugeParts, r: number, sp: number): number {
+  const fs = Math.max(7.5, Math.min(9.5, sp * 0.36));
+  const m = 6;
+  const hw = (v.name ? Math.ceil((v.name.length + 6) * (fs * 0.62 + fs * 0.06) + 10) / 2 : r * 0.7) + v.pad;
+  const R = Math.max(1, r);
+  const beside = (hw + m) / R < 1 ? Math.asin((hw + m) / R) : Infinity;
+  const above = Math.acos(Math.min(1, Math.max(-1, (R - 7 - m) / R)));
+  return Math.min(Math.PI / 4, Math.max(Math.PI / 18, Math.min(beside, above)));
+}
+
+/** The largest `gaugeGap` of a stack, so the rings in it all end on one bearing. */
+export const stackGap = (rings: Array<[GaugeParts, number]>, sp: number): number =>
+  rings.reduce((h, [v, r]) => Math.max(h, gaugeGap(v, r, sp)), Math.PI / 18);
+
+/**
+ * Geometry for radius `r` with ring spacing `sp`: base arc, ticks, the chip in the bottom gap. `half` is half the
+ * bottom gap (pass a stack's `stackGap` so its rings align; defaults to this gauge's own need). Call when any changes.
+ */
+export function layoutGauge(v: GaugeParts, r: number, sp: number, half = gaugeGap(v, r, sp)): void {
   v.r = r;
   v.sp = sp;
-  const half = Math.min(4.5, sp * 0.3);
+  const tickH = Math.min(4.5, sp * 0.3);
   const fs = Math.max(7.5, Math.min(9.5, sp * 0.36));
-  // Sweep: the arc runs round to a little short of the name chip in the bottom gap (chip half-width + pad + 14 px, so
-  // the 0 / max ends, their knob and value arc stay clear of the name), leaving a short name an almost full circle.
-  // Never less than 270° of travel, never past 340°.
-  // The chip reads `NAME [value]`: size the gap for the name plus a typical bracketed value (`[045°]`, 6 chars).
-  const chipHalf = v.name ? Math.ceil((v.name.length + 6) * (fs * 0.62 + fs * 0.06) + 10) / 2 : r * 0.7;
-  const clear = Math.min(r * 0.99, chipHalf + v.pad + 14);
-  const gap = Math.min(Math.PI / 2, Math.max((20 * Math.PI) / 180, 2 * Math.asin(clear / Math.max(1, r))));
-  v.sw = { a0: Math.PI / 2 + gap / 2, span: Math.PI * 2 - gap };
+  v.sw = { a0: Math.PI / 2 + half, span: Math.PI * 2 - 2 * half };
   const sw = v.sw;
   const base = gaugeArc(r, 0, 1, sw);
   v.baseH.setAttribute('d', base);
   v.baseI.setAttribute('d', base);
   let t = '';
   for (let k = 0; k <= 10; k++) {
-    const h = half * (k % 5 ? 0.6 : 1);
+    const h = tickH * (k % 5 ? 0.6 : 1);
     t += `M${gaugePt(r, k / 10, -h, sw)}L${gaugePt(r, k / 10, h, sw)}`;
   }
   v.ticksH.setAttribute('d', t);

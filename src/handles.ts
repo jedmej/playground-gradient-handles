@@ -1,5 +1,5 @@
 import { wheelUp } from './wheel';
-import { gaugeHit, gaugeSpacing, layoutGauge, makeGauge, renderGauge, type GaugeParts, type Sweep } from './gauge';
+import { gaugeHit, gaugeSpacing, layoutGauge, makeGauge, renderGauge, stackGap, type GaugeParts, type Sweep } from './gauge';
 import { colorStateOf, createColorPage, layoutColorPage, renderColorPage, withAxis, type ColorAxis, type ColorPage, type ColorState } from './colorpage';
 import type { Actions } from './actions';
 import type { History } from './history';
@@ -283,14 +283,16 @@ export class Handles {
     const gp = makeGauge('gauge soft', 'SOFT');
     const op = makeGauge('gauge opac', 'OPAC');
     const rp = makeGauge('gauge rot', 'ROT');
-    layoutGauge(gp, this.gr.soft, this.gr.sp);
-    layoutGauge(op, this.gr.opac, this.gr.sp);
-    layoutGauge(rp, this.gr.rot, this.gr.sp);
+    // Both pages share one bottom gap: every ring ends on the same bearing, sized by the ring that needs the most room.
+    const half = this.gaugeHalf(op, gp, rp);
+    layoutGauge(gp, this.gr.soft, this.gr.sp, half);
+    layoutGauge(op, this.gr.opac, this.gr.sp, half);
+    layoutGauge(rp, this.gr.rot, this.gr.sp, half);
     const gauge = gp.g;
     const opG = op.g;
     const rotD = rp.g;
     const cp = createColorPage();
-    layoutColorPage(cp, this.gr.rot, this.gr.soft, this.gr.opac, this.gr.sp);
+    layoutColorPage(cp, this.gr.rot, this.gr.soft, this.gr.opac, this.gr.sp, half);
     for (const c of [cp.lum, cp.sat, cp.hue]) c.p.g.style.opacity = '0';
     ring.append(opG, gauge, rotD, cp.lum.p.g, cp.sat.p.g, cp.hue.p.g);
 
@@ -380,10 +382,11 @@ export class Handles {
     if (Math.abs(sp - this.gr.sp) > 0.01) {
       this.gr = { sp, opac: r0, soft: r0 + sp, rot: r0 + 2 * sp };
       for (const v of this.views) {
-        layoutGauge(v.opParts, this.gr.opac, sp);
-        layoutGauge(v.gaugeParts, this.gr.soft, sp);
-        layoutGauge(v.rotP, this.gr.rot, sp);
-        layoutColorPage(v.cp, this.gr.rot, this.gr.soft, this.gr.opac, sp);
+        const half = this.gaugeHalf(v.opParts, v.gaugeParts, v.rotP);
+        layoutGauge(v.opParts, this.gr.opac, sp, half);
+        layoutGauge(v.gaugeParts, this.gr.soft, sp, half);
+        layoutGauge(v.rotP, this.gr.rot, sp, half);
+        layoutColorPage(v.cp, this.gr.rot, this.gr.soft, this.gr.opac, sp, half);
       }
     }
     this.svg.setAttribute('viewBox', `0 0 ${m.w} ${m.h}`);
@@ -945,6 +948,16 @@ export class Handles {
     if (e.pointerType === 'touch') return;
     this.hoverAt(x, y);
   };
+
+  /**
+   * One half-gap for a node's whole gauge stack (OPAC / SOFT / ROT and, on the same radii, LUM / SAT / HUE): the
+   * largest any of them needs (`stackGap`), so all six end on the same bearing. The COLOUR page's names are the same
+   * length class, so its gauges are measured through their default-page twins.
+   */
+  private gaugeHalf(op: GaugeParts, soft: GaugeParts, rot: GaugeParts): number {
+    const g = this.gr;
+    return stackGap([[op, g.opac], [soft, g.soft], [rot, g.rot]], g.sp);
+  }
 
   /**
    * Pointer offset → 0–1 along a gauge's own sweep. In the bottom gap the value sticks to the end it came from, and

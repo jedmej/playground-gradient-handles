@@ -2,7 +2,7 @@ import { wheelUp } from './wheel';
 import type { Actions } from './actions';
 import { FX_IDS, fxMaxPos, fxPos, fxSpoken, type FxId } from './fx';
 import { bracketPath, ticksPath } from './handles';
-import { gaugeHit, gaugeSpacing, layoutGauge, makeGauge, renderGauge, sweepT, type GaugeParts } from './gauge';
+import { gaugeHit, gaugeSpacing, layoutGauge, makeGauge, renderGauge, stackGap, sweepT, type GaugeParts } from './gauge';
 import type { Metrics } from './handles';
 import type { History } from './history';
 import { emit, type Store } from './store';
@@ -360,11 +360,13 @@ export class FxDial {
     this.add.setAttribute('transform', `translate(0 ${this.addY.toFixed(1)})`);
     this.add.style.display = n < FX_IDS.length ? '' : 'none';
     if (n >= FX_IDS.length) this.closeMenu();
+    // One bottom gap for the whole stack, sized by the ring that needs the most room, so every ring ends on one bearing.
+    const half = stackGap(this.views.filter((v) => this.shown.has(v.id)).map((v) => [v, v.r] as [GaugeParts, number]), sp);
     for (const v of this.views) {
       const on = this.shown.has(v.id);
       v.g.style.display = on ? '' : 'none';
       if (!on) continue;
-      layoutGauge(v, v.r, sp);
+      layoutGauge(v, v.r, sp, half);
       v.key = '';
     }
   }
