@@ -7,7 +7,7 @@ import { makeNode, snapshotIdentified, type NodeSpec, type Store } from './store
 
 const TYPING = 'input:not([type=color]):not([type=checkbox]), textarea, select, [contenteditable=""], [contenteditable="true"]';
 /** Mutation strength of the four thumbnails: gentle → bold. */
-const STRENGTH = [0.7, 1, 1.35, 1.8];
+const STRENGTH = [0.8, 1.15, 1.5, 2];
 /** Long side of a thumbnail render (px); the strip shows it at about half that. */
 const THUMB = 240;
 
