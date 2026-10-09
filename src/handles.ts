@@ -1054,6 +1054,19 @@ export class Handles {
       const d = Math.hypot(x - p.x, y - p.y);
       if (d > this.reachR(s.armed, p.r) + this.hitSizes().band * 1.6) s.armed = null;
     }
+    // Moving onto a different control ends a wheel burst at once: its dim focus and zone lock would otherwise hold the
+    // old dial for up to 700 ms after the pointer has already moved on.
+    const wf = this.wheelFocus;
+    if (wf || this.wheelLock) {
+      const h = s.hover;
+      const kind = h.kind === 'soft' || h.kind === 'rot' || h.kind === 'opac' || h.kind === 'hue' || h.kind === 'sat' || h.kind === 'lum' ? h.kind : 'ring';
+      const uid = h.index >= 0 ? s.nodes[h.index]?.uid : undefined;
+      const ref = wf ?? { uid: this.wheelLock!.uid, kind: this.wheelLock!.kind === 'node' ? 'ring' : this.wheelLock!.kind };
+      if (h.kind === 'idle' || uid !== ref.uid || kind !== ref.kind) {
+        this.wheelFocus = null;
+        this.wheelLock = null;
+      }
+    }
     if (prev.kind !== s.hover.kind || prev.index !== s.hover.index) emit(s);
   }
 
