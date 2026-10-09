@@ -95,6 +95,18 @@ interface NodeView {
   /** COLOUR page (HUE / SAT / LUM gauges + core swatch) and its 0…1 page-flip progress (0 = default OPAC / SOFT / ROT). */
   cp: ColorPage;
   pg: number;
+  /**
+   * Gauge stack offset from the core (px, eased). Near an edge the OPAC / SOFT / ROT (and COLOUR) stack slides inward
+   * until it fits the stage; a dashed leader runs from the reticle to a small bracket at the stack's own centre.
+   */
+  gox: number;
+  goy: number;
+  lead: SVGGElement;
+  leadHalo: SVGPathElement;
+  leadInk: SVGPathElement;
+  leadMark: SVGPathElement;
+  leadMarkHalo: SVGPathElement;
+  leadKey: string;
   bracket: number;
   ringOp: number;
   lastR: number;
@@ -320,13 +332,25 @@ export class Handles {
       el('path', { class: 'halo lock-sh', d: lockD }), el('rect', { class: 'halo lock-bd', x: -3.5, y: 0, width: 7, height: 5.5 }),
       el('path', { class: 'ink lock-sh', d: lockD }), el('rect', { class: 'ink lock-bd', x: -3.5, y: 0, width: 7, height: 5.5 }),
     );
-    g.append(ring, outG, focusHalo, focus, holdHalo, holdInk, retHalo, retInk, cp.sw, coreHalo, coreInk, lockG);
+    // Leader to the offset gauge stack (see NodeView.gox): dashed line + a small bracket at the stack's centre.
+    const lead = el('g', { class: 'lead' });
+    const leadHalo = el('path', { class: 'halo lead-l' });
+    const leadInk = el('path', { class: 'ink lead-l' });
+    const leadMarkHalo = el('path', { class: 'halo lead-m' });
+    const leadMark = el('path', { class: 'ink lead-m' });
+    const mk = bracketPath(6, 3);
+    leadMarkHalo.setAttribute('d', mk);
+    leadMark.setAttribute('d', mk);
+    lead.append(leadHalo, leadInk, leadMarkHalo, leadMark);
+    lead.style.opacity = '0';
+    g.append(ring, lead, outG, focusHalo, focus, holdHalo, holdInk, retHalo, retInk, cp.sw, coreHalo, coreInk, lockG);
 
     const view: NodeView = {
       outG, outHalo, outInk, outKey: '', outPts: null, shape: '', npts: -1,
       uid: n.uid, g, ring, ringHalo, ringInk, ticksHalo, ticksInk, bearings, retHalo, retInk, focus,
       gauge, gaugeParts: gp, gaugeOp: 0, rotD, rotP: rp, rotOp: 0, lastRotR: -1, lastRotA: -9, opG, opParts: op, opOp: 0, lastOpRi: -1, lastOpac: -1, lastRi: -1, lastSoft: -1, softAttr: '', layerAttr: '',
       holdHalo, holdInk, holding: false, cp, pg: 0,
+      gox: 0, goy: 0, lead, leadHalo, leadInk, leadMark, leadMarkHalo, leadKey: '',
       // Fresh nodes "acquire": brackets start wide and settle, the ring eases in.
       bracket: n.fresh && !this.store.reducedMotion ? 22 : 11,
       ringOp: 0, lastR: -1, lastBracket: -1, cls: '',
@@ -409,7 +433,16 @@ export class Handles {
   /** How far from the centre a node still counts as "under the pointer": its size ring or its outermost gauge, whichever is larger. */
   private reachR(i: number, ringR: number): number {
     if (this.store.tool !== 'edit') return ringR;
-    return Math.max(ringR, (this.rotShown(i) || this.onColor(i) ? this.gr.rot : this.gr.soft) + 12);
+    const v = this.views[i];
+    const off = v ? Math.hypot(v.gox, v.goy) : 0;
+    return Math.max(ringR, off + (this.rotShown(i) || this.onColor(i) ? this.gr.rot : this.gr.soft) + 12);
+  }
+
+  /** Centre of node `i`'s gauge stack: the core, or the point it slid to so the dials fit the stage (NodeView.gox). */
+  private gaugeAt(i: number): { x: number; y: number } {
+    const p = this.px(i);
+    const v = this.views[i];
+    return v ? { x: p.x + v.gox, y: p.y + v.goy } : p;
   }
 
   private hitSizes(): { core: number; band: number } {
@@ -573,8 +606,8 @@ export class Handles {
       for (let i = 0; i < this.store.nodes.length; i++) {
         if (!this.revealed(i) || this.onColor(i) !== colorKind) continue;
         if (!(kind === 'rot' ? this.rotShown(i) : this.gaugeShown(i))) continue;
-        const p = this.px(i);
-        const d = gaugeHit(ri, x - p.x, y - p.y, this.gr.sp);
+        const c = this.gaugeAt(i);
+        const d = gaugeHit(ri, x - c.x, y - c.y, this.gr.sp);
         if (d !== null && d < bd) {
           bi = i;
           bd = d;
@@ -987,7 +1020,7 @@ export class Handles {
   private applySoft(i: number, x: number, y: number): void {
     const n = this.store.nodes[i];
     if (!n) return;
-    const p = this.px(i);
+    const p = this.gaugeAt(i);
     const t = this.arcT(this.views[i].gaugeParts.sw, x - p.x, y - p.y);
     n.soft = Math.round(t * 1000) / 1000;
   }
@@ -996,7 +1029,7 @@ export class Handles {
   private applyOpac(i: number, x: number, y: number): void {
     const n = this.store.nodes[i];
     if (!n) return;
-    const p = this.px(i);
+    const p = this.gaugeAt(i);
     const t = this.arcT(this.views[i].opParts.sw, x - p.x, y - p.y);
     n.opac = Math.round(t * 1000) / 1000;
     this.store.modified = true;
@@ -1005,7 +1038,7 @@ export class Handles {
   /** HUE / SAT / LUM drag: the same 270° arc mapping as SOFT (the gap holds the end the value came from). */
   private applyColor(i: number, axis: ColorAxis, x: number, y: number): void {
     if (!this.store.nodes[i]) return;
-    const p = this.px(i);
+    const p = this.gaugeAt(i);
     const t = this.arcT(this.views[i].cp[axis].p.sw, x - p.x, y - p.y);
     this.setAxis(i, axis, t);
   }
@@ -1014,7 +1047,7 @@ export class Handles {
   private applyRot(i: number, x: number, y: number, snap: boolean): void {
     const n = this.store.nodes[i];
     if (!n) return;
-    const p = this.px(i);
+    const p = this.gaugeAt(i);
     const t = this.arcT(this.views[i].rotP.sw, x - p.x, y - p.y);
     let a = Math.min(t, 0.9999) * TAU;
     if (snap) a = Math.round(a / ROT_STEP) * ROT_STEP;
@@ -1650,6 +1683,39 @@ export class Handles {
         v.gaugeParts.g.classList.toggle('is-drag', isSoftDrag || isSoftFlash);
         v.rotP.g.classList.toggle('is-hover', isRotHover);
         v.rotP.g.classList.toggle('is-drag', isRotDrag || isRotFlash);
+      }
+      // Gauge stack near an edge: slide it inward until the outermost dial (and its bottom name chip) fits the stage, and
+      // join it to the reticle with a dashed leader. Eased, so it glides as the node nears or leaves the edge.
+      {
+        const outer = this.rotShown(i) || this.onColor(i) ? this.gr.rot : this.gr.soft;
+        const R = outer + this.gr.sp * 0.6 + 4;
+        const Rb = outer + 16;
+        const tx = m.w < 2 * R ? m.w / 2 : Math.min(m.w - R, Math.max(R, x));
+        const ty = m.h < R + Rb ? (R + m.h - Rb) / 2 : Math.min(m.h - Rb, Math.max(R, y));
+        v.gox = approach(v.gox, tx - x, 18, dt, snap);
+        v.goy = approach(v.goy, ty - y, 18, dt, snap);
+        const tr = `translate(${v.gox.toFixed(2)} ${v.goy.toFixed(2)})`;
+        for (const gg of [v.opG, v.gauge, v.rotD, v.cp.lum.p.g, v.cp.sat.p.g, v.cp.hue.p.g, v.cp.sw]) gg.setAttribute('transform', tr);
+        const dist = Math.hypot(v.gox, v.goy);
+        const show = dist > 18 && s.tool === 'edit' && !n.lock ? 1 : 0;
+        const leadOp = show * part(1) * Math.min(1, (dist - 18) / 12);
+        v.lead.style.opacity = leadOp < 0.005 ? '0' : leadOp.toFixed(3);
+        if (leadOp >= 0.005) {
+          const ux = v.gox / dist;
+          const uy = v.goy / dist;
+          const key = `${v.gox.toFixed(1)}|${v.goy.toFixed(1)}`;
+          if (key !== v.leadKey) {
+            v.leadKey = key;
+            const a = 16; // clear of the reticle brackets
+            const b = Math.max(a, dist - 9); // stop at the marker
+            const d = `M${(ux * a).toFixed(1)} ${(uy * a).toFixed(1)}L${(ux * b).toFixed(1)} ${(uy * b).toFixed(1)}`;
+            v.leadHalo.setAttribute('d', d);
+            v.leadInk.setAttribute('d', d);
+            const at = `translate(${v.gox.toFixed(1)} ${v.goy.toFixed(1)})`;
+            v.leadMark.setAttribute('transform', at);
+            v.leadMarkHalo.setAttribute('transform', at);
+          }
+        }
       }
       // Hide bearing labels that would fall outside the stage instead of letting them clip.
       {

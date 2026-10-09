@@ -2902,7 +2902,7 @@ html[data-drag='lum'] .stage,
 .stage.ui-focus .chip.is-on:not(.is-focus),
 .stage.ui-focus > .fxdial:not(.is-focus),
 /* inside the node being adjusted: everything but the active control (a moving node keeps its reticle, drops its gauges) */
-.stage.ui-focus .node.is-focus:not(.focus-node) > :not(.ring),
+.stage.ui-focus .node.is-focus:not(.focus-node) > :not(.ring):not(.lead),
 .stage.ui-focus .node.focus-node .ring > .gauge,
 .stage.ui-focus .node.focus-soft .ring > :not(.gauge.soft),
 .stage.ui-focus .node.focus-opac .ring > :not(.gauge.opac),
@@ -3549,3 +3549,10 @@ html[data-drag='lum'] .stage,
   pointer-events: none;
 }
 .vary-full[hidden] { display: none; }
+
+/* Leader to an offset gauge stack (node near an edge): dashed INK over a halo, a small bracket at the stack's centre. */
+.node .lead { pointer-events: none; }
+.node .lead .halo { fill: none; stroke: #000; stroke-opacity: 0.55; stroke-width: 3; }
+.node .lead .ink { fill: none; stroke: #f2f3ee; stroke-width: 1.1; }
+.node .lead .lead-l.ink { stroke-dasharray: 3 3; }
+.node.is-hover .lead .ink, .node.is-selected .lead .ink { stroke: var(--signal); }
