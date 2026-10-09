@@ -2756,9 +2756,10 @@ html[data-drag='lum'] .stage,
   pointer-events: none;
 }
 .gring.is-off .tag-text { fill: var(--graphite); fill-opacity: 1; }
-.gring.is-hover .tag-bg, .fxdial .fxring:focus-visible .tag-bg { fill: var(--signal); fill-opacity: 1; }
+.fxdial .fxring:focus-visible .tag-bg { fill: var(--signal); fill-opacity: 1; }
 .gring.is-hover .tag-text, .fxdial .fxring:focus-visible .tag-text { fill: var(--plate); font-weight: 600; }
-.gring.is-drag .tag-bg { fill: var(--flare); fill-opacity: 1; }
+/* Magnetized (hovered) reads as engaged at once: the same FLARE as a drag or wheel burst. */
+.gring.is-hover .tag-bg, .gring.is-drag .tag-bg { fill: var(--flare); fill-opacity: 1; }
 .gring.is-drag .tag-text { fill: var(--plate); font-weight: 600; }
 
 /* Hover: the band thickens a touch, the others step back. */
@@ -2766,9 +2767,10 @@ html[data-drag='lum'] .stage,
 .gring.is-hover .base.halo { stroke-width: 4; }
 .gring.is-hover .fill.ink { stroke-width: 3; }
 .gring.is-hover .fill.halo { stroke-width: 6; }
-.gring.is-hover .knob.ink { stroke: var(--signal); stroke-width: 2.2; }
+.gring.is-hover .knob.ink { stroke: var(--flare); stroke-width: 2.2; }
+.gring.is-hover .fill.ink { stroke: var(--flare); }
 .gring.is-hover .knob.halo { stroke-width: 5; }
-.gring.is-hover .gticks.ink { stroke: var(--signal); }
+.gring.is-hover .gticks.ink { stroke: var(--flare); }
 .fxdial.has-hover .fxring:not(.is-hover) { opacity: calc(var(--pa, 1) * 0.7); }
 .fxdial .fxring:focus-visible .base.ink { stroke-width: 1.5; stroke-opacity: 0.9; }
 .fxdial .fxring:focus-visible .knob.ink { stroke: var(--signal); }
