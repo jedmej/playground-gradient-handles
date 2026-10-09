@@ -588,7 +588,13 @@ export class Handles {
     let bestD = Infinity;
     for (let i = 0; i < this.store.nodes.length; i++) {
       const p = this.px(i);
-      const d = Math.hypot(x - p.x, y - p.y);
+      let d = Math.hypot(x - p.x, y - p.y);
+      // An offset gauge stack's centre bracket is a second core for its node: hover, click (COLOUR page), drag.
+      const v = this.views[i];
+      if (v && Math.hypot(v.gox, v.goy) > 18 && this.revealed(i) && this.store.tool === 'edit') {
+        const c = this.gaugeAt(i);
+        d = Math.min(d, Math.hypot(x - c.x, y - c.y));
+      }
       if (d <= core && d < bestD) {
         best = i;
         bestD = d;
