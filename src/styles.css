@@ -3446,3 +3446,19 @@ html[data-drag='lum'] .stage,
   filter: opacity(0.2);
   transition-duration: 100ms;
 }
+
+/* Artboard menu: a triangle marks the right-click point (its tip is where ADD NODE drops the node) while open. */
+.board-mark {
+  position: absolute;
+  left: -20px;
+  top: -20px;
+  z-index: 4;
+  width: 40px;
+  height: 40px;
+  pointer-events: none;
+}
+.board-mark[hidden] { display: none; }
+.board-mark svg { display: block; overflow: visible; }
+.board-mark path { stroke-linejoin: miter; }
+.board-mark path.halo { fill: none; stroke: #000; stroke-opacity: 0.6; stroke-width: 3.5; }
+.board-mark path.ink { fill: var(--signal); stroke: none; }

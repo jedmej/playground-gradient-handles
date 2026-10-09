@@ -257,6 +257,8 @@ export class NodeMenu {
  */
 export class BoardMenu {
   readonly el: HTMLDivElement;
+  /** A triangle marker at the click point while the menu is open: its tip is where ADD NODE will drop the node. */
+  private mark: HTMLDivElement;
   private addBtn: HTMLButtonElement;
   private at = { x: 0, y: 0 };
   private openedAt = -Infinity;
@@ -296,7 +298,15 @@ export class BoardMenu {
     this.addBtn = item('board-add', 'ADD NODE', '[+]');
     item('board-draw', 'DRAW', '[D]');
     this.el = el;
-    stage.appendChild(el);
+    // A small SIGNAL triangle standing on the click point (its tip is the exact spot), clear of the menu below-right.
+    const mark = document.createElement('div');
+    mark.className = 'board-mark';
+    mark.setAttribute('aria-hidden', 'true');
+    mark.hidden = true;
+    const tri = 'M0 0L-6 -10H6Z';
+    mark.innerHTML = `<svg viewBox="-20 -20 40 40" width="40" height="40"><path class="halo" d="${tri}"/><path class="ink" d="${tri}"/></svg>`;
+    this.mark = mark;
+    stage.append(mark, el);
     for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'dblclick']) {
       el.addEventListener(t, (e) => e.stopPropagation());
     }
@@ -325,6 +335,8 @@ export class BoardMenu {
     this.at = { x, y };
     this.openedAt = performance.now();
     this.addBtn.disabled = this.store.nodes.length >= MAX_NODES;
+    this.mark.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+    this.mark.hidden = false;
     this.el.hidden = false;
     const w = this.stage.clientWidth;
     const h = this.stage.clientHeight;
@@ -342,6 +354,7 @@ export class BoardMenu {
   close(): void {
     if (!this.isOpen) return;
     this.el.hidden = true;
+    this.mark.hidden = true;
     this.el.classList.remove('is-kb');
     if (this.el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
   }
