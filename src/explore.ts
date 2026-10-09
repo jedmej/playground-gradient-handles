@@ -21,11 +21,12 @@ const AXES: Array<{ key: keyof VaryAxes; label: string }> = [
 ];
 
 const VIEW_KEY = 'gh.vary.view.v1';
+/** VIEW is on unless the user has switched it off (remembered). */
 function loadView(): boolean {
   try {
-    return localStorage.getItem(VIEW_KEY) === '1';
+    return localStorage.getItem(VIEW_KEY) !== '0';
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -253,7 +254,9 @@ export class Explore {
       save.setAttribute('aria-label', `Save take ${k + 1} to the library`);
       save.title = 'Save this take to your sets (first empty slot)';
       save.innerHTML =
-        '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path class="sv-arrow" d="M6 1.5V7M3.5 4.5L6 7L8.5 4.5"/><path class="sv-tray" d="M1.5 7.5V10.5H10.5V7.5"/></svg>';
+        // Square-cut floppy: clipped-corner body, shutter on top, label block below.
+        '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path class="sv-body" d="M1.5 1.5H8.5L10.5 3.5V10.5H1.5Z"/>' +
+        '<rect class="sv-shutter" x="3.5" y="1.5" width="4" height="2.5"/><rect class="sv-label" x="3.5" y="6.5" width="5" height="4"/></svg>';
       save.addEventListener('click', () => void this.saveTake(k));
       const cell = document.createElement('div');
       cell.className = 'vary-cell';

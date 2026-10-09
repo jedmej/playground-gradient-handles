@@ -3137,12 +3137,12 @@ html[data-drag='lum'] .stage,
 }
 .vary-cell { position: relative; min-width: 0; }
 .vary-cell .vary-btn { width: 100%; }
-/* Padlock: keeps this take through rolls. A VOID chip with a GRAPHITE keyline (the mini-button language) and a
+/* Padlock: keeps this take through rolls. A VOID corner plate like the R-1 / V-1 serial (flush, no keyline) and a
    square-cut glyph: open shackle by default, closed + SIGNAL plate once locked. */
 .vary-lock {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 0;
+  right: 0;
   z-index: 1;
   display: grid;
   place-items: center;
@@ -3150,17 +3150,15 @@ html[data-drag='lum'] .stage,
   height: 18px;
   padding: 0;
   background: var(--plate);
-  outline: 1px solid var(--graphite);
-  outline-offset: -1px;
   color: var(--plate-fg);
   cursor: pointer;
 }
 .vary-lock svg, .vary-save svg { display: block; }
-/* SAVE (top-left): the padlock's twin chip; lit SIGNAL once that take is in the library. */
+/* SAVE (top-left): the padlock's twin corner plate with a square-cut floppy; lit SIGNAL once the take is saved. */
 .vary-save {
   position: absolute;
-  top: 4px;
-  left: 4px;
+  top: 0;
+  left: 0;
   z-index: 1;
   display: grid;
   place-items: center;
@@ -3168,20 +3166,19 @@ html[data-drag='lum'] .stage,
   height: 18px;
   padding: 0;
   background: var(--plate);
-  outline: 1px solid var(--graphite);
-  outline-offset: -1px;
   color: var(--plate-fg);
   cursor: pointer;
 }
-.vary-save .sv-arrow, .vary-save .sv-tray { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: square; stroke-linejoin: miter; }
-.vary-save:hover, .vary-save:focus-visible { color: var(--signal); outline-color: var(--signal); }
-.vary-save.is-on { background: var(--signal); outline-color: var(--signal); color: var(--plate); }
+.vary-save .sv-body, .vary-save .sv-label { fill: none; stroke: currentColor; stroke-width: 1.1; stroke-linejoin: miter; }
+.vary-save .sv-shutter { fill: currentColor; }
+.vary-save:hover, .vary-save:focus-visible { color: var(--signal); }
+.vary-save.is-on { background: var(--signal); color: var(--plate); }
 .vary-lock .lk-open, .vary-lock .lk-shut { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: square; stroke-linejoin: miter; }
 .vary-lock .lk-bd { fill: none; stroke: currentColor; stroke-width: 1.2; }
 .vary-lock .lk-key { fill: currentColor; }
 .vary-lock .lk-shut { display: none; }
-.vary-lock:hover, .vary-lock:focus-visible { color: var(--signal); outline-color: var(--signal); }
-.vary-lock.is-on { background: var(--signal); outline-color: var(--signal); color: var(--plate); }
+.vary-lock:hover, .vary-lock:focus-visible { color: var(--signal); }
+.vary-lock.is-on { background: var(--signal); color: var(--plate); }
 .vary-lock.is-on .lk-open { display: none; }
 .vary-lock.is-on .lk-shut { display: inline; }
 .vary-lock.is-on .lk-bd { fill: currentColor; }
