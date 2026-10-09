@@ -1,4 +1,4 @@
-import { clearCustom, saveCustom } from './custom';
+import { library, type Doc } from './custom';
 import type { History } from './history';
 import type { Metrics } from './handles';
 import {
@@ -20,6 +20,8 @@ import {
   R_MAX,
   R_MIN,
   removeNodeAt,
+  SLOT_COUNT,
+  slotSerial,
   snapshotSpecs,
   tweenNodeTo,
   type LayerMove,
@@ -464,7 +466,7 @@ export class Actions {
     const s = this.store;
     const p = getPreset(s, index);
     if (!p) {
-      s.say('CS-06 is empty — press SAVE');
+      s.say(`${slotSerial(Math.max(0, index - CUSTOM_INDEX))} is empty — press ↧ to save into it`);
       return;
     }
     this.history.mark(`PRESET ${p.serial}`);
@@ -483,28 +485,60 @@ export class Actions {
     s.say('Reset to ' + p.serial);
   }
 
-  saveCustom(): void {
+  /** The slot SAVE targets: the active one, else the first empty one, else -1 (library full). */
+  saveTarget(): number {
     const s = this.store;
-    const { preset, persisted } = saveCustom(snapshotSpecs(s), s.fx);
-    s.custom = preset;
-    s.presetIndex = CUSTOM_INDEX;
-    s.modified = false;
-    emit(s);
-    s.say(`Saved CS-06 · ${pad(s.nodes.length)} nodes` + (persisted ? '' : ' (this session only)'));
+    if (s.presetIndex >= CUSTOM_INDEX) return s.presetIndex - CUSTOM_INDEX;
+    return s.slots.findIndex((p) => !p);
   }
 
-  /** Delete the saved CS-06 set. The field itself is left alone; if CS-06 was active it becomes CS-01 + MOD. */
-  clearCustom(): void {
+  /** Store the field in slot `i` (default: `saveTarget()`). Returns the slot written, or -1. */
+  saveCustom(i = this.saveTarget()): number {
     const s = this.store;
-    if (!s.custom) return;
-    const ok = clearCustom();
-    s.custom = null;
-    if (s.presetIndex === CUSTOM_INDEX) {
+    if (i < 0 || i >= SLOT_COUNT) {
+      s.say('LIBRARY FULL — pick a slot to overwrite (↧)');
+      return -1;
+    }
+    const { preset, persisted } = library.save(i, snapshotSpecs(s), s.fx);
+    s.slots[i] = preset;
+    if (i === 0) s.custom = preset;
+    s.presetIndex = CUSTOM_INDEX + i;
+    s.modified = false;
+    emit(s);
+    s.say(`Saved ${slotSerial(i)} · ${pad(s.nodes.length)} nodes` + (persisted ? '' : ' (this session only: storage full or blocked)'));
+    return i;
+  }
+
+  /** Delete the saved set in slot `i` (default: the active slot). The field itself is left alone; if it was active it becomes CS-01 + MOD. */
+  clearCustom(i = this.store.presetIndex - CUSTOM_INDEX): void {
+    const s = this.store;
+    if (i < 0 || i >= SLOT_COUNT || !s.slots[i]) return;
+    const ok = library.clear(i);
+    s.slots[i] = null;
+    if (i === 0) s.custom = null;
+    if (s.presetIndex === CUSTOM_INDEX + i) {
       s.presetIndex = 0;
       s.modified = true;
     }
     emit(s);
-    s.say(ok ? 'CS-06 cleared' : 'CS-06 cleared (storage unavailable)');
+    s.say(ok ? `${slotSerial(i)} cleared` : `${slotSerial(i)} cleared (storage unavailable)`);
+  }
+
+  /** Load a parsed document (share link): one undo step. Wallpaper target is not undoable, like the panel's. */
+  applyDoc(doc: Doc, label: string): void {
+    const s = this.store;
+    this.history.mark(label);
+    if (doc.fx) {
+      s.fx = copyFx(doc.fx);
+      rememberFx(s.fx);
+    }
+    if (doc.wp) s.wallpaper = doc.wp;
+    if (doc.cs) s.wpCustom = { ...doc.cs };
+    s.selected = s.focused = s.armed = null;
+    reconcile(s, doc.nodes, this.now(), true, 320);
+    s.modified = true;
+    if (tools.mirror !== 'off') pairNodes(s, this.metrics); // new layout: pair again
+    emit(s);
   }
 
   undo(): void {

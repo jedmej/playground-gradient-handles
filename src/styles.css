@@ -3183,3 +3183,129 @@ html[data-drag='lum'] .stage,
 .node.is-hidden .core.ink { fill: none; stroke: #f2f3ee; stroke-width: 1; }
 .node.is-hidden .core.halo { fill-opacity: 0.25; }
 .node.is-hidden .out-p.ink { stroke-opacity: 0.55; }
+
+/* ---------- v6 Output: toolbar group, save library, CODE panel ---------- */
+/* SHARE / COPY / CODE sit before EXPORT in the right-pinned group; the status plate floats left of the whole group. */
+.toolbar .status { right: 360px; max-width: 34%; }
+
+/* Library: CS-06 … CS-13 as a 4-up grid of thumbnail cards under the five factory sets. */
+.slots {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 6px;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--void);
+}
+.slot { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.slot-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 3px;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  text-align: left;
+  border: 1px solid var(--rule);
+  transition: background-color var(--t) var(--ease), color var(--t) var(--ease), border-color var(--t) var(--ease);
+}
+.slot-main:hover { background: var(--wash); border-color: var(--void); }
+.slot-main.is-active { background: var(--plate); border-color: var(--plate); color: var(--signal); }
+.slot-thumb {
+  display: block;
+  aspect-ratio: 3 / 2;
+  width: 100%;
+  overflow: hidden;
+  outline: 1px solid var(--edge);
+  outline-offset: -1px;
+}
+.slot-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.slot-main.is-empty { color: var(--graphite); border-style: dashed; }
+.slot-main.is-empty .slot-thumb { outline-style: dashed; outline-color: var(--rule); background: none; }
+.slot-main.is-empty.is-active { color: var(--signal); }
+.slot-main.is-active .slot-thumb { outline-color: var(--signal); }
+.slot-cap { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; }
+.slot-serial { color: var(--graphite); }
+.slot-main.is-active .slot-serial { color: var(--signal); opacity: 0.8; }
+.slot-cap .preset-mod { font-size: 7.5px; }
+.slot-acts { display: flex; gap: 3px; }
+.slot-btn { flex: 1; justify-content: center; height: 22px; margin: 0; padding: 0 2px; gap: 0; }
+.slot-btn[hidden] { display: none; }
+.slot-main:focus-visible { outline: 1px solid var(--signal); outline-offset: 1px; }
+@media (pointer: coarse) {
+  .slot-btn { height: 32px; }
+}
+@media (max-width: 420px) {
+  .slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* CODE [X]: a native modal <dialog> (focus held inside, page inert, Esc closes). Black plate head, paper body, black code well. */
+.code-dlg {
+  width: min(760px, calc(100vw - 24px));
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid var(--void);
+  background: var(--paper);
+  color: var(--void);
+  font-family: var(--mono);
+  text-transform: uppercase;
+  overflow: hidden;
+}
+.code-dlg[open] { display: flex; flex-direction: column; }
+.code-dlg::backdrop { background: rgba(0, 0, 0, 0.55); }
+.code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px 6px 14px;
+  background: var(--plate);
+  color: var(--signal);
+}
+.code-head h2 { font: inherit; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; }
+.code-head .dim { color: var(--plate-fg); opacity: 0.6; font-weight: 500; }
+.code-head .mini { margin: 0; border-color: var(--signal); color: var(--signal); }
+.code-head .mini b { color: var(--signal); }
+.code-head .mini:hover { background: var(--signal); color: var(--plate); }
+.code-head .mini:hover b { color: var(--plate); }
+.code-tabs { display: flex; gap: 0; padding: 10px 14px 0; border-bottom: 1px solid var(--void); }
+.code-tab {
+  height: 28px;
+  padding: 0 14px;
+  margin-bottom: -1px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--graphite);
+  border: 1px solid transparent;
+}
+.code-tab:hover { color: var(--void); }
+.code-tab[aria-selected='true'] { background: var(--plate); color: var(--signal); border-color: var(--plate); }
+.code-tab:focus-visible { outline: 1px solid var(--signal); outline-offset: -3px; }
+.code-note { margin: 0; padding: 8px 14px; font-size: 10px; line-height: 1.5; letter-spacing: 0.04em; color: var(--graphite); text-transform: none; }
+.code-note.is-approx::first-line { color: var(--flare); font-weight: 700; }
+.code-panel { flex: 1 1 auto; min-height: 120px; margin: 0 14px; overflow: auto; background: var(--plate); outline: 1px solid var(--void); }
+.code-view {
+  margin: 0;
+  padding: 12px 14px;
+  min-width: max-content;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--plate-fg);
+  tab-size: 2;
+}
+.code-view:focus-visible { outline: 1px solid var(--signal); outline-offset: -2px; }
+.code-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px 12px; }
+.code-meta { font-size: 10px; letter-spacing: 0.08em; }
+.code-foot .mini { margin: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .code-dlg[open] { animation: code-in 160ms var(--ease); }
+  @keyframes code-in { from { opacity: 0; transform: translateY(6px); } }
+}

@@ -1,5 +1,5 @@
 import { copyFx, sameFx, type FxState } from './fx';
-import { CUSTOM_INDEX, defaultSoft, emit, reconcile, snapshotIdentified, type NodeSpec, type Store } from './store';
+import { defaultSoft, emit, getPreset, reconcile, snapshotIdentified, type NodeSpec, type Store } from './store';
 
 interface Snapshot {
   presetIndex: number;
@@ -100,7 +100,7 @@ export class History {
 
   private restore(snap: Snapshot): void {
     const s = this.store;
-    const orphan = snap.presetIndex === CUSTOM_INDEX && !s.custom;
+    const orphan = !getPreset(s, snap.presetIndex);
     s.presetIndex = orphan ? 0 : snap.presetIndex;
     s.modified = orphan || snap.modified;
     s.fx = copyFx(snap.fx);

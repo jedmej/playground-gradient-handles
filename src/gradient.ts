@@ -1,12 +1,12 @@
 import { fxNeedsPost, warpFreq, warpGain, WARP_HOUSE, type FxState } from './fx';
 import { buildProgram, PostPass } from './post';
 
-const VERT = `
+export const VERT = `
 attribute vec2 a_pos;
 void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }
 `;
 
-const FRAG = `
+export const FRAG = `
 precision highp float;
 uniform vec2  u_res;
 uniform float u_scale;

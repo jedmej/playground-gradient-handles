@@ -82,3 +82,9 @@ export const stamp = (): string => {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
 };
+
+/** W×H for a render of the stage's aspect with `long` px on the long side (quick export, clipboard, thumbnails). */
+export function quickSize(w: number, h: number, long = 2048): { w: number; h: number } {
+  const aspect = w / h;
+  return aspect >= 1 ? { w: long, h: Math.max(1, Math.round(long / aspect)) } : { w: Math.max(1, Math.round(long * aspect)), h: long };
+}

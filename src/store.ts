@@ -13,6 +13,10 @@ export const MAX_NODES = 16;
 export const MIN_NODES = 2;
 /** Preset index of the user slot (CS-06). */
 export const CUSTOM_INDEX = PRESETS.length;
+/** The save library: CS-06 … CS-13 are preset indexes CUSTOM_INDEX … CUSTOM_INDEX + SLOT_COUNT − 1. */
+export const SLOT_COUNT = 8;
+export const SLOT_FIRST = 6;
+export const slotSerial = (i: number): string => `CS-${String(SLOT_FIRST + i).padStart(2, '0')}`;
 export const DEFAULT_RADIUS = 0.28;
 /** Reach of a freshly drawn stroke: wide and soft. */
 export const STROKE_RADIUS = 0.16;
@@ -98,8 +102,10 @@ export const EASE = (t: number): number => {
 export interface Store {
   nodes: NodeState[];
   presetIndex: number;
-  /** User preset (CS-06), if one has been saved. */
+  /** User preset (CS-06), if one has been saved. Always the same object as `slots[0]`. */
   custom: Preset | null;
+  /** The save library: CS-06 … CS-13 (`SLOT_COUNT` entries, null = empty). */
+  slots: (Preset | null)[];
   /** True once the active preset has been edited. */
   modified: boolean;
   selected: number | null;
@@ -176,6 +182,7 @@ export function createStore(): Store {
     nodes,
     presetIndex: 0,
     custom: null,
+    slots: Array.from({ length: SLOT_COUNT }, () => null),
     modified: false,
     selected: null,
     focused: null,
@@ -222,7 +229,7 @@ export function presetSpecs(p: Preset): NodeSpec[] {
 }
 
 export function getPreset(store: Store, index: number): Preset | null {
-  return index === CUSTOM_INDEX ? store.custom : (PRESETS[index] ?? null);
+  return index >= CUSTOM_INDEX ? (store.slots[index - CUSTOM_INDEX] ?? null) : (PRESETS[index] ?? null);
 }
 
 export function currentPreset(store: Store): Preset {

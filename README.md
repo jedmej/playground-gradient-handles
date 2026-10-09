@@ -21,7 +21,7 @@ token system and the critique that shaped it.
 ## Layout
 
 The stage column is three bands: a **toolbar** (`#toolbar`), the artboard area, and a **shortcut strip** (`#keys`).
-Toolbar groups, in order: NODES (`Add node [+]`, `Remove node [−]`, `DRAW [D]`) · TOOLS (`SNAP [G]`, `MIRROR [Y]` + its mode) · HISTORY (`Undo [↶]`, `Reset [↺]`) · GENERATE (`Random [R]`, `Harmony [ANY]`, `Vary [V]`), then EXPORT (one `Export [↓]` button, `E`) pinned alone to the far right; the status plate floats just left of it. `FX DIAL [F]` (top-left)
+Toolbar groups, in order: NODES (`Add node [+]`, `Remove node [−]`, `DRAW [D]`) · TOOLS (`SNAP [G]`, `MIRROR [Y]` + its mode) · HISTORY (`Undo [↶]`, `Reset [↺]`) · GENERATE (`Random [R]`, `Harmony [ANY]`, `Vary [V]`), then OUTPUT (`Share [U]`, `Copy [C]`, `Code [X]`, `Export [↓]`) pinned to the far right; the status plate floats just left of it. `FX DIAL [F]` (top-left)
 and `PREVIEW [P]` (top-right) are small corner buttons riding the artboard frame. The right panel keeps the contextual
 controls only (colour set, node readout + steppers + shape, FX, wallpaper target). Below 960 px the toolbar is one
 horizontally scrolling row, the strip wraps, and status messages float as a toast. In preview the toolbar, FX DIAL and strip hide;
@@ -70,8 +70,12 @@ PREVIEW stays.
 | `ROT` `[−]` `[+]`, `,` `.` | Rotate ellipse / box / capsule 15° (`Shift` = 45°); bursts coalesce into one undo step |
 | Colour swatch / HEX field  | Recolour the selected node (OKLab tween); Enter/blur commit, Esc reverts |
 | Palette strip chip         | Select that node                                            |
-| `SAVE [↧]`                 | Store the field in CS-06 (`localStorage` key `gh.custom.v1`) |
-| `CLEAR [×]` (twice in 3 s) | Delete the saved CS-06 set; the row goes back to `CUSTOM — EMPTY` (Esc cancels) |
+| `SAVE [↧]` (panel header)  | Store the field in the **active** library slot, else the first empty one (`LIBRARY FULL` if none: use a card's own `[↧]`). Saves nodes, shapes, strokes, FX; the card gets a small thumbnail of the field. Storage refusal (quota, private mode) is reported and the slot lives for the session |
+| `CLEAR [×]` (panel header, twice in 3 s) | Delete the saved set of the active slot (the header button only shows while a filled slot is active); the card goes back to dashed / empty (Esc cancels) |
+| Library cards CS-06 … CS-13 | Eight slots under the five factory sets, a 4-up grid of thumbnails. Click a card = load that set (undo step `PRESET CS-0x`; an empty card says so). Each card has its own `[↧]` (save the current field into it, overwrites) and `[×]` (clear, press twice within 3 s, shown only while filled). A set saved before thumbnails existed (or migrated from v5) shows its colour chips until it is saved again |
+| `U` / `Share [U]`          | Copy a link to the clipboard that restores this exact document (nodes with shape / rot / pts / soft / opac, colours, FX, wallpaper target); status `LINK COPIED`. Opening such a link (or pasting it while the app is open) loads it as one undo step `LINK` (`UNDO` goes back) and strips the hash from the address bar; a malformed one is ignored with `SHARE LINK NOT RECOGNISED — IGNORED`. Hash format below |
+| `C` / `Copy [C]`           | Copy the field as a PNG to the clipboard: the quick-export render (2048 px long side, FX included, no handles). Needs the async clipboard API with `ClipboardItem` (HTTPS / localhost); otherwise a status line says so and Export still works |
+| `X` / `Code [X]`           | Opens the CODE panel (modal; `Esc`, `CLOSE [×]` or a click on the backdrop closes, focus is held inside, `←` `→` switch tabs). Tabs **GLSL** (the shipped vertex + fragment shaders verbatim, plus the uniform values that reproduce this field at the wallpaper size; FX are a separate pass and not included), **JSON** (the document, same schema as saved sets and share links), **CSS** (stacked `radial-gradient`s over a base colour) and **SVG** (radial-gradient ellipses + a blurred stroke group). CSS and SVG are **approximations** and say so in the panel: no OKLab blend, warp, softness curves, FX; rotation is dropped in CSS. Each tab has its own `COPY [⧉]` |
 | `P` / `PREVIEW [P]` button (above the artboard's top-right corner) | Bare wallpaper: fades out (≈ 200 ms, instant under reduced motion) every node, ring, gauge, chip, stroke overlay, the FX dial, the rulers, corner marks and foot readouts; the gradient keeps rendering with its FX at the wallpaper aspect. The stage is inert while on (no drags, dial, wheel, double-click add, no edit keys). `Esc`, `P` or the button exits. Not persisted |
 | `\` / `PANEL [»]` button (top bar, far right) | Collapse / expand the right spec panel (≥ 960 px). The artboard grows into the freed width and re-fits; all other shortcuts keep working. Remembered in `localStorage` (`gh.panel.v1`). Hidden on the stacked mobile layout |
 | `M` / `DARK [◐]` button (top bar) | Light / dark theme. Defaults to the OS `prefers-color-scheme`; your choice is remembered in `localStorage` (`gh.theme.v1`) and applied before first paint. The lime accent, black bars, node overlays and the gradient stay as they are. Crossfades in ~150 ms (instant under reduced motion). Also available on the stacked mobile layout |
@@ -98,6 +102,10 @@ PREVIEW stays.
 | `Export [↓]` button, `E`   | The single export button (toolbar, id `export`): renders the field + FX at the target size (`GH-CS01-4K-3840x2160-2041.png`). If the GPU cannot allocate it the button says `Too large`, the status line gives the real limit, and nothing downloads |
 | `⇧`-click Export, `⇧E`     | Quick copy: downloads the field (FX included, no handles) at 2048 px long side (`ui.ts` `exportPng`) |
 | Reset                      | Restores the current preset's positions and radii           |
+
+### Share link format
+
+`#g1=<base64url(JSON)>` (plain) or `#g1z=<base64url(deflate-raw(JSON))>` (used when `CompressionStream` exists and it is smaller; a typical nine-node field is ~370 characters). The JSON is `serialiseDoc` from `src/custom.ts`: `{"v":2,"nodes":[…],"fx":{…},"wp":"4k","cs":{"w":…,"h":…}}`, the same node schema as the CS slots, validated on read by `parseDoc` / `parseFx` (bad nodes are skipped, numbers clamped, a document with fewer than 2 valid nodes is rejected; input is capped at 200 k characters / 400 k decoded). `g1` is the version prefix: a new schema gets `g2`.
 
 Grab-zone priority is deterministic: node core beats the ROT dial, OPAC and SOFT gauges, which beat ring band beats body beats empty
 canvas, and among overlapping candidates the nearest wins. Ring bands are only
@@ -137,6 +145,13 @@ Martian Mono). No runtime network calls beyond same-origin assets.
 
 ### Test hooks
 
+- v6 Output: `[data-action="share|copy-png|code-export"]` (toolbar, ids `share`, `copy-png`, `code-export`; `.is-done` for ~1.5 s after a success);
+  the CODE panel is `dialog.code-dlg` (`open` attribute while shown) with `.code-tab[data-code-tab="glsl|json|css|svg"]` (`aria-selected`),
+  `.code-note` (`.is-approx` on CSS / SVG), `.code-view code` (the text), `[data-action="code-copy|code-close"]`. Library: `#slots`, cards
+  `.slot[data-slot="0–7"]` with `[data-preset="cs06"…"cs13"]` (`role=radio`, `.is-empty`, `.is-active`; `[data-preset="cs06"]` is the first slot as before),
+  per-card `[data-action="slot-save"][data-slot]` and `[data-action="slot-clear"][data-slot]` (`data-armed`); the header `save-custom` / `clear-custom`
+  act on the active slot. Storage: `gh.slots.v1` = `{v:1, slots:[null | {doc:{v:2,nodes,fx}, savedAt, thumb?}] × 8}`; the v5 single slot `gh.custom.v1`
+  is read once into slot 0 when `gh.slots.v1` does not exist and is never written or removed (a v5 build still sees its own CS-06).
 - New in round 3: `<html>`/`<body>` `data-node-count`, `data-selected`;
   `[data-action="add-node|remove-node|save-custom|clear-custom|undo"]` (clear has `data-armed`), `[data-preset="cs06"]`,
   `[data-testid="node-color|node-hex|palette"]`, `[data-testid=palette] button[data-chip][data-hex]`.

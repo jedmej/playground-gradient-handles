@@ -93,6 +93,15 @@
             </button>
           </div>
           <div class="tb-group tb-export" role="group" aria-label="Export">
+            <button class="mini tb-btn" id="share" data-action="share" type="button" aria-keyshortcuts="U" title="Copy a link that restores this exact gradient (U)">
+              <span class="btn-label">Share</span> <b>[U]</b>
+            </button>
+            <button class="mini tb-btn" id="copy-png" data-action="copy-png" type="button" aria-keyshortcuts="C" title="Copy the PNG (2048 px, FX included) to the clipboard (C)">
+              <span class="btn-label">Copy</span> <b>[C]</b>
+            </button>
+            <button class="mini tb-btn" id="code-export" data-action="code-export" type="button" aria-keyshortcuts="X" aria-haspopup="dialog" title="Export as GLSL, JSON, CSS or SVG (X)">
+              <span class="btn-label">Code</span> <b>[X]</b>
+            </button>
             <button class="mini tb-btn tb-primary" id="export" data-action="export" type="button" aria-keyshortcuts="E" title="Export 3840×2160 PNG (E; ⇧ for a quick 2048 px copy)">
               <span class="btn-label">Export</span> <b>[↓]</b>
             </button>
@@ -129,7 +138,7 @@
 
         <p class="keys" id="keys">
           <span>TAB</span> focus <span>←↑→↓</span> nudge <span>[ ]</span> layer
-          <span class="k-fine"><span>SCROLL</span> radius <span>⇧ SCROLL</span> soft <span>DBL-CLICK</span> add <span>CLICK CORE</span> colour <span>D</span> draw <span>G</span> snap <span>Y</span> mirror <span>I</span> pick <span>R</span> random <span>V</span> vary <span>L</span> lock <span>H</span> hide <span>, .</span> rotate <span>DEL</span> remove <span>⌘Z</span> undo <span>E</span> export <span>F</span> FX dial <span>P</span> preview <span>M</span> dark <span>\</span> panel <span>ESC</span> back</span>
+          <span class="k-fine"><span>SCROLL</span> radius <span>⇧ SCROLL</span> soft <span>DBL-CLICK</span> add <span>CLICK CORE</span> colour <span>D</span> draw <span>G</span> snap <span>Y</span> mirror <span>I</span> pick <span>R</span> random <span>V</span> vary <span>L</span> lock <span>H</span> hide <span>, .</span> rotate <span>DEL</span> remove <span>⌘Z</span> undo <span>E</span> export <span>U</span> share <span>C</span> copy <span>X</span> code <span>F</span> FX dial <span>P</span> preview <span>M</span> dark <span>\</span> panel <span>ESC</span> back</span>
           <span class="k-touch"><span>DOUBLE-TAP</span> add <span>TAP CORE</span> colour <span>DRAW</span> toggle <span>PINCH</span> radius <span>TAP + HOLD</span> menu <span>FX DIAL</span> effects <span>PREVIEW</span> bare</span>
         </p>
       </section>
@@ -149,15 +158,16 @@
           <div class="label label-row">
             <h2 id="h-presets">COLOUR SET</h2>
             <span class="label-actions">
-              <button class="mini mini-clear" type="button" data-action="clear-custom" title="Clear the saved CS-06 set" hidden>
+              <button class="mini mini-clear" type="button" data-action="clear-custom" title="Clear the active saved set (press twice)" hidden>
                 <span class="mini-l">CLEAR</span> <b>[×]</b>
               </button>
-              <button class="mini" type="button" data-action="save-custom" title="Save the current field to CS-06">
+              <button class="mini" type="button" data-action="save-custom" title="Save the current field into the active slot, else the first empty one">
                 SAVE <b>[↧]</b>
               </button>
             </span>
           </div>
           <div class="presets" id="presets" role="radiogroup" aria-label="Colour set"></div>
+          <div class="slots" id="slots" role="radiogroup" aria-label="Saved sets"></div>
           <div class="extract-row">
             <button class="mini" type="button" data-action="extract" title="Take a palette from an image (it never leaves this browser). You can also drop an image on the stage.">
               <span class="mini-l">FROM IMAGE</span> <b>[↥]</b>
