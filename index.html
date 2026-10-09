@@ -73,6 +73,17 @@
               <span class="btn-label">Reset</span> <b>[↺]</b>
             </button>
           </div>
+          <div class="tb-group tb-generate" role="group" aria-label="Generate">
+            <button class="mini tb-btn" id="randomize" data-action="randomize" type="button" aria-keyshortcuts="R" title="New random composition (R) — locked nodes stay">
+              <span class="btn-label">Random</span> <b>[R]</b>
+            </button>
+            <button class="mini tb-btn tb-harmony" id="harmony" data-action="harmony" data-harmony="any" type="button" title="Colour harmony Random uses: ANY · ANALOG · COMPL · TRIAD · SPLIT · MONO (⇧ = back)">
+              <span class="btn-label">Harmony</span> <b>[ANY]</b>
+            </button>
+            <button class="mini tb-btn" id="vary" data-action="vary" type="button" aria-pressed="false" aria-keyshortcuts="V" title="Four small variations of this field (V) — locked nodes stay">
+              <span class="btn-label">Vary</span> <b>[V]</b>
+            </button>
+          </div>
           <div class="tb-group tb-export" role="group" aria-label="Export">
             <button class="mini tb-btn tb-primary" id="export" data-action="export" type="button" aria-keyshortcuts="E" title="Export 3840×2160 PNG (E; ⇧ for a quick 2048 px copy)">
               <span class="btn-label">Export</span> <b>[↓]</b>
@@ -110,7 +121,7 @@
 
         <p class="keys" id="keys">
           <span>TAB</span> focus <span>←↑→↓</span> nudge <span>[ ]</span> layer
-          <span class="k-fine"><span>SCROLL</span> radius <span>⇧ SCROLL</span> soft <span>DBL-CLICK</span> add <span>CLICK CORE</span> colour <span>D</span> draw <span>, .</span> rotate <span>DEL</span> remove <span>⌘Z</span> undo <span>E</span> export <span>F</span> FX dial <span>P</span> preview <span>M</span> dark <span>\</span> panel <span>ESC</span> back</span>
+          <span class="k-fine"><span>SCROLL</span> radius <span>⇧ SCROLL</span> soft <span>DBL-CLICK</span> add <span>CLICK CORE</span> colour <span>D</span> draw <span>R</span> random <span>V</span> vary <span>L</span> lock <span>H</span> hide <span>, .</span> rotate <span>DEL</span> remove <span>⌘Z</span> undo <span>E</span> export <span>F</span> FX dial <span>P</span> preview <span>M</span> dark <span>\</span> panel <span>ESC</span> back</span>
           <span class="k-touch"><span>DOUBLE-TAP</span> add <span>TAP CORE</span> colour <span>DRAW</span> toggle <span>PINCH</span> radius <span>TAP + HOLD</span> menu <span>FX DIAL</span> effects <span>PREVIEW</span> bare</span>
         </p>
       </section>
@@ -139,6 +150,13 @@
             </span>
           </div>
           <div class="presets" id="presets" role="radiogroup" aria-label="Colour set"></div>
+          <div class="extract-row">
+            <button class="mini" type="button" data-action="extract" title="Take a palette from an image (it never leaves this browser). You can also drop an image on the stage.">
+              <span class="mini-l">FROM IMAGE</span> <b>[↥]</b>
+            </button>
+            <span class="extract-hint dim"><span class="t-fine">OR DROP ONE ON THE STAGE</span></span>
+            <input id="extract-file" type="file" accept="image/*" hidden />
+          </div>
         </section>
 
         <section class="spec-section" aria-labelledby="h-node">
@@ -193,6 +211,14 @@
                 <span id="ns-rot">—</span>
                 <button type="button" class="mini mini-rot" data-action="rot-minus" aria-label="Rotate −15°" title="Rotate −15° ( , )" disabled>[−]</button>
                 <button type="button" class="mini mini-rot" data-action="rot-plus" aria-label="Rotate +15°" title="Rotate +15° ( . )" disabled>[+]</button>
+              </dd>
+            </div>
+            <div class="full flag-row">
+              <dt>STATE</dt>
+              <dd>
+                <button type="button" class="mini mini-flag" data-action="lock" aria-pressed="false" title="Lock: no edit, Random or Vary touches this node (L)" disabled><span class="mini-l">LOCK</span> <b>[L]</b></button>
+                <button type="button" class="mini mini-flag" data-action="hide" aria-pressed="false" title="Hide this node from the field and the export (H)" disabled><span class="mini-l">HIDE</span> <b>[H]</b></button>
+                <button type="button" class="mini mini-flag" data-action="solo" aria-pressed="false" title="Solo: hide every other node (⇧H)" disabled><span class="mini-l">SOLO</span> <b>[⇧H]</b></button>
               </dd>
             </div>
             <div class="full last colour-row">

@@ -13,6 +13,10 @@ const ITEMS: (Item | null)[] = [
   { action: 'layer-down', label: 'MOVE DOWN', key: '[' },
   { action: 'layer-back', label: 'SEND TO BACK', key: '⇧[' },
   null,
+  { action: 'menu-lock', label: 'LOCK', key: 'L' },
+  { action: 'menu-hide', label: 'HIDE', key: 'H' },
+  { action: 'menu-solo', label: 'SOLO', key: '⇧H' },
+  null,
   { action: 'menu-delete', label: 'DELETE', key: 'DEL' },
 ];
 
@@ -50,7 +54,7 @@ export class NodeMenu {
     const el = document.createElement('div');
     el.className = 'node-menu';
     el.setAttribute('role', 'menu');
-    el.setAttribute('aria-label', 'Node layer');
+    el.setAttribute('aria-label', 'Node menu');
     el.dataset.testid = 'node-menu';
     el.hidden = true;
     this.head = document.createElement('div');
@@ -127,12 +131,26 @@ export class NodeMenu {
       return;
     }
     const count = this.store.nodes.length;
+    const n = this.store.nodes[i];
+    // Lock / hide / solo read as what pressing them would do next.
+    const labels: Record<string, string> = {
+      'menu-lock': n.lock ? 'UNLOCK' : 'LOCK',
+      'menu-hide': n.hide ? 'SHOW' : 'HIDE',
+      'menu-solo': this.actions.isSolo(i) ? 'UNSOLO' : 'SOLO',
+    };
+    for (const b of this.buttons) {
+      const want = labels[b.dataset.action!];
+      const l = b.firstElementChild as HTMLElement;
+      if (want && l.textContent !== want) l.textContent = want;
+    }
     this.head.textContent = `${nodeSerial(i)} · LYR ${pad2(i + 1)}/${pad2(count)}`;
     const off: Record<string, boolean> = {
       'layer-front': i === count - 1,
       'layer-up': i === count - 1,
       'layer-down': i === 0,
       'layer-back': i === 0,
+      'menu-hide': !n.hide && this.store.nodes.every((m, k) => k === i || m.hide),
+      'menu-solo': count < 2,
       'menu-delete': count <= MIN_NODES,
     };
     for (const b of this.buttons) {
@@ -189,6 +207,13 @@ export class NodeMenu {
     if (i < 0) return;
     if (action === 'menu-delete') {
       this.actions.removeAt(i);
+      return;
+    }
+    if (action === 'menu-lock' || action === 'menu-hide' || action === 'menu-solo') {
+      if (action === 'menu-lock') this.actions.toggleLock(i);
+      else if (action === 'menu-hide') this.actions.toggleHide(i);
+      else this.actions.solo(i);
+      if (viaKey) this.focusNode(i);
       return;
     }
     const move = MOVES[action];

@@ -57,6 +57,7 @@ export class UI {
   private nsLayer = $('ns-layer');
   private softSegs = [...document.querySelectorAll<HTMLElement>('#soft-bar i')];
   private softBtns = [...document.querySelectorAll<HTMLButtonElement>('.mini-soft[data-action^=soft]')];
+  private flagBtns = [...document.querySelectorAll<HTMLButtonElement>('.mini-flag')];
   private opacBtns = [...document.querySelectorAll<HTMLButtonElement>('.mini-soft[data-action^=opac]')];
   private nsOpac = $('ns-opac');
   private opacSegs = [...document.querySelectorAll<HTMLElement>('#opac-bar i')];
@@ -119,6 +120,15 @@ export class UI {
       b.addEventListener('click', () => {
         const i = actions.target;
         if (i >= 0) actions.opacBy(i, b.dataset.action === 'opac-minus' ? -0.1 : 0.1);
+      });
+    }
+    for (const b of this.flagBtns) {
+      b.addEventListener('click', () => {
+        const i = actions.target;
+        if (i < 0) return;
+        if (b.dataset.action === 'lock') actions.toggleLock(i);
+        else if (b.dataset.action === 'hide') actions.toggleHide(i);
+        else actions.solo(i);
       });
     }
     store.listeners.add(() => this.sync());
@@ -261,7 +271,7 @@ export class UI {
   /** Apply a colour to the edit target, opening one undo step per session. */
   private commitColor(hex: string): void {
     const i = this.actions.target;
-    if (i < 0 || this.store.nodes[i].hex === hex) return;
+    if (i < 0 || this.store.nodes[i].hex === hex || this.actions.isLocked(i)) return;
     if (this.colorSession !== this.store.nodes[i].uid) {
       this.actions.beginColor(i);
       this.colorSession = this.store.nodes[i].uid;
@@ -339,7 +349,7 @@ export class UI {
       this.endColorSession();
       this.setInvalid(false);
     }
-    const on = !!n;
+    const on = !!n && !n.lock;
     for (const el of [this.colorInput, this.hexInput]) if (el.disabled === on) el.disabled = !on;
     this.swatchBtn.classList.toggle('is-disabled', !on);
     this.hexField.classList.toggle('is-disabled', !on);
@@ -362,22 +372,31 @@ export class UI {
     const n = t >= 0 ? s.nodes[t] : null;
     const stroke = n?.shape === 'stroke';
     for (const b of this.shapeBtns) {
-      const dis = !n || stroke;
+      const dis = !n || stroke || n.lock;
       if (b.disabled !== dis) b.disabled = dis;
       b.setAttribute('aria-checked', String(!!n && !stroke && n.shape === b.dataset.shape));
     }
     this.shapeTag.hidden = !stroke;
     if (stroke) setText(this.shapeTag, `STROKE · ${pad2(n!.pts.length)} PTS`);
     this.shapeGroup.closest('.shape-row')!.classList.toggle('is-stroke', stroke);
-    const canRot = !!n && n.shape !== 'circle' && !stroke;
+    const canRot = !!n && n.shape !== 'circle' && !stroke && !n.lock;
     for (const b of this.rotBtns) if (b.disabled === canRot) b.disabled = !canRot;
     for (const b of this.softBtns) {
-      const dis = !n || (b.dataset.action === 'soft-minus' ? n.soft <= 0.0001 : n.soft >= 0.9999);
+      const dis = !n || n.lock || (b.dataset.action === 'soft-minus' ? n.soft <= 0.0001 : n.soft >= 0.9999);
       if (b.disabled !== dis) b.disabled = dis;
     }
     for (const b of this.opacBtns) {
-      const dis = !n || (b.dataset.action === 'opac-minus' ? n.opac <= 0.0001 : n.opac >= 0.9999);
+      const dis = !n || n.lock || (b.dataset.action === 'opac-minus' ? n.opac <= 0.0001 : n.opac >= 0.9999);
       if (b.disabled !== dis) b.disabled = dis;
+    }
+    // STATE row: LOCK / HIDE / SOLO follow the edit target (what pressing them would do next is in the pressed state).
+    for (const b of this.flagBtns) {
+      const a = b.dataset.action;
+      const on = !!n && (a === 'lock' ? n.lock : a === 'hide' ? n.hide : this.actions.isSolo(t));
+      const dis = !n || (a === 'hide' && !n.hide && s.nodes.every((m, k) => k === t || m.hide)) || (a === 'solo' && s.nodes.length < 2);
+      if (b.disabled !== dis) b.disabled = dis;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('is-on', on);
     }
     const draw = s.tool === 'draw';
     for (const b of this.drawBtns) {

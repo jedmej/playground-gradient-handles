@@ -55,7 +55,7 @@ export function nodeQ(n: NodeState, px: number, py: number, dim: Dim, target = f
 export function fieldHexAt(store: Store, nx: number, ny: number, dim: Dim): string {
   const px = nx * dim.w;
   const py = ny * dim.h;
-  return labToHex(sampleField(store.nodes.map((n) => ({ q: nodeQ(n, px, py, dim), lab: n.lab, soft: n.dsoft, opac: n.dopac }))));
+  return labToHex(sampleField(store.nodes.filter((n) => !n.hide).map((n) => ({ q: nodeQ(n, px, py, dim), lab: n.lab, soft: n.dsoft, opac: n.dopac }))));
 }
 
 /** Rotate local offset (x, y) by `rot` (y-down screen space, positive = clockwise). */
@@ -129,10 +129,12 @@ function pack16(unit: number): number {
  * (`target = true`) reads the settled targets so the PNG matches where everything is going.
  */
 export function packField(store: Store, dim: Dim, buf: FieldBuffers, target = false): void {
-  const count = Math.min(MAX_NODES, store.nodes.length);
+  // HIDE: hidden nodes are skipped (the rest keep their layer order, packed down to the front of the buffers).
+  const live = store.nodes.filter((n) => !n.hide).slice(0, MAX_NODES);
+  const count = live.length;
   buf.count = count;
   for (let i = 0; i < count; i++) {
-    const n = store.nodes[i];
+    const n = live[i];
     const cx = (target ? n.x : n.dx) * dim.w;
     const cy = (target ? n.y : n.dy) * dim.h;
     buf.positions[i * 2] = cx;

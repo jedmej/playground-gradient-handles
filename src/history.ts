@@ -31,6 +31,7 @@ function same(a: Snapshot, b: Snapshot): boolean {
       Math.abs((n.rot ?? 0) - (m.rot ?? 0)) < EPS &&
       Math.abs((n.soft ?? defaultSoft(n.shape)) - (m.soft ?? defaultSoft(m.shape))) < EPS &&
       Math.abs((n.opac ?? 1) - (m.opac ?? 1)) < EPS &&
+      !!n.lock === !!m.lock && !!n.hide === !!m.hide &&
       samePts(n.pts, m.pts)
     );
   });
