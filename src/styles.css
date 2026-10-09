@@ -2945,3 +2945,59 @@ html[data-drag='lum'] .stage,
 .node .csw { pointer-events: none; will-change: opacity; }
 .node .csw-halo { stroke: #000; stroke-opacity: 0.6; stroke-width: 4; }
 .node .csw-ink { stroke: #fff; stroke-width: 1.25; stroke-opacity: 0.95; }
+
+/* ---------- v6 Tools: SNAP [G], MIRROR [Y], PICK [I] ---------- */
+/* Armed = VOID plate with SIGNAL text, like DRAW. MIRROR also prints its mode (OFF / X / Y / XY) after the key. */
+.mini-tool[aria-pressed='true'],
+.mini-tool[aria-pressed='true']:hover,
+.mini-pick[aria-pressed='true'],
+.mini-pick[aria-pressed='true']:hover {
+  background: var(--plate);
+  color: var(--signal);
+}
+.mini-tool[aria-pressed='true'] b,
+.mini-pick[aria-pressed='true'] b,
+.mini-tool[aria-pressed='true'] .tool-mode {
+  color: var(--signal);
+}
+.tool-mode {
+  min-width: 2.2em;
+  color: var(--graphite);
+  font-weight: 500;
+}
+.mini-pick { margin: 0 0 0 auto; height: 28px; }
+.mini-pick:disabled { opacity: 0.4; cursor: default; }
+.mini-pick:disabled:hover { background: none; color: var(--void); }
+.mini-pick:disabled:hover b { color: var(--graphite); }
+@media (hover: none) {
+  .mini-tool[aria-pressed='false']:hover,
+  .mini-pick[aria-pressed='false']:hover { background: none; color: var(--void); }
+  .mini-tool[aria-pressed='false']:hover b,
+  .mini-pick[aria-pressed='false']:hover b { color: var(--graphite); }
+}
+
+/* Artboard furniture (handles layer: hidden in preview, never rendered into an export). */
+.tools-layer .tl-grid { fill: none; stroke: #f2f3ee; stroke-width: 1; opacity: 0; transition: opacity 120ms var(--ease); mix-blend-mode: difference; }
+.tools-layer.grid-on .tl-minor { opacity: 0.12; }
+.tools-layer.grid-on .tl-major { opacity: 0.28; }
+.tools-layer .tl-halo { fill: none; stroke: #000; stroke-opacity: 0.55; stroke-width: 3; }
+.tools-layer .tl-guide { fill: none; stroke: var(--signal); stroke-width: 1; }
+.tools-layer .tl-axis { fill: none; stroke: #f2f3ee; stroke-width: 1; stroke-dasharray: 6 4; }
+
+/* EYEDROPPER armed: crosshair over every node too, and a live loupe chip (swatch + hex) by the pointer. */
+.stage.is-eyedrop,
+.stage.is-eyedrop * { cursor: var(--cur-cross), crosshair !important; }
+.chip-loupe {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--plate);
+  color: var(--plate-fg);
+  font-weight: 600;
+}
+.chip-loupe i {
+  display: block;
+  width: 12px;
+  height: 12px;
+  outline: 1px solid var(--graphite);
+}

@@ -6,6 +6,7 @@ import type { History } from './history';
 import { BODY_Q, nodeQ, outlinePoints } from './field';
 import { centroid, distToPolyline, pathLength, rdp, simplifyTo, type Pt } from './geom';
 import { NodeMenu } from './menu';
+import { endPlace, placeNode } from './tools';
 import {
   addNode,
   emit,
@@ -862,7 +863,7 @@ export class Handles {
       const slop = touch ? TAP_SLOP : CLICK_SLOP;
       if (prev && t - prev.t < win && Math.hypot(x - prev.x, y - prev.y) < slop) {
         this.lastTap = null;
-        this.actions.addAt(x / this.metrics.w, y / this.metrics.h);
+        this.actions.addAt(x / this.metrics.w, y / this.metrics.h, true);
       } else {
         this.lastTap = { t, x, y };
       }
@@ -895,8 +896,8 @@ export class Handles {
     if (s.drag.kind === 'node') {
       const n = s.nodes[s.drag.index];
       if (!n) return;
-      n.x = Math.min(1, Math.max(0, (x + this.dragOffset.x) / this.metrics.w));
-      n.y = Math.min(1, Math.max(0, (y + this.dragOffset.y) / this.metrics.h));
+      // SNAP / MIRROR (tools.ts): ⌘/Ctrl inverts snapping for this drag; partners follow the primary node.
+      placeNode(s, this.metrics, n, (x + this.dragOffset.x) / this.metrics.w, (y + this.dragOffset.y) / this.metrics.h, e.metaKey || e.ctrlKey);
       return;
     }
     if (s.drag.kind === 'ring') {
@@ -1079,6 +1080,7 @@ export class Handles {
     } else {
       this.history.commit('');
     }
+    endPlace();
     s.drag = { kind: 'none', index: -1 };
     if (e.pointerType === 'touch') {
       s.hover = { kind: 'idle', index: -1 };
@@ -1122,6 +1124,7 @@ export class Handles {
     this.pointerId = null;
     this.pointerInside = false;
     if (s.drag.kind !== 'none') this.history.commit(this.dragLabel());
+    endPlace();
     s.drag = { kind: 'none', index: -1 };
     s.hover = { kind: 'idle', index: -1 };
     emit(s);
@@ -1157,6 +1160,7 @@ export class Handles {
     if (s.drag.kind !== 'none') {
       this.history.commit(this.dragLabel());
       s.drag = { kind: 'none', index: -1 };
+      endPlace();
     }
     this.pointerId = null;
     this.lastTap = null;
@@ -1356,6 +1360,7 @@ export class Handles {
     }
     if (handled) {
       e.preventDefault();
+      if (mutating) placeNode(s, m, n, n.x, n.y, null); // mirror partners follow a nudge; no snapping
       emit(s);
     }
   }

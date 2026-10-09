@@ -65,6 +65,14 @@
               <span class="mini-l">DRAW</span> <b>[D]</b>
             </button>
           </div>
+          <div class="tb-group tb-tools" role="group" aria-label="Tools">
+            <button class="mini tb-btn mini-tool" type="button" data-action="snap" aria-pressed="false" aria-keyshortcuts="G" title="Snap node drags to the ruler grid and to other nodes (G; hold ⌘/Ctrl to invert while dragging)">
+              <span class="mini-l">SNAP</span> <b>[G]</b>
+            </button>
+            <button class="mini tb-btn mini-tool" type="button" data-action="mirror" aria-pressed="false" aria-keyshortcuts="Y" title="Mirror: OFF → X → Y → XY (Y). Moving a node moves its mirrored partner(s)">
+              <span class="mini-l">MIRROR</span> <b>[Y]</b> <span class="tool-mode">OFF</span>
+            </button>
+          </div>
           <div class="tb-group tb-history" role="group" aria-label="History">
             <button class="mini tb-btn" id="undo" data-action="undo" type="button" title="Undo (⌘Z)" disabled>
               <span class="btn-label">Undo</span> <b>[↶]</b>
@@ -110,7 +118,7 @@
 
         <p class="keys" id="keys">
           <span>TAB</span> focus <span>←↑→↓</span> nudge <span>[ ]</span> layer
-          <span class="k-fine"><span>SCROLL</span> radius <span>⇧ SCROLL</span> soft <span>DBL-CLICK</span> add <span>CLICK CORE</span> colour <span>D</span> draw <span>, .</span> rotate <span>DEL</span> remove <span>⌘Z</span> undo <span>E</span> export <span>F</span> FX dial <span>P</span> preview <span>M</span> dark <span>\</span> panel <span>ESC</span> back</span>
+          <span class="k-fine"><span>SCROLL</span> radius <span>⇧ SCROLL</span> soft <span>DBL-CLICK</span> add <span>CLICK CORE</span> colour <span>D</span> draw <span>G</span> snap <span>Y</span> mirror <span>I</span> pick <span>, .</span> rotate <span>DEL</span> remove <span>⌘Z</span> undo <span>E</span> export <span>F</span> FX dial <span>P</span> preview <span>M</span> dark <span>\</span> panel <span>ESC</span> back</span>
           <span class="k-touch"><span>DOUBLE-TAP</span> add <span>TAP CORE</span> colour <span>DRAW</span> toggle <span>PINCH</span> radius <span>TAP + HOLD</span> menu <span>FX DIAL</span> effects <span>PREVIEW</span> bare</span>
         </p>
       </section>
@@ -218,6 +226,9 @@
                     disabled
                   />
                 </span>
+                <button class="mini mini-pick" type="button" data-action="eyedropper" aria-pressed="false" aria-keyshortcuts="I" title="Eyedropper: click the field to copy its colour onto this node (I; ⇧I picks from anywhere on screen, Chromium)" disabled>
+                  <span class="mini-l">PICK</span> <b>[I]</b>
+                </button>
               </dd>
             </div>
           </dl>
