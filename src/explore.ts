@@ -135,9 +135,7 @@ export class Explore {
       tag.className = 'vary-serial';
       tag.textContent = `V-${k + 1}`;
       this.tags.push(tag);
-      const key = document.createElement('kbd');
-      key.textContent = String(k + 1);
-      b.append(img, tag, key);
+      b.append(img, tag); // the serial (R-1 / V-1) doubles as the 1–4 key hint
       b.addEventListener('click', () => this.pick(k));
       row.appendChild(b);
       this.btns.push(b);

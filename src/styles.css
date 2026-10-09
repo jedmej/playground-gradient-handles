@@ -3148,8 +3148,7 @@ html[data-drag='lum'] .stage,
   outline: 2px solid var(--signal);
   outline-offset: -2px;
 }
-.vary-serial,
-.vary-btn kbd {
+.vary-serial {
   position: absolute;
   bottom: 0;
   padding: 2px 4px 1px;
@@ -3158,12 +3157,8 @@ html[data-drag='lum'] .stage,
   font: inherit;
 }
 .vary-serial { left: 0; }
-.vary-btn kbd { right: 0; color: var(--graphite); }
 .vary-btn:hover .vary-serial,
 .vary-btn:focus-visible .vary-serial { color: var(--signal); }
-@media (pointer: coarse) {
-  .vary-btn kbd { display: none; }
-}
 
 /* A file dragged over the stage: EXTRACT target. */
 .stage.is-drop::after {
