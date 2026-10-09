@@ -6,8 +6,8 @@ import { DEFAULT_CUSTOM, DEFAULT_WALLPAPER, type CustomSize, type WallpaperId } 
 
 export type Shape = 'circle' | 'ellipse' | 'box' | 'capsule' | 'stroke';
 export type Tool = 'edit' | 'draw';
-export type HoverKind = 'idle' | 'node' | 'ring' | 'body' | 'soft' | 'rot' | 'opac' | 'hue' | 'sat' | 'lum';
-export type DragKind = 'none' | 'node' | 'ring' | 'soft' | 'rot' | 'opac' | 'hue' | 'sat' | 'lum';
+export type HoverKind = 'idle' | 'node' | 'ring' | 'body' | 'soft' | 'rot' | 'opac' | 'hue' | 'sat' | 'lum' | 'vtx' | 'mid';
+export type DragKind = 'none' | 'node' | 'ring' | 'soft' | 'rot' | 'opac' | 'hue' | 'sat' | 'lum' | 'vtx';
 
 export const MAX_NODES = 16;
 export const MIN_NODES = 2;
@@ -58,6 +58,10 @@ export interface NodeState {
   drot: number;
   /** Strokes only: polyline offsets from (x, y) in short-side units. Empty for every other shape. */
   pts: [number, number][];
+  /** Strokes only: `pts` are the anchors of a closed loop / a filled one / a smooth curve through them (see `strokePath`). */
+  closed: boolean;
+  fill: boolean;
+  smooth: boolean;
   /** LOCK: drags, wheel, keys, RANDOM, VARY and EXTRACT leave the node alone (it stays selectable). */
   lock: boolean;
   /** HIDE: excluded from the field (render and export); the reticle stays, ghosted. */
@@ -77,6 +81,10 @@ export interface NodeSpec {
   shape?: Shape;
   rot?: number;
   pts?: [number, number][];
+  /** Strokes only, and only present when true (see NodeState). */
+  closed?: boolean;
+  fill?: boolean;
+  smooth?: boolean;
   soft?: number;
   opac?: number;
   /** Only present when true (see NodeState). */
@@ -147,6 +155,20 @@ export const copyPts = (pts: [number, number][] | undefined): [number, number][]
 
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 
+/** A stroke's path flags off a spec (all false for every other shape; fill only on a closed loop). */
+export function pathFlags(s: { shape?: Shape; closed?: boolean; fill?: boolean; smooth?: boolean }): { closed: boolean; fill: boolean; smooth: boolean } {
+  const stroke = s.shape === 'stroke';
+  const closed = stroke && !!s.closed;
+  return { closed, fill: closed && !!s.fill, smooth: stroke && !!s.smooth };
+}
+
+/** The flags as optional spec fields: present only when true. */
+const specFlags = (n: NodeState): Pick<NodeSpec, 'closed' | 'fill' | 'smooth'> => ({
+  ...(n.closed ? { closed: true } : {}),
+  ...(n.fill ? { fill: true } : {}),
+  ...(n.smooth ? { smooth: true } : {}),
+});
+
 export function makeNode(spec: NodeSpec, fresh = false): NodeState {
   const { x, y, r, hex } = spec;
   const soft = Math.min(1, Math.max(0, spec.soft ?? defaultSoft(spec.shape)));
@@ -169,6 +191,7 @@ export function makeNode(spec: NodeSpec, fresh = false): NodeState {
     rot: spec.rot ?? 0,
     drot: spec.rot ?? 0,
     pts: spec.shape === 'stroke' ? copyPts(spec.pts) : [],
+    ...pathFlags(spec),
     lock: !!spec.lock,
     hide: !!spec.hide,
     fresh,
@@ -219,6 +242,9 @@ export function presetSpecs(p: Preset): NodeSpec[] {
       spec.shape = ex.shape;
       spec.rot = ex.rot ?? 0;
       if (ex.pts) spec.pts = copyPts(ex.pts);
+      if (ex.closed) spec.closed = true;
+      if (ex.fill) spec.fill = true;
+      if (ex.smooth) spec.smooth = true;
     }
     if (ex?.soft !== undefined) spec.soft = ex.soft;
     if (ex?.opac !== undefined) spec.opac = ex.opac;
@@ -237,13 +263,13 @@ export function currentPreset(store: Store): Preset {
 }
 
 export function snapshotSpecs(store: Store): NodeSpec[] {
-  return store.nodes.map((n) => ({ x: n.x, y: n.y, r: n.r, hex: n.hex, shape: n.shape, rot: n.rot, pts: copyPts(n.pts), soft: n.soft, opac: n.opac, lock: n.lock, hide: n.hide }));
+  return store.nodes.map((n) => ({ x: n.x, y: n.y, r: n.r, hex: n.hex, shape: n.shape, rot: n.rot, pts: copyPts(n.pts), ...specFlags(n), soft: n.soft, opac: n.opac, lock: n.lock, hide: n.hide }));
 }
 
 /** Like `snapshotSpecs`, but carrying per-node identity (for undo/redo). */
 export function snapshotIdentified(store: Store): NodeSpec[] {
   return store.nodes.map((n) => ({
-    uid: n.uid, x: n.x, y: n.y, r: n.r, hex: n.hex, shape: n.shape, rot: n.rot, pts: copyPts(n.pts), soft: n.soft, opac: n.opac,
+    uid: n.uid, x: n.x, y: n.y, r: n.r, hex: n.hex, shape: n.shape, rot: n.rot, pts: copyPts(n.pts), ...specFlags(n), soft: n.soft, opac: n.opac,
     lock: n.lock, hide: n.hide,
   }));
 }
@@ -263,6 +289,7 @@ function applyShape(n: NodeState, s: NodeSpec): void {
   n.shape = s.shape ?? 'circle';
   n.rot = s.rot ?? 0;
   n.pts = n.shape === 'stroke' ? copyPts(s.pts) : [];
+  Object.assign(n, pathFlags(s));
   n.soft = Math.min(1, Math.max(0, s.soft ?? defaultSoft(n.shape)));
   n.opac = clamp01(s.opac ?? 1);
   n.lock = !!s.lock;

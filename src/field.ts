@@ -1,5 +1,5 @@
 import { labToHex, sampleField } from './color';
-import { distToPolyline } from './geom';
+import { distToPolyline, insidePolyline, strokePath } from './geom';
 import { MAX_NODES, type Dim, type NodeState, type Shape, type Store } from './store';
 
 /** Fixed per-shape aspect (no UI for it). */
@@ -27,7 +27,11 @@ export function nodeQ(n: NodeState, px: number, py: number, dim: Dim, target = f
   const cx = (target ? n.x : n.dx) * dim.w;
   const cy = (target ? n.y : n.dy) * dim.h;
   const r = Math.max(1e-3, (target ? n.r : n.dr) * dim.min);
-  if (n.shape === 'stroke') return distToPolyline(n.pts, px, py, cx, cy, dim.min) / r;
+  if (n.shape === 'stroke') {
+    const path = strokePath(n.pts, n);
+    if (n.fill && insidePolyline(path, px, py, cx, cy, dim.min)) return 0;
+    return distToPolyline(path, px, py, cx, cy, dim.min) / r;
+  }
   const rot = target ? n.rot : n.drot;
   const dx = px - cx;
   const dy = py - cy;
@@ -141,15 +145,17 @@ export function packField(store: Store, dim: Dim, buf: FieldBuffers, target = fa
     buf.positions[i * 2 + 1] = cy;
     buf.radii[i] = (target ? n.r : n.dr) * dim.min;
     buf.lab.set(target ? n.labTo : n.lab, i * 3);
-    buf.shape[i] = SHAPE_ID[n.shape];
+    // A filled loop is its own shader shape (5): the stroke's distance, zero inside.
+    buf.shape[i] = n.shape === 'stroke' && n.fill ? 5 : SHAPE_ID[n.shape];
     buf.rot[i] = target ? n.rot : n.drot;
     buf.soft[i] = target ? n.soft : n.dsoft;
     buf.opac[i] = target ? n.opac : n.dopac;
-    const np = n.shape === 'stroke' ? Math.min(MAX_PTS, n.pts.length) : 0;
+    const path = n.shape === 'stroke' ? strokePath(n.pts, n) : n.pts;
+    const np = n.shape === 'stroke' ? Math.min(MAX_PTS, path.length) : 0;
     buf.npts[i] = np;
     for (let k = 0; k < np; k++) {
-      const x = cx + n.pts[k][0] * dim.min;
-      const y = cy + n.pts[k][1] * dim.min;
+      const x = cx + path[k][0] * dim.min;
+      const y = cy + path[k][1] * dim.min;
       const vx = pack16((x / dim.w - PACK_LO) / PACK_SPAN);
       const vy = pack16((y / dim.h - PACK_LO) / PACK_SPAN);
       const o = (i * MAX_PTS + k) * 4;

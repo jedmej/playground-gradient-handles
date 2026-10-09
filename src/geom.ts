@@ -93,3 +93,70 @@ export function centroid(points: Pt[]): Pt {
   const my = points.reduce((a, p) => a + p[1], 0) / points.length;
   return [mx, my];
 }
+
+/** The geometry flags of a stroke node: a closed loop, filled inside, drawn as a smooth curve through its anchors. */
+export interface PathFlags {
+  closed?: boolean;
+  fill?: boolean;
+  smooth?: boolean;
+}
+
+/** Points a stroke may hand the shader (the point texture is 64 wide). */
+const PATH_MAX = 64;
+const pathCache = new WeakMap<Pt[], { key: string; out: Pt[] }>();
+
+/**
+ * The polyline a stroke actually draws: its anchors, closed back to the first one when `closed`, and through a
+ * uniform Catmull–Rom curve when `smooth` (as many subdivisions as fit in 64 points). Pencil strokes come back as is.
+ * Cached per anchor array, so callers must replace `pts` (never mutate it) when the anchors change.
+ */
+export function strokePath(pts: Pt[], f: PathFlags): Pt[] {
+  const closed = !!f.closed && pts.length > 2;
+  const smooth = !!f.smooth && pts.length > 2;
+  if (!closed && !smooth) return pts;
+  const key = `${+closed}${+smooth}`;
+  const hit = pathCache.get(pts);
+  if (hit && hit.key === key) return hit.out;
+  const n = pts.length;
+  let out: Pt[];
+  if (!smooth) {
+    out = [...pts, pts[0]];
+  } else {
+    const segs = closed ? n : n - 1;
+    const sub = Math.max(1, Math.min(10, Math.floor((PATH_MAX - 1) / segs)));
+    const at = (k: number): Pt => (closed ? pts[((k % n) + n) % n] : pts[Math.min(n - 1, Math.max(0, k))]);
+    out = [];
+    for (let k = 0; k < segs; k++) {
+      const p0 = at(k - 1);
+      const p1 = at(k);
+      const p2 = at(k + 1);
+      const p3 = at(k + 2);
+      for (let j = 0; j < sub; j++) out.push(catmull(p0, p1, p2, p3, j / sub));
+    }
+    out.push(closed ? [pts[0][0], pts[0][1]] : [pts[n - 1][0], pts[n - 1][1]]);
+  }
+  pathCache.set(pts, { key, out });
+  return out;
+}
+
+/** Uniform Catmull–Rom between p1 and p2 at t. */
+export function catmull(p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const f = (a: number, b: number, c: number, d: number): number =>
+    0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (3 * b - a - 3 * c + d) * t3);
+  return [f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])];
+}
+
+/** Even–odd point-in-polygon for a closed polyline in offset units (same placement rule as `distToPolyline`). */
+export function insidePolyline(pts: Pt[], px: number, py: number, ox = 0, oy = 0, scale = 1): boolean {
+  let inside = false;
+  for (let k = 0, j = pts.length - 1; k < pts.length; j = k++) {
+    const ax = ox + pts[j][0] * scale;
+    const ay = oy + pts[j][1] * scale;
+    const bx = ox + pts[k][0] * scale;
+    const by = oy + pts[k][1] * scale;
+    if (ay > py !== by > py && px < ((bx - ax) * (py - ay)) / (by - ay) + ax) inside = !inside;
+  }
+  return inside;
+}

@@ -206,7 +206,7 @@ export class Output {
     dlg.className = 'code-dlg';
     dlg.setAttribute('aria-labelledby', 'code-title');
     dlg.innerHTML =
-      `<div class="code-head"><h2 id="code-title">CODE EXPORT <span class="dim">// GRADIENT HANDLES</span></h2>` +
+      `<div class="code-head"><h2 id="code-title">CODE EXPORT <span class="dim">// GRADIENTLABS</span></h2>` +
       `<button type="button" class="mini code-close" data-action="code-close" aria-label="Close"><span class="mini-l">CLOSE</span> <b>[×]</b></button></div>` +
       `<div class="code-tabs" role="tablist" aria-label="Format">` +
       TABS.map((t) => `<button type="button" class="code-tab" role="tab" id="code-tab-${t.id}" data-code-tab="${t.id}" aria-controls="code-panel">${t.label}</button>`).join('') +

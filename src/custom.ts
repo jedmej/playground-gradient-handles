@@ -3,7 +3,7 @@ import { copyFx, FX_DEFAULT, parseFx, type FxState } from './fx';
 import type { Preset } from './presets';
 import { SHAPES } from './field';
 import { parseCustomSize, parseWallpaper, type CustomSize, type WallpaperId } from './wallpaper';
-import { copyPts, defaultSoft, MAX_NODES, MIN_NODES, R_MAX, R_MIN, SLOT_COUNT, slotSerial, type NodeSpec, type Shape } from './store';
+import { copyPts, defaultSoft, pathFlags, MAX_NODES, MIN_NODES, R_MAX, R_MIN, SLOT_COUNT, slotSerial, type NodeSpec, type Shape } from './store';
 
 /** The pre-v6 single CS-06 slot. Still read (once) to migrate into the library; never written or removed. */
 export const CUSTOM_KEY = 'gh.custom.v1';
@@ -30,7 +30,7 @@ export function customPreset(nodes: NodeSpec[], fx?: FxState, slot = 0): Preset 
       const opac = n.opac !== undefined && n.opac < 0.9999 ? n.opac : undefined;
       const lock = n.lock ? true : undefined;
       const hide = n.hide ? true : undefined;
-      if (n.shape && n.shape !== 'circle') return { shape: n.shape, rot: n.rot ?? 0, pts: copyPts(n.pts), soft, opac, lock, hide };
+      if (n.shape && n.shape !== 'circle') return { shape: n.shape, rot: n.rot ?? 0, pts: copyPts(n.pts), ...pathFlags(n), soft, opac, lock, hide };
       return soft !== undefined || opac !== undefined || lock || hide ? { soft, opac, lock, hide } : undefined;
     }),
     ...(fx ? { fx: copyFx(fx) } : {}),
@@ -46,7 +46,13 @@ export function serialise(n: NodeSpec): Record<string, unknown> {
   if (n.opac !== undefined && n.opac < 0.9999) o.opac = round4(n.opac);
   if (n.lock) o.lock = true;
   if (n.hide) o.hide = true;
-  if (n.shape === 'stroke') o.pts = (n.pts ?? []).map((p) => [round4(p[0]), round4(p[1])]);
+  if (n.shape === 'stroke') {
+    o.pts = (n.pts ?? []).map((p) => [round4(p[0]), round4(p[1])]);
+    const f = pathFlags(n);
+    if (f.closed) o.closed = true;
+    if (f.fill) o.fill = true;
+    if (f.smooth) o.smooth = true;
+  }
   return o;
 }
 
@@ -96,6 +102,9 @@ export function parseDoc(data: unknown): Doc | null {
         if (!pts) continue; // a stroke without a usable polyline is meaningless
         spec.shape = 'stroke';
         spec.pts = pts;
+        if (n.closed === true) spec.closed = true;
+        if (n.closed === true && n.fill === true) spec.fill = true;
+        if (n.smooth === true) spec.smooth = true;
       } else if (shape !== 'circle') {
         spec.shape = shape;
         spec.rot = typeof n.rot === 'number' && Number.isFinite(n.rot) ? n.rot : 0;

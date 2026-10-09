@@ -6,6 +6,10 @@ export interface ShapeExtra {
   shape?: Shape;
   rot?: number;
   pts?: [number, number][];
+  /** Stroke path flags, only when set (see NodeState). */
+  closed?: boolean;
+  fill?: boolean;
+  smooth?: boolean;
   /** Softness, only when it differs from the shape's default. */
   soft?: number;
   /** Opacity, only when below 100 %. */

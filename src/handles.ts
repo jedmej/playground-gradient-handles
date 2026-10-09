@@ -4,7 +4,8 @@ import { colorStateOf, createColorPage, layoutColorPage, renderColorPage, withAx
 import type { Actions } from './actions';
 import type { History } from './history';
 import { BODY_Q, nodeQ, outlinePoints } from './field';
-import { centroid, distToPolyline, pathLength, rdp, simplifyTo, type Pt } from './geom';
+import { catmull, centroid, distToPolyline, insidePolyline, pathLength, rdp, simplifyTo, strokePath, type Pt } from './geom';
+import { DRAW_LABEL, draw, extent, onDrawChange, shapeGeom, type DrawKind } from './drawtools';
 import { BoardMenu, NodeMenu } from './menu';
 import { endPlace, placeNode } from './tools';
 import {
@@ -15,7 +16,6 @@ import {
   R_MAX,
   R_MIN,
   removeNodeAt,
-  STROKE_RADIUS,
   tweenNodeTo,
   type NodeState,
   type Store,
@@ -52,6 +52,10 @@ const HOLD_C = TAU * HOLD_R;
 const DRAW_STEP = 2;
 const DRAW_MIN_LEN = 12;
 const DRAW_LIVE_PTS = 64;
+/** Shapes: the smallest drag that still makes one (px). */
+const SHAPE_MIN = 8;
+/** Point editing: strokes with at most this many anchors show them (a long pencil stroke would be a wall of dots). */
+const VTX_MAX = 32;
 
 interface NodeView {
   uid: number;
@@ -192,11 +196,23 @@ export class Handles {
   private coreDown: { uid: number; x: number; y: number; moved: boolean } | null = null;
   /** Touch: the node the current first finger deselected on empty field (pinch may still want it). */
   private pinchRestore: { uid: number; t: number } | null = null;
-  /** The stroke being drawn: the provisional node's uid and the raw sampled path (stage px). */
-  private stroke: { uid: number; raw: Pt[] } | null = null;
+  /**
+   * The stroke being drawn: the provisional node's uid and the raw sampled path (stage px). Shape tools keep the press
+   * point `a`, the pointer `b` and the modifiers, and re-make their anchors from those on every change.
+   */
+  private stroke: { uid: number; raw: Pt[]; kind: DrawKind; a: Pt; b: Pt; shift: boolean; alt: boolean } | null = null;
+  /** Point editing on the selected stroke: the anchor (or edge, for `mid`) under the last pick, the anchor being dragged. */
+  private vtxHit = -1;
+  private vtxDrag = -1;
+  /** The anchor last pressed (Delete removes it rather than the node), by node identity. */
+  private vtxActive: { uid: number; k: number } | null = null;
+  private vtxLastTap: { t: number; uid: number; k: number } | null = null;
+  private vtxG: SVGGElement;
+  private vtxKey = '';
   private guide: SVGGElement;
   private guideHalo: SVGPolylineElement;
   private guideInk: SVGPolylineElement;
+  private guideMark: SVGPathElement;
   private lastTap: { t: number; x: number; y: number } | null = null;
   /** True while a pointer is over (or captured by) the stage. */
   pointerInside = false;
@@ -246,10 +262,40 @@ export class Handles {
     // Live guide while drawing: thin ink over a halo, hidden otherwise.
     this.guideHalo = el('polyline', { class: 'halo' });
     this.guideInk = el('polyline', { class: 'ink' });
+    this.guideMark = el('path', { class: 'ink draw-anchor' });
     this.guide = el('g', { id: 'draw-guide', visibility: 'hidden' });
-    this.guide.append(this.guideHalo, this.guideInk);
+    this.guide.append(this.guideHalo, this.guideInk, this.guideMark);
     svg.appendChild(this.guide);
     store.cancelDraw = () => this.cancelStroke();
+    // Point editing: anchor squares and edge (+) marks of the selected stroke, over everything else.
+    this.vtxG = el('g', { class: 'vtx-layer' });
+    svg.appendChild(this.vtxG);
+    // Tray changes (star points / spikes) and ⇧ / ⌥ re-make the shape being dragged.
+    onDrawChange(() => this.relayoutShape());
+    const mods = (e: KeyboardEvent): void => {
+      const st = this.stroke;
+      if (!st || st.kind === 'pencil' || (e.key !== 'Shift' && e.key !== 'Alt')) return;
+      st.shift = e.shiftKey;
+      st.alt = e.altKey;
+      this.relayoutShape();
+    };
+    window.addEventListener('keydown', mods);
+    window.addEventListener('keyup', mods);
+    // Delete / Backspace with an anchor picked removes that point, not the node (capture: before the global shortcut).
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if ((e.key !== 'Delete' && e.key !== 'Backspace') || e.metaKey || e.ctrlKey || e.altKey) return;
+        const t = e.target as HTMLElement | null;
+        if (t?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+        const i = this.activeVtxNode();
+        if (i < 0) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this.deleteVertex(i, this.vtxActive!.k);
+      },
+      { capture: true },
+    );
 
     this.syncViews();
     store.listeners.add(() => this.syncViews());
@@ -587,8 +633,16 @@ export class Handles {
   }
 
   /** Grab-zone priority: core → ROT dial / OPAC / SOFT gauges → revealed ring band → shape/stroke body → nothing. Nearest wins. */
-  private pick(x: number, y: number): { kind: 'node' | 'soft' | 'rot' | 'opac' | 'hue' | 'sat' | 'lum' | 'ring' | 'body' | 'none'; index: number } {
+  private pick(x: number, y: number): { kind: 'node' | 'soft' | 'rot' | 'opac' | 'hue' | 'sat' | 'lum' | 'ring' | 'body' | 'vtx' | 'mid' | 'none'; index: number } {
     const { core, band } = this.hitSizes();
+    const vi = this.store.selected;
+    if (vi !== null && this.vtxShown(vi)) {
+      const v = this.vertexAt(vi, x, y);
+      if (v) {
+        this.vtxHit = v.k;
+        return { kind: v.mid ? 'mid' : 'vtx', index: vi };
+      }
+    }
     let best = -1;
     let bestD = Infinity;
     for (let i = 0; i < this.store.nodes.length; i++) {
@@ -665,7 +719,9 @@ export class Handles {
       const p = this.px(i);
       let score: number;
       if (n.shape === 'stroke') {
-        const d = distToPolyline(n.pts, x, y, p.x, p.y, m.min);
+        const path = strokePath(n.pts, n);
+        // A filled loop is grabbable anywhere inside it, ranked as if on its outline.
+        const d = n.fill && insidePolyline(path, x, y, p.x, p.y, m.min) ? 0 : distToPolyline(path, x, y, p.x, p.y, m.min);
         if (d > Math.max(this.store.coarse ? 24 : 16, BODY_Q * p.r)) continue;
         score = d;
       } else {
@@ -689,16 +745,17 @@ export class Handles {
     return st ? this.store.nodes.findIndex((n) => n.uid === st.uid) : -1;
   }
 
-  /** Write an absolute polyline (stage px) into a stroke node: centroid → x/y, offsets → pts. */
-  private setPolyline(n: NodeState, abs: Pt[]): void {
+  /** Write an absolute polyline (stage px) into a stroke node: centroid (or `centre`) → x/y, offsets → pts. */
+  private setPolyline(n: NodeState, abs: Pt[], centre?: Pt): void {
     const m = this.metrics;
-    const c = centroid(abs);
+    const c = centre ?? centroid(abs);
     n.x = n.dx = c[0] / m.w;
     n.y = n.dy = c[1] / m.h;
     n.pts = abs.map((p) => [(p[0] - c[0]) / m.min, (p[1] - c[1]) / m.min]);
   }
 
-  private drawGuide(raw: Pt[] | null): void {
+  /** The guide over a stroke being drawn: its path, plus small anchor ticks for the shape tools. */
+  private drawGuide(raw: Pt[] | null, anchors: Pt[] = []): void {
     if (!raw) {
       this.guide.setAttribute('visibility', 'hidden');
       return;
@@ -706,19 +763,25 @@ export class Handles {
     const pts = raw.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
     this.guideHalo.setAttribute('points', pts);
     this.guideInk.setAttribute('points', pts);
+    this.guideMark.setAttribute('d', anchors.map((p) => `M${(p[0] - 2).toFixed(1)} ${(p[1] - 2).toFixed(1)}h4v4h-4z`).join(''));
     this.guide.setAttribute('visibility', 'visible');
   }
 
-  private startStroke(x: number, y: number): boolean {
+  private startStroke(x: number, y: number, e: PointerEvent): boolean {
     const s = this.store;
     if (s.nodes.length >= MAX_NODES) {
       s.say(`NODE LIMIT ${MAX_NODES}`);
       return false;
     }
     const m = this.metrics;
+    const kind = draw.kind;
+    const shape = kind !== 'pencil';
     this.history.begin();
-    const i = addNode(s, { x: x / m.w, y: y / m.h, r: STROKE_RADIUS, hex: s.drawColor, shape: 'stroke', pts: [[0, 0]] });
-    this.stroke = { uid: s.nodes[i].uid, raw: [[x, y]] };
+    const i = addNode(s, {
+      x: x / m.w, y: y / m.h, r: draw.weight, hex: s.drawColor, shape: 'stroke', pts: [[0, 0]],
+      ...(shape && kind !== 'line' ? { closed: true, fill: draw.fill, smooth: kind === 'ellipse' } : {}),
+    });
+    this.stroke = { uid: s.nodes[i].uid, raw: [[x, y]], kind, a: [x, y], b: [x, y], shift: e.shiftKey, alt: e.altKey };
     s.drawing = true;
     s.hover = { kind: 'idle', index: -1 };
     this.drawGuide(this.stroke.raw);
@@ -731,6 +794,14 @@ export class Handles {
     const i = this.strokeIndex();
     if (!st || i < 0) return;
     const m = this.metrics;
+    if (st.kind !== 'pencil') {
+      // Shapes may run off the stage a little (a circle against the edge); the field just clips them.
+      st.b = [e.clientX - m.left, e.clientY - m.top];
+      st.shift = e.shiftKey;
+      st.alt = e.altKey;
+      this.relayoutShape();
+      return;
+    }
     const evs = e.getCoalescedEvents?.() ?? [];
     let grew = false;
     for (const ev of evs.length ? evs : [e]) {
@@ -748,6 +819,27 @@ export class Handles {
     this.setPolyline(this.store.nodes[i], live);
     this.drawGuide(st.raw);
     this.store.say(`DRAW · ${String(live.length).padStart(2, '0')} PTS`);
+  }
+
+  /** Re-make the anchors of the shape being dragged (pointer, modifiers or tray changed). */
+  private relayoutShape(): void {
+    const st = this.stroke;
+    const i = this.strokeIndex();
+    if (!st || i < 0 || st.kind === 'pencil') return;
+    const n = this.store.nodes[i];
+    const g = shapeGeom(st.kind, st.a, st.b, st.shift, st.alt);
+    this.setPolyline(n, g.anchors, g.centre);
+    // The star tool can switch between a polygon and a star mid-drag; the loop flags follow the geometry.
+    n.closed = g.closed;
+    n.smooth = g.smooth;
+    n.fill = g.closed && draw.fill;
+    const m = this.metrics;
+    const path = strokePath(n.pts, n).map((p): Pt => [g.centre[0] + p[0] * m.min, g.centre[1] + p[1] * m.min]);
+    this.drawGuide(path, g.anchors);
+    const w = Math.abs(st.b[0] - st.a[0]);
+    const h = Math.abs(st.b[1] - st.a[1]);
+    const size = st.kind === 'star' ? `R ${Math.round(Math.hypot(w, h))}` : st.kind === 'line' ? `${Math.round(Math.hypot(w, h))} PX` : `${Math.round(w)}×${Math.round(h)}`;
+    this.store.say(`${DRAW_LABEL[st.kind]} · ${size}${st.kind === 'star' ? ` · ${draw.points} PTS` : ''}`);
   }
 
   /** Remove the provisional node and forget the gesture (no undo step). */
@@ -775,21 +867,188 @@ export class Handles {
       this.cancelStroke();
       return;
     }
-    if (pathLength(st.raw) < DRAW_MIN_LEN) {
-      this.cancelStroke('STROKE TOO SHORT');
+    const n = s.nodes[i];
+    if (st.kind === 'pencil') {
+      if (pathLength(st.raw) < DRAW_MIN_LEN) {
+        this.cancelStroke('STROKE TOO SHORT');
+        return;
+      }
+      this.setPolyline(n, simplifyTo(st.raw, DRAW_LIVE_PTS));
+    } else if (extent(n.pts) * this.metrics.min < SHAPE_MIN) {
+      this.cancelStroke(`${DRAW_LABEL[st.kind]} TOO SMALL`);
       return;
     }
-    const n = s.nodes[i];
-    this.setPolyline(n, simplifyTo(st.raw, DRAW_LIVE_PTS));
     this.stroke = null;
     this.drawGuide(null);
     s.drawing = false;
     s.selected = i;
     s.armed = i;
     this.history.commit(`DRAW ${nodeSerial(i)}`, true);
-    // One stroke per activation: back to editing, where the stroke is now a grabbable body.
+    // One stroke per activation: back to editing, where the stroke is now a grabbable body (and its anchors editable).
     this.actions.setDraw(false);
-    s.say(`Drew ${nodeSerial(i)} · ${String(n.pts.length).padStart(2, '0')} pts`);
+    const what = st.kind === 'pencil' ? 'stroke' : DRAW_LABEL[st.kind].toLowerCase();
+    s.say(`Drew ${nodeSerial(i)} · ${what} · ${String(n.pts.length).padStart(2, '0')} pts`);
+  }
+
+  // ----- point editing --------------------------------------------------------
+
+  /** Does the selected stroke `i` show its anchors? Edit tool, unlocked, few enough points. */
+  private vtxShown(i: number): boolean {
+    const n = this.store.nodes[i];
+    return !!n && n.shape === 'stroke' && this.store.tool === 'edit' && !this.store.drawing && !n.lock && !n.hide && n.pts.length >= 2 && n.pts.length <= VTX_MAX;
+  }
+
+  /** Anchor k of node i, in stage px (display position). */
+  private anchorPx(i: number, k: number): Pt {
+    const n = this.store.nodes[i];
+    const m = this.metrics;
+    return [n.dx * m.w + n.pts[k][0] * m.min, n.dy * m.h + n.pts[k][1] * m.min];
+  }
+
+  /** Where a new point on edge k (anchor k → k+1) goes: the chord's middle, or the curve's for a smooth loop. Offset units. */
+  private edgeMid(n: NodeState, k: number): Pt {
+    const len = n.pts.length;
+    const at = (j: number): Pt => (n.closed ? n.pts[((j % len) + len) % len] : n.pts[Math.min(len - 1, Math.max(0, j))]);
+    if (n.smooth && len > 2) return catmull(at(k - 1), at(k), at(k + 1), at(k + 2), 0.5);
+    const a = at(k);
+    const b = at(k + 1);
+    return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  }
+
+  private edgeCount(n: NodeState): number {
+    return n.closed ? n.pts.length : n.pts.length - 1;
+  }
+
+  /** The anchor (or, failing that, the edge + mark) of node i under (x, y). The node's own core wins over an edge mark. */
+  private vertexAt(i: number, x: number, y: number): { k: number; mid: boolean } | null {
+    const n = this.store.nodes[i];
+    const m = this.metrics;
+    const reach = this.store.coarse ? 18 : 8;
+    let bk = -1;
+    let bd = reach;
+    for (let k = 0; k < n.pts.length; k++) {
+      const p = this.anchorPx(i, k);
+      const d = Math.hypot(x - p[0], y - p[1]);
+      if (d <= bd) {
+        bd = d;
+        bk = k;
+      }
+    }
+    if (bk >= 0) return { k: bk, mid: false };
+    if (n.pts.length >= VTX_MAX) return null;
+    const c = this.px(i);
+    if (Math.hypot(x - c.x, y - c.y) <= this.hitSizes().core) return null;
+    const midReach = this.store.coarse ? 16 : 7;
+    bd = midReach;
+    for (let k = 0; k < this.edgeCount(n); k++) {
+      const q = this.edgeMid(n, k);
+      const d = Math.hypot(x - (c.x + q[0] * m.min), y - (c.y + q[1] * m.min));
+      if (d <= bd) {
+        bd = d;
+        bk = k;
+      }
+    }
+    return bk >= 0 ? { k: bk, mid: true } : null;
+  }
+
+  /** Index of the node whose anchor Delete would remove, or −1. */
+  private activeVtxNode(): number {
+    const a = this.vtxActive;
+    const sel = this.store.selected;
+    if (!a || sel === null || this.store.nodes[sel]?.uid !== a.uid || !this.vtxShown(sel)) return -1;
+    return a.k < this.store.nodes[sel].pts.length ? sel : -1;
+  }
+
+  /** Remove anchor k of node i (a loop keeps at least 3, a line 2), as its own undo step. */
+  private deleteVertex(i: number, k: number): void {
+    const s = this.store;
+    const n = s.nodes[i];
+    const min = n.closed ? 3 : 2;
+    if (n.pts.length <= min) {
+      s.say(`${nodeSerial(i)} · ${min} POINTS MINIMUM`);
+      return;
+    }
+    this.history.mark(`DELETE POINT ${nodeSerial(i)}`);
+    n.pts = n.pts.filter((_, j) => j !== k);
+    this.recentre(n);
+    this.vtxActive = null;
+    s.modified = true;
+    s.say(`${nodeSerial(i)} · POINT REMOVED · ${String(n.pts.length).padStart(2, '0')} PTS`);
+    emit(s);
+  }
+
+  /** Put the node's core back in the middle of its anchors' box (after an edit moved them), without moving the path. */
+  private recentre(n: NodeState): void {
+    const m = this.metrics;
+    let l = Infinity, r = -Infinity, t = Infinity, b = -Infinity;
+    for (const p of n.pts) {
+      l = Math.min(l, p[0]);
+      r = Math.max(r, p[0]);
+      t = Math.min(t, p[1]);
+      b = Math.max(b, p[1]);
+    }
+    const ox = (l + r) / 2;
+    const oy = (t + b) / 2;
+    if (Math.abs(ox) < 1e-6 && Math.abs(oy) < 1e-6) return;
+    n.pts = n.pts.map((p) => [p[0] - ox, p[1] - oy]);
+    n.x += (ox * m.min) / m.w;
+    n.y += (oy * m.min) / m.h;
+    n.dx += (ox * m.min) / m.w;
+    n.dy += (oy * m.min) / m.h;
+  }
+
+  /** Move anchor k of node i to stage point (x, y). A new array each time: path caches key on its identity. */
+  private moveVertex(i: number, k: number, x: number, y: number): void {
+    const n = this.store.nodes[i];
+    const m = this.metrics;
+    const px = Math.min(m.w, Math.max(0, x));
+    const py = Math.min(m.h, Math.max(0, y));
+    const next = n.pts.slice();
+    next[k] = [(px - n.x * m.w) / m.min, (py - n.y * m.h) / m.min];
+    n.pts = next;
+  }
+
+  /** Anchor squares + edge marks of the selected stroke; rebuilt only when what they show changes. */
+  private drawVertices(): void {
+    const s = this.store;
+    const i = s.selected;
+    const show = i !== null && this.vtxShown(i) && (s.drag.kind === 'none' || s.drag.kind === 'vtx');
+    if (!show) {
+      if (this.vtxKey !== '') {
+        this.vtxKey = '';
+        this.vtxG.replaceChildren();
+      }
+      return;
+    }
+    const n = s.nodes[i];
+    const m = this.metrics;
+    const hovK = s.hover.index === i && (s.hover.kind === 'vtx' || s.hover.kind === 'mid') ? this.vtxHit : -1;
+    const act = this.vtxDrag >= 0 ? this.vtxDrag : this.vtxActive && this.vtxActive.uid === n.uid ? this.vtxActive.k : -1;
+    const key = `${n.uid}|${n.dx.toFixed(4)}|${n.dy.toFixed(4)}|${m.min}|${s.hover.kind}|${hovK}|${act}|${n.pts.map((p) => `${p[0].toFixed(4)},${p[1].toFixed(4)}`).join(';')}`;
+    if (key === this.vtxKey) return;
+    this.vtxKey = key;
+    const cx = n.dx * m.w;
+    const cy = n.dy * m.h;
+    const parts: SVGElement[] = [];
+    if (n.pts.length < VTX_MAX && s.drag.kind === 'none') {
+      for (let k = 0; k < this.edgeCount(n); k++) {
+        const q = this.edgeMid(n, k);
+        const x = cx + q[0] * m.min;
+        const y = cy + q[1] * m.min;
+        const on = s.hover.kind === 'mid' && hovK === k;
+        const d = `M${(x - 3).toFixed(1)} ${y.toFixed(1)}h6M${x.toFixed(1)} ${(y - 3).toFixed(1)}v6`;
+        parts.push(el('path', { class: 'halo vtx-mid', d }), el('path', { class: `ink vtx-mid${on ? ' is-hot' : ''}`, d }));
+      }
+    }
+    n.pts.forEach((p, k) => {
+      const x = cx + p[0] * m.min;
+      const y = cy + p[1] * m.min;
+      const on = k === act || (s.hover.kind === 'vtx' && hovK === k);
+      const sz = on ? 9 : 7;
+      const a = { x: (x - sz / 2).toFixed(1), y: (y - sz / 2).toFixed(1), width: sz, height: sz };
+      parts.push(el('rect', { class: 'halo vtx-sq', ...a }), el('rect', { class: `ink vtx-sq${on ? ' is-hot' : ''}`, ...a }));
+    });
+    this.vtxG.replaceChildren(...parts);
   }
 
   private local(e: PointerEvent): { x: number; y: number } {
@@ -832,7 +1091,7 @@ export class Handles {
       e.preventDefault();
       if (!e.isPrimary || s.drawing) return;
       this.lastTap = null;
-      if (!this.startStroke(x, y)) return;
+      if (!this.startStroke(x, y, e)) return;
       this.pointerId = e.pointerId;
       this.stage.setPointerCapture(e.pointerId);
       return;
@@ -844,6 +1103,44 @@ export class Handles {
     e.preventDefault();
 
     const wasSelected = s.selected;
+    if (res.kind !== 'vtx') this.vtxActive = null;
+    if (res.kind === 'vtx' || res.kind === 'mid') {
+      const i = res.index;
+      const n = s.nodes[i];
+      let k = this.vtxHit;
+      this.lastTap = null;
+      if (res.kind === 'vtx') {
+        // ⌥-click or a double-click on an anchor removes it.
+        const t = performance.now();
+        const lt = this.vtxLastTap;
+        const dbl = !!lt && lt.uid === n.uid && lt.k === k && t - lt.t < CLICK_MS;
+        this.vtxLastTap = { t, uid: n.uid, k };
+        if (e.altKey || dbl) {
+          this.vtxLastTap = null;
+          this.pointerId = null;
+          if (this.stage.hasPointerCapture(e.pointerId)) this.stage.releasePointerCapture(e.pointerId);
+          this.deleteVertex(i, k);
+          return;
+        }
+        this.history.begin();
+      } else {
+        // A press on an edge mark inserts a point there and drags it straight away.
+        this.history.begin();
+        const q = this.edgeMid(n, k);
+        k += 1;
+        const next = n.pts.slice();
+        next.splice(k, 0, q);
+        n.pts = next;
+        this.vtxLastTap = null;
+      }
+      this.vtxDrag = k;
+      this.vtxActive = { uid: n.uid, k };
+      s.drag = { kind: 'vtx', index: i };
+      s.hover = { kind: 'vtx', index: i };
+      this.vtxHit = k;
+      emit(s);
+      return;
+    }
     if (res.index >= 0 && s.nodes[res.index]?.lock) {
       // LOCK: the node can be selected (and, on touch, held for its menu) but never grabbed.
       const li = res.index;
@@ -979,6 +1276,10 @@ export class Handles {
       if (e.pointerId === this.pointerId) this.extendStroke(e);
       return;
     }
+    if (s.drag.kind === 'vtx') {
+      if (this.vtxDrag >= 0) this.moveVertex(s.drag.index, this.vtxDrag, x, y);
+      return;
+    }
     if (s.drag.kind === 'node') {
       const n = s.nodes[s.drag.index];
       if (!n) return;
@@ -1090,9 +1391,12 @@ export class Handles {
       }
       return;
     }
+    const prevHit = this.vtxHit;
     const res = this.pick(x, y);
     const prev = s.hover;
-    if (res.kind === 'node') {
+    if (res.kind === 'vtx' || res.kind === 'mid') {
+      s.hover = { kind: res.kind, index: res.index };
+    } else if (res.kind === 'node') {
       s.hover = { kind: 'node', index: res.index };
       s.armed = res.index;
     } else if (res.kind === 'body') {
@@ -1134,7 +1438,7 @@ export class Handles {
         this.flash = null;
       }
     }
-    if (prev.kind !== s.hover.kind || prev.index !== s.hover.index) emit(s);
+    if (prev.kind !== s.hover.kind || prev.index !== s.hover.index || ((s.hover.kind === 'vtx' || s.hover.kind === 'mid') && prevHit !== this.vtxHit)) emit(s);
   }
 
   private applyRadius(i: number, x: number, y: number): void {
@@ -1166,6 +1470,12 @@ export class Handles {
     if (s.drawing) {
       if (e.type === 'pointercancel') this.cancelStroke('STROKE CANCELLED');
       else this.finishStroke();
+    } else if (s.drag.kind === 'vtx' && s.drag.index < s.nodes.length) {
+      const n = s.nodes[s.drag.index];
+      this.recentre(n);
+      this.vtxDrag = -1;
+      s.modified = true;
+      this.history.commit(this.dragLabel());
     } else if (s.drag.kind !== 'none' && s.drag.index < s.nodes.length) {
       this.history.commit(this.dragLabel());
     } else {
@@ -1197,7 +1507,7 @@ export class Handles {
   /** Undo label of the drag in progress. */
   private dragLabel(): string {
     const { kind, index } = this.store.drag;
-    return `${kind === 'ring' ? 'RADIUS' : kind === 'soft' ? 'SOFT' : kind === 'rot' ? 'ROT' : kind === 'opac' ? 'OPAC' : kind === 'hue' ? 'HUE' : kind === 'sat' ? 'SAT' : kind === 'lum' ? 'LUM' : 'MOVE'} ${nodeSerial(index)}`;
+    return `${kind === 'vtx' ? 'POINT' : kind === 'ring' ? 'RADIUS' : kind === 'soft' ? 'SOFT' : kind === 'rot' ? 'ROT' : kind === 'opac' ? 'OPAC' : kind === 'hue' ? 'HUE' : kind === 'sat' ? 'SAT' : kind === 'lum' ? 'LUM' : 'MOVE'} ${nodeSerial(index)}`;
   }
 
   /** Long-press completed: end the drag (it moved at most a few px) and open the node menu beside the node. */
@@ -1480,13 +1790,13 @@ export class Handles {
     v.outG.style.opacity = op < 0.005 ? '0' : op.toFixed(3);
     if (op < 0.005) return;
     const min = this.metrics.min;
-    const key = n.shape === 'stroke' ? `s|${min.toFixed(1)}` : `${n.shape}|${rPx.toFixed(1)}|${n.drot.toFixed(3)}`;
+    const key = n.shape === 'stroke' ? `s|${min.toFixed(1)}|${+n.closed}${+n.smooth}` : `${n.shape}|${rPx.toFixed(1)}|${n.drot.toFixed(3)}`;
     if (key === v.outKey && (n.shape !== 'stroke' || v.outPts === n.pts)) return;
     v.outKey = key;
     v.outPts = n.pts;
     let d = '';
     if (n.shape === 'stroke') {
-      d = n.pts.map((p, k) => `${k ? 'L' : 'M'}${(p[0] * min).toFixed(1)} ${(p[1] * min).toFixed(1)}`).join('');
+      d = strokePath(n.pts, n).map((p, k) => `${k ? 'L' : 'M'}${(p[0] * min).toFixed(1)} ${(p[1] * min).toFixed(1)}`).join('');
     } else {
       d = outlinePoints(n.shape, rPx, n.drot).map((p, k) => `${k ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join('') + 'Z';
     }
@@ -1880,6 +2190,7 @@ export class Handles {
     } else {
       this.chipNode.classList.remove('is-on');
     }
+    this.drawVertices();
   }
 
   get pointer(): { x: number; y: number } {
