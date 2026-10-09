@@ -1,10 +1,11 @@
 import type { Actions } from './actions';
-import { renderOffscreen } from './exporter';
+import { library } from './custom';
+import { quickSize, renderOffscreen } from './exporter';
 import { extractFromFile } from './extract';
 import type { Metrics } from './handles';
 import { copyFx, type FxState } from './fx';
 import { HARMONIES, HARMONY_LABEL, makeRng, newSeed, randomSpecs, seedLabel, varyFx, varySpecs, type Harmony, type VaryAxes } from './generate';
-import { makeNode, snapshotIdentified, type NodeSpec, type Store } from './store';
+import { emit, makeNode, snapshotIdentified, type NodeSpec, type Store } from './store';
 
 const TYPING = 'input:not([type=color]):not([type=checkbox]), textarea, select, [contenteditable=""], [contenteditable="true"]';
 /** Mutation strength of the four thumbnails: gentle → bold. */
@@ -78,6 +79,9 @@ export class Explore {
   private harmBtns: HTMLButtonElement[] = [];
   private tags: HTMLElement[] = [];
   private lockBtns: HTMLButtonElement[] = [];
+  private saveBtns: HTMLButtonElement[] = [];
+  /** Takes already saved to the library (their SAVE chip stays lit). */
+  private saved = new WeakSet<object>();
   /**
    * Thumbnails the user locked (padlock, top-right), per mode: a locked take survives every roll, chip change and
    * reopen, keeping its slot and its rendered image, until it is unlocked.
@@ -240,9 +244,20 @@ export class Explore {
         '<path class="lk-open" d="M3.5 6V2H8.5V3.5"/><path class="lk-shut" d="M3.5 6V3H8.5V6"/>' +
         '<rect class="lk-bd" x="2" y="6" width="8" height="5"/><rect class="lk-key" x="5.5" y="7.6" width="1" height="1.8"/></svg>';
       lock.addEventListener('click', () => this.toggleKeep(k));
+      // SAVE (top-left): straight into the first empty library slot, without adopting the take.
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'vary-save';
+      save.dataset.varySave = String(k);
+      save.setAttribute('aria-label', `Save take ${k + 1} to the library`);
+      save.title = 'Save this take to your sets (first empty slot)';
+      save.innerHTML =
+        '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path class="sv-arrow" d="M6 1.5V7M3.5 4.5L6 7L8.5 4.5"/><path class="sv-tray" d="M1.5 7.5V10.5H10.5V7.5"/></svg>';
+      save.addEventListener('click', () => void this.saveTake(k));
       const cell = document.createElement('div');
       cell.className = 'vary-cell';
-      cell.append(b, lock);
+      cell.append(b, save, lock);
+      this.saveBtns.push(save);
       row.appendChild(cell);
       this.lockBtns.push(lock);
       this.btns.push(b);
@@ -370,7 +385,43 @@ export class Explore {
     this.store.say(`${this.mode === 'random' ? 'R' : 'V'}-${k + 1} · ${slot[k] ? 'LOCKED' : 'UNLOCKED'}`);
   }
 
+  /** SAVE chip: write take `k` to the library (first empty slot) and give the slot its own small thumbnail. */
+  private async saveTake(k: number): Promise<void> {
+    this.pinned = true;
+    const v = this.variants[k];
+    if (!v || this.btns[k].classList.contains('is-loading')) return;
+    const tag = this.tags[k].textContent ?? '';
+    const i = this.actions.saveTake(v.specs, v.fx, tag.split(' · ')[0]);
+    if (i < 0) return;
+    this.saved.add(v);
+    this.syncLocks();
+    try {
+      const s = this.store;
+      const m = this.metrics;
+      const { w, h } = quickSize(m.w, m.h, 112);
+      const copy: Store = { ...s, nodes: v.specs.map((sp) => makeNode(sp)), fx: v.fx ?? s.fx };
+      const res = await renderOffscreen(copy, m, w, h, s.reducedMotion ? 0.5 : this.now() / 1000);
+      if (!res.ok) return;
+      const url = await new Promise<string>((ok, no) => {
+        const r = new FileReader();
+        r.onload = () => ok(String(r.result));
+        r.onerror = () => no(r.error);
+        r.readAsDataURL(res.blob);
+      });
+      library.setThumb(i, library.savedAt(i), url);
+      emit(s);
+    } catch {
+      // the slot keeps its colour-chip fallback
+    }
+  }
+
   private syncLocks(): void {
+    this.saveBtns.forEach((b, k) => {
+      const v = this.variants[k];
+      const on = !!v && this.saved.has(v);
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
     this.lockBtns.forEach((b, k) => {
       const on = !!this.kept[this.mode][k];
       b.setAttribute('aria-pressed', String(on));

@@ -511,6 +511,25 @@ export class Actions {
     return i;
   }
 
+  /**
+   * Save a RANDOM / VARY take straight into the first empty library slot without adopting it: the field, the active
+   * set and the undo history are untouched. Returns the slot written, or -1 when the library is full.
+   */
+  saveTake(specs: NodeSpec[], fx: FxState | null, label: string): number {
+    const s = this.store;
+    const i = s.slots.findIndex((p) => !p);
+    if (i < 0) {
+      s.say('LIBRARY FULL — clear a slot first');
+      return -1;
+    }
+    const { preset, persisted } = library.save(i, specs, fx ?? s.fx);
+    s.slots[i] = preset;
+    if (i === 0) s.custom = preset;
+    emit(s);
+    s.say(`${label} → ${slotSerial(i)}` + (persisted ? '' : ' (this session only: storage full or blocked)'));
+    return i;
+  }
+
   /** Delete the saved set in slot `i` (default: the active slot). The field itself is left alone; if it was active it becomes CS-01 + MOD. */
   clearCustom(i = this.store.presetIndex - CUSTOM_INDEX): void {
     const s = this.store;

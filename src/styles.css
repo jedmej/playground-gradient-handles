@@ -3155,7 +3155,27 @@ html[data-drag='lum'] .stage,
   color: var(--plate-fg);
   cursor: pointer;
 }
-.vary-lock svg { display: block; }
+.vary-lock svg, .vary-save svg { display: block; }
+/* SAVE (top-left): the padlock's twin chip; lit SIGNAL once that take is in the library. */
+.vary-save {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: var(--plate);
+  outline: 1px solid var(--graphite);
+  outline-offset: -1px;
+  color: var(--plate-fg);
+  cursor: pointer;
+}
+.vary-save .sv-arrow, .vary-save .sv-tray { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: square; stroke-linejoin: miter; }
+.vary-save:hover, .vary-save:focus-visible { color: var(--signal); outline-color: var(--signal); }
+.vary-save.is-on { background: var(--signal); outline-color: var(--signal); color: var(--plate); }
 .vary-lock .lk-open, .vary-lock .lk-shut { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: square; stroke-linejoin: miter; }
 .vary-lock .lk-bd { fill: none; stroke: currentColor; stroke-width: 1.2; }
 .vary-lock .lk-key { fill: currentColor; }
@@ -3168,7 +3188,7 @@ html[data-drag='lum'] .stage,
 .vary-lock.is-on .lk-key { fill: var(--signal); }
 .vary-cell:has(.vary-lock.is-on) .vary-btn { outline: 1px solid var(--signal); outline-offset: -1px; }
 @media (pointer: coarse) {
-  .vary-lock { width: 32px; height: 32px; }
+  .vary-lock, .vary-save { width: 32px; height: 32px; }
 }
 .vary-btn {
   position: relative;
