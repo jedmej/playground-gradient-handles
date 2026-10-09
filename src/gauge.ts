@@ -81,7 +81,7 @@ export interface GaugeParts {
   tagBg: SVGRectElement;
   tagText: SVGTextElement;
   /**
-   * Value chip: a small upright plate on the gauge's arc at the current value (the label's value part: `50`, `045°`,
+   * Value chip: a small straight plate laid along the gauge's arc at the current value (the label's value part: `50`, `045°`,
    * `9 LV`). It slides round with the knob.
    */
   val: SVGGElement;
@@ -183,8 +183,8 @@ export function renderGauge(v: GaugeParts, t: number, off: boolean, label: strin
 }
 
 /**
- * The value chip: an upright plate sized to the number, centred on the arc at the value, but kept inside the sweep
- * near either end so `0` / `100` never run into the name chip.
+ * The value chip: a straight plate sized to the number, centred on the arc at the value and turned along it, but kept
+ * inside the sweep near either end so `0` / `100` never run into the name chip.
  */
 function renderValue(v: GaugeParts, t: number, value: string): void {
   if (value !== v.valLabel) {
@@ -202,5 +202,8 @@ function renderValue(v: GaugeParts, t: number, value: string): void {
   v.valBg.setAttribute('x', String(-w / 2));
   const half = Math.min(Math.PI * 0.45, w / 2 / Math.max(1, v.r));
   const a = Math.min(v.sw.a0 + v.sw.span - half, Math.max(v.sw.a0 + half, v.sw.a0 + v.sw.span * t));
-  v.val.setAttribute('transform', `translate(${(v.r * Math.cos(a)).toFixed(2)} ${(v.r * Math.sin(a)).toFixed(2)})`);
+  // Turned to the arc's tangent like the curved band was (a straight plate, laid along the arc); on the lower half it
+  // turns the other way so the number never reads upside down.
+  const deg = ((a * 180) / Math.PI) + (Math.sin(a) > 0 ? -90 : 90);
+  v.val.setAttribute('transform', `translate(${(v.r * Math.cos(a)).toFixed(2)} ${(v.r * Math.sin(a)).toFixed(2)}) rotate(${deg.toFixed(2)})`);
 }
