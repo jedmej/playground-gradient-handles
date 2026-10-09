@@ -289,7 +289,7 @@ export class Actions {
     const n = s.nodes[i];
     if (!n || n.shape === 'circle' || n.shape === 'stroke') return;
     const t = this.now();
-    if (t - this.lastRot > 700) this.history.mark(`ROTATE ${nodeSerial(i)}`);
+    if (t - this.lastRot > 700) this.history.mark(`ROT ${nodeSerial(i)}`);
     this.lastRot = t;
     const TAU = Math.PI * 2;
     n.rot = (((n.rot + (deg * Math.PI) / 180) % TAU) + TAU) % TAU;
