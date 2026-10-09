@@ -3359,3 +3359,18 @@ html[data-drag='lum'] .stage,
 @media (pointer: coarse) {
   .vary-axis { height: 36px; padding: 0 12px 0 10px; }
 }
+
+/* Value chip: a small plate riding each gauge's arc at its value (`50`, `045°`), sliding round with the knob.
+   It reads as engaged with the rest of the gauge: FLARE while magnetized, dragged or wheeled. */
+.gring .val-bg { fill: var(--plate); fill-opacity: 0.92; stroke: var(--plate-fg); stroke-opacity: 0.55; stroke-width: 1; transition: fill var(--t) var(--ease); }
+.gring .val-text {
+  font-family: var(--mono);
+  font-size: calc(var(--fx-fs, 9px) * 0.9);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  fill: var(--plate-fg);
+  stroke: none;
+  pointer-events: none;
+}
+.gring.is-hover .val-bg, .gring.is-drag .val-bg { fill: var(--flare); fill-opacity: 1; stroke: var(--flare); stroke-opacity: 1; }
+.gring.is-hover .val-text, .gring.is-drag .val-text { fill: var(--plate); }

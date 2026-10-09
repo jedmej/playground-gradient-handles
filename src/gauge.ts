@@ -59,6 +59,11 @@ export interface GaugeParts {
   tag: SVGGElement;
   tagBg: SVGRectElement;
   tagText: SVGTextElement;
+  /** Value chip riding the arc at the current value (the label's value part: `50`, `045°`, `9 LV`). */
+  val: SVGGElement;
+  valBg: SVGRectElement;
+  valText: SVGTextElement;
+  valLabel: string;
   r: number;
   sp: number;
   label: string;
@@ -74,9 +79,12 @@ export function makeGauge(cls: string): GaugeParts {
     fillH: p('halo fill'), fillI: p('ink fill'), knobH: p('halo knob'), knobI: p('ink knob'),
     tag: el('g', { class: 'fx-tag' }), tagBg: el('rect', { class: 'tag-bg', height: 14, y: -7 }),
     tagText: el('text', { class: 'tag-text', 'text-anchor': 'middle', y: 3 }),
+    val: el('g', { class: 'val' }), valBg: el('rect', { class: 'val-bg', height: 12, y: -6 }),
+    valText: el('text', { class: 'val-text', 'text-anchor': 'middle', y: 3 }), valLabel: '',
   };
   v.tag.append(v.tagBg, v.tagText);
-  g.append(v.baseH, v.baseI, v.ticksH, v.ticksI, v.fillH, v.fillI, v.knobH, v.knobI, v.tag);
+  v.val.append(v.valBg, v.valText);
+  g.append(v.baseH, v.baseI, v.ticksH, v.ticksI, v.fillH, v.fillI, v.knobH, v.knobI, v.val, v.tag);
   return v;
 }
 
@@ -100,6 +108,7 @@ export function layoutGauge(v: GaugeParts, r: number, sp: number): void {
   v.tag.setAttribute('transform', `translate(0 ${r.toFixed(1)})`);
   v.t = -1;
   v.label = '';
+  v.valLabel = '';
 }
 
 /** Value `t` (0…1; `off` hides the fill) and the chip text. Cheap when nothing changed. */
@@ -114,6 +123,19 @@ export function renderGauge(v: GaugeParts, t: number, off: boolean, label: strin
     v.knobH.setAttribute('d', k);
     v.knobI.setAttribute('d', k);
     v.g.classList.toggle('is-off', off);
+    // The value chip sits on the arc at the value, so it slides round with the knob.
+    const a = G_START + G_SPAN * t;
+    v.val.setAttribute('transform', `translate(${(v.r * Math.cos(a)).toFixed(2)} ${(v.r * Math.sin(a)).toFixed(2)})`);
+  }
+  const value = off ? '' : label.slice(label.indexOf('//') + 2).trim();
+  if (value !== v.valLabel) {
+    v.valLabel = value;
+    v.valText.textContent = value;
+    v.val.style.display = value ? '' : 'none';
+    const fs = (parseFloat(v.g.style.getPropertyValue('--fx-fs')) || 9) * 0.9;
+    const w = Math.ceil(value.length * (fs * 0.62 + fs * 0.06) + 6);
+    v.valBg.setAttribute('width', String(w));
+    v.valBg.setAttribute('x', String(-w / 2));
   }
   if (label !== v.label) {
     v.label = label;
