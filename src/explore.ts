@@ -19,6 +19,15 @@ const AXES: Array<{ key: keyof VaryAxes; label: string }> = [
   { key: 'fx', label: 'EFFECTS' },
 ];
 
+const VIEW_KEY = 'gh.vary.view.v1';
+function loadView(): boolean {
+  try {
+    return localStorage.getItem(VIEW_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 function loadAxes(): VaryAxes {
   try {
     const o = JSON.parse(localStorage.getItem(AXES_KEY) ?? 'null') as Partial<VaryAxes> | null;
@@ -55,6 +64,13 @@ export class Explore {
     random: null,
   };
   private rollBtn!: HTMLButtonElement;
+  /** VIEW: while on, hovering a thumbnail shows that take full size over the artboard (`full`), until hover away. */
+  private viewBtn!: HTMLButtonElement;
+  private viewOn = loadView();
+  private full!: HTMLImageElement;
+  /** Full-size render per take (keyed by the take itself) and the stage size it was made for. */
+  private fullCache = new WeakMap<object, { size: string; url: string }>();
+  private fullToken = 0;
   private variants: Array<{ specs: NodeSpec[]; fx: FxState | null; rule?: Harmony; seed?: number }> = [];
   private mode: 'vary' | 'random' = 'vary';
   private axesEl!: HTMLElement;
@@ -108,6 +124,7 @@ export class Explore {
     // ----- VARY strip (a child of the stage, like the node menu: it hides with the rest of the furniture in PREVIEW)
     const el = document.createElement('div');
     el.className = 'vary-strip';
+    el.dataset.stageUi = ''; // a panel over the artboard: its events never reach the board (FX dial, eyedropper)
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-label', 'Variations');
     el.dataset.testid = 'vary';
@@ -128,7 +145,27 @@ export class Explore {
       this.pinned = true;
       void this.open(this.mode, true);
     });
-    headRow.append(this.head, this.rollBtn);
+    // VIEW [◉]: an eye toggle beside ROLL; on, a hovered thumbnail fills the artboard as a preview.
+    this.viewBtn = document.createElement('button');
+    this.viewBtn.type = 'button';
+    this.viewBtn.className = 'mini vary-view';
+    this.viewBtn.dataset.action = 'vary-view';
+    this.viewBtn.title = 'View: hover a take to see it full size on the artboard';
+    this.viewBtn.innerHTML =
+      '<svg viewBox="0 0 14 10" width="14" height="10" aria-hidden="true"><path class="eye-lid" d="M1 5L4 1.5H10L13 5L10 8.5H4Z"/>' +
+      '<rect class="eye-pupil" x="5.5" y="3.5" width="3" height="3"/></svg><span class="mini-l">VIEW</span>';
+    this.viewBtn.addEventListener('click', () => {
+      this.pinned = true;
+      this.viewOn = !this.viewOn;
+      try {
+        localStorage.setItem(VIEW_KEY, this.viewOn ? '1' : '0');
+      } catch {
+        // not remembered
+      }
+      this.syncView();
+      if (!this.viewOn) this.hideFull();
+    });
+    headRow.append(this.head, this.viewBtn, this.rollBtn);
     // VARY axes: any mix of composition, colours and effects (at least one stays checked). Changing them rolls again.
     const axes = document.createElement('div');
     axes.className = 'vary-axes';
@@ -184,6 +221,10 @@ export class Explore {
       this.tags.push(tag);
       b.append(img, tag); // the serial (R-1 / V-1) doubles as the 1–4 key hint
       b.addEventListener('click', () => this.pick(k));
+      b.addEventListener('pointerenter', () => void this.showFull(k));
+      b.addEventListener('pointerleave', () => this.hideFull());
+      b.addEventListener('focus', () => void this.showFull(k));
+      b.addEventListener('blur', () => this.hideFull());
       // Padlock over the thumbnail's top-right corner (a sibling, not inside the pick button).
       const lock = document.createElement('button');
       lock.type = 'button';
@@ -209,7 +250,13 @@ export class Explore {
     }
     el.appendChild(row);
     this.strip = el;
-    stage.appendChild(el);
+    // The full-size preview: an image over the whole stage (above the canvas and handles, below the strip), inert.
+    this.full = document.createElement('img');
+    this.full.className = 'vary-full';
+    this.full.alt = '';
+    this.full.hidden = true;
+    stage.append(this.full, el);
+    this.syncView();
     el.addEventListener('pointerenter', () => window.clearTimeout(this.peekTimer));
     el.addEventListener('pointerleave', (e) => {
       if (e.pointerType === 'mouse') this.schedulePeekClose();
@@ -295,6 +342,14 @@ export class Explore {
   private revoke(mode: 'vary' | 'random'): void {
     const c = this.cache[mode];
     if (!c) return;
+    const keptTakes = new Set([...this.kept.vary, ...this.kept.random].map((k) => k?.v));
+    for (const v of c.variants) {
+      const f = this.fullCache.get(v);
+      if (f && !keptTakes.has(v)) {
+        URL.revokeObjectURL(f.url);
+        this.fullCache.delete(v);
+      }
+    }
     const held = new Set([...this.kept.vary, ...this.kept.random].map((k) => k?.url));
     for (const u of c.srcs) if (u && !held.has(u)) URL.revokeObjectURL(u);
     this.cache[mode] = null;
@@ -436,7 +491,45 @@ export class Explore {
     }, 260);
   }
 
+  private syncView(): void {
+    this.viewBtn.setAttribute('aria-pressed', String(this.viewOn));
+    this.viewBtn.classList.toggle('is-on', this.viewOn);
+  }
+
+  /** VIEW: render take `k` at the stage's own size (cached) and lay it over the artboard while it is hovered. */
+  private async showFull(k: number): Promise<void> {
+    if (!this.viewOn || !this.isOpen) return;
+    const v = this.variants[k];
+    if (!v) return;
+    const token = ++this.fullToken;
+    const m = this.metrics;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = Math.max(16, Math.round(m.w * dpr));
+    const H = Math.max(16, Math.round(m.h * dpr));
+    const size = `${W}x${H}`;
+    const hit = this.fullCache.get(v);
+    let url = hit && hit.size === size ? hit.url : undefined;
+    if (!url) {
+      if (hit) URL.revokeObjectURL(hit.url);
+      const s = this.store;
+      const copy: Store = { ...s, nodes: v.specs.map((sp) => makeNode(sp)), fx: v.fx ?? s.fx };
+      const res = await renderOffscreen(copy, m, W, H, s.reducedMotion ? 0.5 : this.now() / 1000);
+      if (!res.ok) return;
+      url = URL.createObjectURL(res.blob);
+      this.fullCache.set(v, { size, url });
+    }
+    if (token !== this.fullToken || !this.isOpen) return; // hovered away (or another take) meanwhile
+    this.full.src = url;
+    this.full.hidden = false;
+  }
+
+  private hideFull(): void {
+    this.fullToken++;
+    this.full.hidden = true;
+  }
+
   close(): void {
+    this.hideFull();
     window.clearTimeout(this.peekTimer);
     this.pinned = false;
     if (!this.isOpen) return;

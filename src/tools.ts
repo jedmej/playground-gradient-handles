@@ -262,6 +262,7 @@ export class ToolsUI {
         type,
         (e) => {
           if (!this.armed || !(e.target instanceof Node) || !stage.contains(e.target)) return;
+          if (e.target instanceof Element && e.target.closest('[data-stage-ui]')) return; // panels over the board keep theirs
           e.stopImmediatePropagation();
           if (e.cancelable && type !== 'pointermove' && type !== 'wheel') e.preventDefault();
           if (type === 'pointermove' || type === 'pointerdown') {

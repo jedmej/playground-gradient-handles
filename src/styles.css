@@ -3506,3 +3506,24 @@ html[data-drag='lum'] .stage,
 .board-mark path { stroke-linejoin: miter; }
 .board-mark path.halo { fill: none; stroke: #000; stroke-opacity: 0.6; stroke-width: 3.5; }
 .board-mark path.ink { fill: var(--signal); stroke: none; }
+
+/* VIEW [eye] beside ROLL: on (SIGNAL plate), a hovered take fills the artboard. */
+.vary-view { margin: 0; height: 18px; flex: none; gap: 5px; }
+.vary-view svg { display: block; }
+.vary-view .eye-lid { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linejoin: miter; }
+.vary-view .eye-pupil { fill: currentColor; }
+.vary-view.is-on, .vary-view.is-on:hover { background: var(--plate); color: var(--signal); outline-color: var(--signal); }
+@media (pointer: coarse) {
+  .vary-view { height: 32px; padding: 0 10px; }
+}
+/* The full-size preview of a hovered take: over the canvas and the handles, under the strip; never takes input. */
+.vary-full {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.vary-full[hidden] { display: none; }

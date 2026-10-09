@@ -611,8 +611,12 @@ export class FxDial {
     this.sync();
   }
 
+  /** On the artboard itself: inside the stage but not on a panel floating over it (`[data-stage-ui]`: the RANDOM / VARY
+   * strip, the node and artboard menus), whose presses, moves and wheel belong to that panel alone. */
   private inStage(e: Event): boolean {
-    return e.target instanceof Node && this.stage.contains(e.target);
+    const t = e.target;
+    if (!(t instanceof Node) || !this.stage.contains(t)) return false;
+    return !(t instanceof Element && t.closest('[data-stage-ui]'));
   }
 
   // ----- gestures (capture phase) -------------------------------------------------------------

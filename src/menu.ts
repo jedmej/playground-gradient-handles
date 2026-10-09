@@ -53,6 +53,7 @@ export class NodeMenu {
   ) {
     const el = document.createElement('div');
     el.className = 'node-menu';
+    el.dataset.stageUi = '';
     el.setAttribute('role', 'menu');
     el.setAttribute('aria-label', 'Node menu');
     el.dataset.testid = 'node-menu';
@@ -274,6 +275,7 @@ export class BoardMenu {
   ) {
     const el = document.createElement('div');
     el.className = 'node-menu board-menu';
+    el.dataset.stageUi = '';
     el.setAttribute('role', 'menu');
     el.setAttribute('aria-label', 'Artboard menu');
     el.dataset.testid = 'board-menu';
