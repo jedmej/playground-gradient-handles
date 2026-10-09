@@ -18,6 +18,15 @@ Visual direction follows the spec-sheet / retro-futurist language of Bungie's
 hard edges) without any of its trademarks or assets. See `DESIGN.md` for the
 token system and the critique that shaped it.
 
+## Layout
+
+The stage column is three bands: a **toolbar** (`#toolbar`), the artboard area, and a **shortcut strip** (`#keys`).
+Toolbar groups, in order: NODES (`Add node [+]`, `Remove node [−]`, `DRAW [D]`) · HISTORY (`Undo [↶]`, `Reset [↺]`), then EXPORT (one `Export [↓]` button, `E`) pinned alone to the far right; the status plate floats just left of it. `FX DIAL [F]` (top-left)
+and `PREVIEW [P]` (top-right) are small corner buttons riding the artboard frame. The right panel keeps the contextual
+controls only (colour set, node readout + steppers + shape, FX, wallpaper target). Below 960 px the toolbar is one
+horizontally scrolling row, the strip wraps, and status messages float as a toast. In preview the toolbar, FX DIAL and strip hide;
+PREVIEW stays.
+
 ## Controls
 
 | Input                      | Action                                                      |
@@ -48,7 +57,7 @@ token system and the critique that shaped it.
 | `Remove node` button       | Same                                                        |
 | Tap, then hold a selected core (touch, 550 ms) | Opens the node menu beside it (SIGNAL progress arc on the armed hold only, moving > 6 px cancels). Removing on touch = tap → hold → `DELETE`. Holding an unselected node does nothing |
 | Two-finger pinch (touch, node selected) | Scales that node's reach from where the pinch started; one `RADIUS` undo step. A second finger cancels any one-finger drag / hold / stroke |
-| `D` / `DRAW [D]` button    | Draw mode (crosshair everywhere, nodes not hit-tested). Press-drag paints one freehand stroke, release simplifies it (≤ 64 pts), selects it and leaves draw mode. `Esc` exits. Touch: the `DRAW` toggle on the stage foot line |
+| `D` / `DRAW [D]` button    | Draw mode (crosshair everywhere, nodes not hit-tested). Press-drag paints one freehand stroke, release simplifies it (≤ 64 pts), selects it and leaves draw mode. `Esc` exits. Touch: the `DRAW` toggle in the toolbar |
 | Drag a stroke / shape body | Hover shows an open hand; dragging anywhere on a stroke (or inside an ellipse / box / capsule core) moves the whole node. One undo step `MOVE N-xx` |
 | `SHAPE` row                | Circle / ellipse / box / capsule for the selected node (undo step `SHAPE N-xx`). Disabled for strokes, which show `STROKE · nn PTS` |
 | `ROT` `[−]` `[+]`, `,` `.` | Rotate ellipse / box / capsule 15° (`Shift` = 45°); bursts coalesce into one undo step |
@@ -57,6 +66,8 @@ token system and the critique that shaped it.
 | `SAVE [↧]`                 | Store the field in CS-06 (`localStorage` key `gh.custom.v1`) |
 | `CLEAR [×]` (twice in 3 s) | Delete the saved CS-06 set; the row goes back to `CUSTOM — EMPTY` (Esc cancels) |
 | `P` / `PREVIEW [P]` button (above the artboard's top-right corner) | Bare wallpaper: fades out (≈ 200 ms, instant under reduced motion) every node, ring, gauge, chip, stroke overlay, the FX dial, the rulers, corner marks and foot readouts; the gradient keeps rendering with its FX at the wallpaper aspect. The stage is inert while on (no drags, dial, wheel, double-click add, no edit keys). `Esc`, `P` or the button exits. Not persisted |
+| `\` / `PANEL [»]` button (top bar, far right) | Collapse / expand the right spec panel (≥ 960 px). The artboard grows into the freed width and re-fits; all other shortcuts keep working. Remembered in `localStorage` (`gh.panel.v1`). Hidden on the stacked mobile layout |
+| `M` / `DARK [◐]` button (top bar) | Light / dark theme. Defaults to the OS `prefers-color-scheme`; your choice is remembered in `localStorage` (`gh.theme.v1`) and applied before first paint. The lime accent, black bars, node overlays and the gradient stay as they are. Crossfades in ~150 ms (instant under reduced motion). Also available on the stacked mobile layout |
 | `⌘/Ctrl+Z`, `⇧⌘/Ctrl+Z`    | Undo / redo (50 steps): add, remove, colour, drags, presets |
 | Colour set rows            | Switch preset; colours tween in OKLab over ~600 ms          |
 | FX knob (GRAIN · DITHER · CHROMA · SCAN · VIG) drag | Up / right = more, ≈ 160 px for the full range. One undo step per drag |
@@ -64,15 +75,15 @@ token system and the critique that shaped it.
 | FX knob focused            | `← ↓` / `→ ↑` ±1 (`Shift` ×10), `PageUp` / `PageDown` ±10, `Home` OFF, `End` max. Global shortcuts are suspended while a knob has focus |
 | FX knob double-click / double-tap | Toggle OFF ↔ last non-zero value (first time: half way round the knob — 50, dither 9 LV) |
 | FX checkbox (left of each effect) | Same toggle as the double-click, one undo step; reflects the knob live (0 = unchecked). `Space` when focused |
-| `FINE`/`COARSE`, `BAYER`/`BLUE` | Grain size and dither pattern; one undo step each, clickable while the effect is off |
+| `FINE`/`COARSE`, `BAYER`/`BLUE`, `H`/`V`/`B` | Grain size, dither pattern and scanline direction (horizontal, vertical, both = grid); one undo step each, clickable while the effect is off |
 | `ALL OFF [×]`              | Switch every effect off (undo step `FX OFF`) |
-| Click / tap on empty board (also `⌥`+scroll, `F`, `FX DIAL [F]` foot button) | FX dial opens centred at the cursor (after 240 ms, so a double-click still adds a node and cancels it), clamped inside the stage. One concentric 270° ring per enabled effect (GRAIN · DITHER · CHROMA · SCAN · VIG, innermost first) inside a dashed bezel with ticks and 000/090/180/270 bearings, a corner-bracket reticle at the click point and a black mono tag per ring (`GRAIN // 50`). Clicking anywhere off a ring while it is open (empty board, a node, the dial's centre or gap) closes it and the click acts normally (deselect, node grab); the next empty click opens it again. With a node selected (or a menu / stroke active) the first click only deselects; the next one opens the dial. Not opened in DRAW mode or after a drag. `F` / the button use the cursor when it is over the stage, else the stage centre. Over a node `⌥`+scroll still tunes SOFT |
+| Click / tap on empty board (also `⌥`+scroll, `F`, `FX DIAL [F]` corner button above the artboard's top-left) | FX dial opens centred at the cursor (after 240 ms, so a double-click still adds a node and cancels it), clamped inside the stage. One concentric 270° ring per enabled effect (GRAIN · DITHER · CHROMA · SCAN · VIG, innermost first) inside a dashed bezel with ticks and 000/090/180/270 bearings, a corner-bracket reticle at the click point and a black mono tag per ring (`GRAIN // 50`). Clicking anywhere off a ring while it is open (empty board, a node, the dial's centre or gap) closes it and the click acts normally (deselect, node grab); the next empty click opens it again. With a node selected (or a menu / stroke active) the first click only deselects; the next one opens the dial. Not opened in DRAW mode or after a drag. `F` / the button use the cursor when it is over the stage, else the stage centre. Over a node `⌥`+scroll still tunes SOFT |
 | FX dial ring: hover / drag / scroll | Hover thickens that ring and dims the rest. Drag round it like a knob (one undo step); scroll steps it (~1 per 12 px, bursts coalesce), with or without `⌥`, and nodes do not resize while the dial is open. Dragging to 0 turns the effect off but keeps the ring until the dial closes. Panel changes and new checkmarks update the dial live |
 | FX dial focus | Rings are sliders: `Tab` between them, `← ↓` / `→ ↑` ±1, `⇧` ×10, `PageUp/Down` ±10, `Home` OFF, `End` max |
 | FX dial dismiss            | `Esc`, `F`, a click off the rings, or the pointer parked well away from it for 1.5 s. Clicking the panel does not close it |
 | WALLPAPER targets          | PHONE 1290×2796 · LAPTOP 2560×1600 · 4K 3840×2160 · ULTRA 5120×2160 · SQUARE 2048×2048 · CUSTOM (W × H inputs, 16–16384 px per side, clamped on Enter/blur, ⇄ swaps; first use starts from the selected preset). Picking one reshapes the artboard to that aspect (fit and centred), so the stage is what exports. Not an undo step, but remembered |
-| Export wallpaper           | Renders the field + FX at the target size (`GH-CS01-4K-3840x2160-2041.png`). If the GPU cannot allocate it the button says `Too large`, the status line gives the real limit, and nothing downloads |
-| Export PNG                 | Downloads the field (FX included, no handles) at 2048 px long side |
+| `Export [↓]` button, `E`   | The single export button (toolbar, id `export`): renders the field + FX at the target size (`GH-CS01-4K-3840x2160-2041.png`). If the GPU cannot allocate it the button says `Too large`, the status line gives the real limit, and nothing downloads |
+| `⇧`-click Export, `⇧E`     | Quick copy: downloads the field (FX included, no handles) at 2048 px long side (`ui.ts` `exportPng`) |
 | Reset                      | Restores the current preset's positions and radii           |
 
 Grab-zone priority is deterministic: node core beats the ROT dial, OPAC and SOFT gauges, which beat ring band beats body beats empty
@@ -124,8 +135,7 @@ Martian Mono). No runtime network calls beyond same-origin assets.
 - Canvas frame: `[data-testid="stage"]`.
 - Round 4: `[data-node]` also carries `data-shape="circle|ellipse|box|capsule|stroke"` (and `data-pts` = point count for
   strokes); `html[data-tool="edit|draw"]`; `data-hover-state` gains `body`; `#draw-guide` (visible only while drawing);
-  `[data-action="draw-mode|rot-minus|rot-plus"]` (two `draw-mode` buttons exist, the stage-foot one only on coarse
-  pointers); shape picker `.shape-btn[role=radio][data-shape]`. Note `[data-shape]` also matches the picker buttons,
+  `[data-action="draw-mode|rot-minus|rot-plus"]` (one `draw-mode` button, in the toolbar); shape picker `.shape-btn[role=radio][data-shape]`. Note `[data-shape]` also matches the picker buttons,
   so scope node queries as `[data-node][data-shape=…]`. CS-06 storage is `{v:2,…}` (v1 still loads).
 - Round 4b: `[data-node]` also carries `data-soft` (0–100, the target value) and `data-layer` (1-based, back = 1);
   `data-hover-state` / `data-drag` gain `soft`; panel `#ns-soft`, `#ns-layer` (`LYR 03/07`), `#soft-bar` (10 `<i>`,
@@ -135,9 +145,9 @@ Martian Mono). No runtime network calls beyond same-origin assets.
   differs from the shape default (0.5, strokes 0.75). The radius keys moved from `[`/`]` to `-`/`=`.
 - v4: `html[data-fx]` / `body[data-fx]` = active effects in fixed order (`grain,dither,chroma,scan,vig`, empty when none);
   `[data-fx-knob="grain|dither|chroma|scan|vig"]` (`role=slider`, `aria-valuenow` = raw state: 0–100, dither 0 or 2–16);
-  `[data-fx-opt="grain-fine|grain-coarse|dither-bayer|dither-blue"]` (`aria-checked`); `[data-fx-check="grain|dither|chroma|scan|vig"]` (native checkbox, `aria-label` “Grain on” …); `[data-action="fx-off"]`;
+  `[data-fx-opt="grain-fine|grain-coarse|dither-bayer|dither-blue|scan-h|scan-v|scan-b"]` (`aria-checked`); `[data-fx-check="grain|dither|chroma|scan|vig"]` (native checkbox, `aria-label` “Grain on” …); `[data-action="fx-off"]`;
   `#fx-hint` (`— ALL OFF` / `— 2 ON`); `[data-wp="phone|laptop|4k|ultra|square"]` (`role=radio`, `aria-checked`);
-  `[data-action="export-wallpaper"]`; `#wp-dims`; `localStorage` `gh.fx.v1` = `{v:1, fx, wp, cs:{w,h}}` (`cs` optional on read).
+  `[data-action="export"]` (the one export button; `export-wallpaper` is gone); `#wp-dims`; `localStorage` `gh.fx.v1` = `{v:1, fx, wp, cs:{w,h}}` (`cs` optional on read).
 
 ## Credits
 

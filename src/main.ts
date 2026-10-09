@@ -53,6 +53,7 @@ function setPreview(on: boolean): void {
     if (a && stage.contains(a)) a.blur();
   }
   previewFrame.classList.toggle('is-preview', on);
+  document.querySelector('.stage-col')?.classList.toggle('is-preview', on); // hides toolbar groups + shortcut strip
   previewBtn.setAttribute('aria-pressed', String(on));
 }
 previewBtn.addEventListener('click', () => setPreview(!isPreview()));
@@ -89,6 +90,15 @@ window.addEventListener(
   },
   { capture: true },
 );
+
+// EXPORT [E]: same as clicking the toolbar button (wallpaper target size); ⇧E = the quick 2048 px copy.
+window.addEventListener('keydown', (e) => {
+  if ((e.key !== 'e' && e.key !== 'E') || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target as HTMLElement | null;
+  if (t?.closest?.(TYPING) || t?.closest?.('[data-fx-knob], [data-fx-ring]')) return;
+  e.preventDefault();
+  document.getElementById('export')?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: e.shiftKey }));
+});
 
 const now = (): number => performance.now();
 const metrics = createMetrics();
@@ -130,7 +140,9 @@ function fitWordmark(): void {
 }
 
 const frame = stage.parentElement as HTMLElement;
-const stageCol = frame.parentElement as HTMLElement;
+// The artboard area sits between the toolbar and the shortcut strip; it is the box the artboard is fitted into.
+const stageArea = frame.parentElement as HTMLElement;
+const toolbarEl = document.getElementById('toolbar') as HTMLElement;
 const MOBILE = matchMedia('(max-width: 959px)');
 let fitWp = store.wallpaper;
 let fitCw = store.wpCustom.w;
@@ -144,12 +156,12 @@ let fitCh = store.wpCustom.h;
  * width counts and the height is capped to ~68 % of the viewport (a phone target stays on screen).
  */
 function fitStage(): void {
-  const cs = getComputedStyle(stageCol);
+  const cs = getComputedStyle(stageArea);
   const root = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--foot-row')) || 22;
-  const availW = stageCol.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 18;
+  const availW = stageArea.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 18;
   const availH = MOBILE.matches
     ? Math.max(240, window.innerHeight * 0.68) - 18 - root
-    : stageCol.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 18 - root;
+    : stageArea.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 18 - root;
   const t = wallpaperTarget(store.wallpaper, store.wpCustom);
   const k = Math.min(availW / t.w, availH / t.h);
   if (!(k > 0)) return;
@@ -171,12 +183,108 @@ document.fonts.ready.then(fitWordmark);
 
 const ro = new ResizeObserver(() => layout());
 ro.observe(stage);
-ro.observe(stageCol);
+ro.observe(stageArea); // changes when the toolbar wraps / unwraps, the strip re-flows, or the panel collapses
+ro.observe(toolbarEl);
 window.addEventListener('resize', layout);
 window.addEventListener('scroll', () => handles.updateMetrics(), { passive: true });
 matchMedia('(pointer: coarse)').addEventListener('change', (e) => (store.coarse = e.matches));
 matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', (e) => (store.reducedMotion = e.matches));
 layout();
+
+// ----- PANEL [\]: collapse the right spec column. The class lives on <html> (set pre-paint by the inline script in
+// index.html); the CSS transition animates the grid track, the ResizeObserver above re-fits during it, and a final
+// layout() on transitionend guarantees the canvas ends crisp at the settled size.
+const specEl = document.getElementById('spec') as HTMLElement;
+const panelBtn = document.getElementById('panel-toggle') as HTMLButtonElement;
+const panelOff = (): boolean => document.documentElement.classList.contains('panel-off');
+function syncPanel(): void {
+  const off = panelOff();
+  specEl.toggleAttribute('inert', off);
+  panelBtn.setAttribute('aria-expanded', String(!off));
+  panelBtn.title = off ? 'Show panel (\\)' : 'Hide panel (\\)';
+  (panelBtn.lastElementChild as HTMLElement).textContent = off ? '[«]' : '[»]';
+}
+function setPanel(open: boolean): void {
+  if (open === !panelOff()) return;
+  document.documentElement.classList.toggle('panel-off', !open);
+  if (!open && specEl.contains(document.activeElement)) panelBtn.focus();
+  try {
+    localStorage.setItem('gh.panel.v1', open ? '1' : '0');
+  } catch {
+    /* private mode / blocked storage: the state just is not remembered */
+  }
+  syncPanel();
+  if (store.reducedMotion || matchMedia('(prefers-reduced-motion: reduce)').matches) layout();
+}
+syncPanel();
+panelBtn.addEventListener('click', () => setPanel(panelOff()));
+document.body.addEventListener('transitionend', (e) => {
+  if (e.target === document.body && e.propertyName === 'grid-template-columns') layout();
+});
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Backslash' || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target as HTMLElement | null;
+  if (t?.closest?.(TYPING) || t?.closest?.('[data-fx-knob], [data-fx-ring]') || isPreview() || MOBILE.matches) return;
+  e.preventDefault();
+  setPanel(panelOff());
+});
+
+// ----- THEME [M]: light / dark. data-theme on <html> is set pre-paint by the inline script in index.html (stored choice,
+// else the OS preference). With no stored choice the page keeps following the OS; a click or M stores it.
+const themeBtn = document.getElementById('theme-toggle') as HTMLButtonElement;
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+const isDark = (): boolean => document.documentElement.dataset.theme === 'dark';
+function syncTheme(): void {
+  const dark = isDark();
+  themeBtn.setAttribute('aria-pressed', String(dark));
+  themeBtn.title = dark ? 'Dark mode on: switch to light (M)' : 'Dark mode off: switch to dark (M)';
+  (themeBtn.lastElementChild as HTMLElement).textContent = dark ? '[◑]' : '[◐]';
+}
+function applyTheme(dark: boolean): void {
+  const root = document.documentElement;
+  const swap = (): void => {
+    root.dataset.theme = dark ? 'dark' : 'light';
+    syncTheme();
+  };
+  // Per-element transitions are off for the swap; one View Transition crossfades the page. No API / reduced motion: instant.
+  root.classList.add('theme-switching');
+  const done = (): void => void requestAnimationFrame(() => root.classList.remove('theme-switching'));
+  const animate = !(store.reducedMotion || matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (animate && typeof document.startViewTransition === 'function') {
+    const vt = document.startViewTransition(swap);
+    vt.ready.catch(() => {}); // a rapid second toggle skips the first transition: not an error
+    vt.finished.then(done, done);
+  } else {
+    swap();
+    done();
+  }
+}
+function setTheme(dark: boolean): void {
+  applyTheme(dark);
+  try {
+    localStorage.setItem('gh.theme.v1', dark ? 'dark' : 'light');
+  } catch {
+    /* private mode / blocked storage: the choice just is not remembered */
+  }
+}
+syncTheme();
+themeBtn.addEventListener('click', () => setTheme(!isDark()));
+darkQuery.addEventListener('change', (e) => {
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem('gh.theme.v1');
+  } catch {
+    /* ignore */
+  }
+  if (stored !== 'dark' && stored !== 'light') applyTheme(e.matches);
+});
+window.addEventListener('keydown', (e) => {
+  if ((e.key !== 'm' && e.key !== 'M') || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target as HTMLElement | null;
+  if (t?.closest?.(TYPING) || t?.closest?.('[data-fx-knob], [data-fx-ring]')) return;
+  e.preventDefault();
+  setTheme(!isDark());
+});
 
 let last = now();
 function tick(): void {

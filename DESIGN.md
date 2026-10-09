@@ -19,6 +19,33 @@ spec-sheet / technical-drawing retro-futurism, not cyberpunk.
 | `GRAPHITE` | `#717171` | Muted labels, ruler numerals, dashed rules.                          |
 | `PAPER`    | `#E9EAE4` | Page ground. Cool technical-drawing off-white.                       |
 
+### Dark theme
+
+`DARK [◐]` (top bar; key `M`) sets `data-theme="dark"` on `<html>`. The paper/ink roles flip; SIGNAL, FLARE, the
+black chrome plates (top bar, footer, chips, status, hex field, node menu, the SIGNAL rail's ink) and the gradient
+canvas do not. Roles that flip are separate custom properties; the black plates are `--plate` / `--plate-fg`, which
+never change. The black bar and footer stay black on a near-black ground (a hairline separates active plates).
+
+| Token (CSS)   | Light       | Dark        | Dark contrast on `--paper`        |
+| ------------- | ----------- | ----------- | --------------------------------- |
+| `--paper`     | `#e9eae4`   | `#151613`   | ground                            |
+| `--paper-2`   | `#dfe0d9`   | `#1d1e1b`   | n/a (surface)                     |
+| `--void`      | `#000`      | `#dcddd6`   | 12:1 (text, borders, hairlines)   |
+| `--ink`       | `#0c0c0c`   | `#ecede7`   | 14:1                              |
+| `--graphite`  | `#717171`   | `#9b9c95`   | 6.6:1 (labels, ruler numerals)    |
+| `--soft`      | `#1c1c1c`   | `#c4c5be`   | 10:1 (lede, key caps)             |
+| `--rule`      | `#a4a59e`   | `#4b4c47`   | dashed rules, keylines            |
+| `--wash` / `--wash-2` | black 6 % / 8 % | white 7 % / 10 % | hover tints          |
+| `--edge`      | black 35 %  | white 40 %  | palette / preset chip keyline (a `#000000` chip still reads) |
+| `--plate` / `--plate-fg` | `#000` / `#e9eae4` | same | fixed chrome plates and their text |
+| `--signal`, `--flare`, `--hull` | | same | unchanged                          |
+
+Fixed on purpose: node rings, gauges, FX dial and cursors (halo + ink strokes, designed to read on any gradient),
+the lime rail. Default is `prefers-color-scheme`; the choice is stored in `localStorage` (`gh.theme.v1`) and applied
+by the inline head script before first paint. Switching runs one View Transition (`document.startViewTransition`): the whole page
+crossfades as a single ~300 ms snapshot (`--ease`), while `html.theme-switching` suppresses every per-element
+transition. Without the API, or under reduced motion, the theme snaps instantly. Rulers are SVG using `currentColor`, so they follow the tokens.
+
 Gradient presets additionally use a few justified saturated accents inside the
 specimen only (coolant cyan `#1FD7E3`, UV violet `#5A2BFF`, hazard yellow
 `#FFD400`); they never leak into the chrome.
@@ -343,7 +370,7 @@ displayed one.
 **Formulas.** With `d = (uv − 0.5)·res / min(res)` (short side = 1) and `dc` = `d` at a corner:
 - Aberration: `o = d · (chroma/100) · 0.07 · |d|²/|dc|²`; R at +o, G at 0, B at −o, three taps per fringe channel (0.33·o, 0.66·o and o) so the edge is a spectral smear rather than a double image.
 - Vignette, in linear light so hue survives: `rgb *= 1 − (vig/100)·0.82·smoothstep(0.28, 1.08, |d|/|dc|)`; 100 is deep, not black.
-- Scanlines: period 3 px, `s = ½ − ½cos(2π·fract(y/period))`, `rgb *= 1 − (scan/100)·0.5·s²` (thin crisp lines).
+- Scanlines: period 3 px, `s = ½ − ½cos(2π·fract(y/period))`, `rgb *= 1 − (scan/100)·0.5·s²` (thin crisp lines). Direction `H | V | B` (`scanDir`, default H): V runs the same profile on `x`; B takes `max(s_h, s_v)` so the grid never darkens more than a single set of lines at the same knob value.
 - Grain: monochrome, `(n − ½)·(grain/100)·0.20·(0.35 + 2.6·L(1−L))`, heaviest in the mids. Fine = one hash per 1 px cell; coarse = two-octave value noise on 2.5 px cells (35mm).
 - Dither, per channel in sRGB: `q = floor(c·(N−1) + t)/(N−1)`, N = 2–16.
 
@@ -370,9 +397,13 @@ displayed one.
 **Node gauges = FX rings.** OPAC, SOFT and ROT are no longer tied to the node's size: they are the FX dial's gauge (`gauge.ts` is the one renderer for both: 270° arc with the gap at 6 o'clock, halo + ink base, 11 ticks, SIGNAL fill, notch, a black mono chip in the bottom gap, the same hover thickening, FLARE and dimming) on fixed radii packed round the core with exactly the dial's spacing rule (`gaugeSpacing` in `gauge.ts`: `sp` = 30 px on a big stage, shrinking on small ones, ring `i` at `1.5·sp + i·sp`, i.e. OPAC 45, SOFT 75, ROT 105 on the usual stage, innermost first; ROT is outermost, as before, and only for non-circle shapes). Chips read `OPAC // 80`, `SOFT // 50`, `ROT // 045°` and replace the old floating value chips (only `R 184PX` remains, for the size ring). ROT maps 0–360° onto the 270° arc and wraps at the end (`⇧` snaps to 15°; a wheel tick still turns it ~4°). The size ring and its ticks and bearings still scale with the node, but only circles show them: ellipse, box, capsule and stroke already draw their own dashed outline, so the dotted circular ring (with its ticks and bearings and its drag band) is hidden for them (`no-ring`) and they resize by scroll, pinch or keys; the corner brackets stay. There is no minimum node size any more: on a small node the gauge stack simply extends past the ring. Hit priority: core > ROT > SOFT > OPAC bands (±7 px, ±10 coarse) > ring band > body; the wheel over a band tunes that gauge, anywhere else on the node (the empty space between the stack and the ring included) it resizes. The coordinate tag sits just outside the outermost gauge. Reveal order on open is ring, bearings, OPAC, SOFT, ROT, innermost first like the FX rings.
 
 
-**Preview [P].** A foot-style toggle (`PREVIEW [P]`, the FX DIAL button's mini ghost; active = VOID plate, SIGNAL text, `aria-pressed`) floats above the artboard's top-right corner (own 46 px strip on mobile, touch-sized). `.stage-frame.is-preview` fades rulers, registration marks, foot strip and everything on the stage except the canvas to 0 over 200 ms (`visibility` flips after the fade; none under reduced motion), so only the exported image remains, with the frame's box and aspect unchanged. Input is blocked by window-capture listeners in `main.ts`, registered before every other component: pointer, wheel, click and context events whose target is the stage are stopped, as are all keys except `P` / `Esc` (exit), Tab, Enter/Space on buttons and typing fields. Entering closes the FX dial, leaves DRAW and is refused mid-drag. Never persisted.
+**Stage column bands (toolbar / artboard / shortcut strip).** The stage column is a three-row grid: `.toolbar` (auto, hairline below), `.stage-area` (1fr, centres the frame) and `.keys` (auto, hairline above). Every global action moved out of the spec panel into the toolbar as `.mini.tb-btn` (28 px, mono, bracket hints; 40 px on touch), grouped with 1 px VOID dividers: NODES (Add, Remove, DRAW) · HISTORY (Undo, Reset) · then, alone at the far right with no divider (`margin-left: auto`), EXPORT (one `Export [↓]` in the VOID/SIGNAL plate: a click renders the wallpaper target size, `⇧`-click or `⇧E` the quick 2048 px copy, `E` = click; the tooltip names the target size); the status plate floats just left of Export (a fixed toast on mobile). FX DIAL and PREVIEW stay small corner buttons above the frame's top-left / top-right (children of `.stage-frame`, so they track every re-fit); the foot strip keeps only `CUR` and dims. `fitStage()` measures `.stage-area` (so toolbar wraps and strip lines are already subtracted), and a ResizeObserver on the area and toolbar re-fits on wrap and panel collapse. The panel keeps only contextual controls (SAVE/CLEAR, steppers, shapes, FX, wallpaper target). The strip lists the keys and gestures (TAB, arrows, scroll, ⇧ scroll, double-click, click core = colour, D, `, .`, DEL, ⌘Z, F, P, `\`, Esc; touch variants under coarse pointers) and wraps to at most two lines on desktop. Mobile (< 960 px): toolbar is one horizontally scrolling row so nothing wraps into a tall block; the strip wraps. Preview hides toolbar, FX DIAL and strip (visibility, no layout shift) and keeps PREVIEW.
+
+**Preview [P].** A corner toggle (the earlier text calls it a foot-style toggle; it is now the `.corner-preview` mini ghost) (`PREVIEW [P]`, the FX DIAL button's mini ghost; active = VOID plate, SIGNAL text, `aria-pressed`) floats above the artboard's top-right corner (own 46 px strip on mobile, touch-sized). `.stage-frame.is-preview` fades rulers, registration marks, foot strip and everything on the stage except the canvas to 0 over 200 ms (`visibility` flips after the fade; none under reduced motion), so only the exported image remains, with the frame's box and aspect unchanged. Input is blocked by window-capture listeners in `main.ts`, registered before every other component: pointer, wheel, click and context events whose target is the stage are stopped, as are all keys except `P` / `Esc` (exit), Tab, Enter/Space on buttons and typing fields. Entering closes the FX dial, leaves DRAW and is refused mid-drag. Never persisted.
 
 ## v5 — COLOUR page on the node bezel
+
+**Collapsible spec panel.** `PANEL [»]` / `[«]` (mono bracket button, SIGNAL glyph, in the top bar after the STATE readout so it stays reachable when the panel is gone; key `\`). `html.panel-off` (set before first paint by an inline script, persisted as `gh.panel.v1`) animates the body's spec track to 0 and slides the panel out under the SIGNAL rail over 220 ms in the app easing; the stage column grows, the ResizeObserver re-fits the artboard on the way and `layout()` runs once more on `transitionend`. The collapsed panel is `inert` and `visibility: hidden` after the slide; global shortcuts are unaffected. Under reduced motion it is instant. Below 960 px the panel is part of the page flow, so the toggle is hidden.
 
 **Entering and leaving.** A click on a node's core (press and release inside 4 px, 8 on touch; `coreDown` in `handles.ts`, cleared by any drag movement, a long-press hold or a pinch) flips that node's bezel from the default page (OPAC / SOFT / ROT) to the COLOUR page; the same click again, `Esc` (the first press leaves the page, the second deselects), `Enter`, or anything that deselects the node (a click off, delete, a tool change) goes back. One node at a time (`colorUid`); `busy()` counts it, so an empty-board click only closes the page and never opens the FX dial. The press is still a normal node drag first (one move undo step), so moving the node, touch hold-for-menu, the empty-field double-click add and the right-click menu are untouched; the click only decides at pointer-up.
 

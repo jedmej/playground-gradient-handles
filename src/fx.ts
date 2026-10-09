@@ -2,6 +2,8 @@ import { parseCustomSize, parseWallpaper, type CustomSize, type WallpaperId } fr
 
 export type GrainSize = 'fine' | 'coarse';
 export type DitherMode = 'bayer' | 'blue';
+/** Scanline direction: horizontal lines, vertical lines, or both (a grid). */
+export type ScanDir = 'h' | 'v' | 'b';
 
 export interface FxState {
   /** 0–100 (0 = off). */
@@ -14,6 +16,7 @@ export interface FxState {
   chroma: number;
   /** 0–100 scanline intensity. */
   scan: number;
+  scanDir: ScanDir;
   /** 0–100 vignette amount. */
   vig: number;
 }
@@ -29,6 +32,7 @@ export const FX_DEFAULT: Readonly<FxState> = {
   ditherMode: 'bayer',
   chroma: 0,
   scan: 0,
+  scanDir: 'h',
   vig: 0,
 };
 
@@ -36,7 +40,7 @@ export const copyFx = (fx: FxState): FxState => ({ ...fx });
 
 export const sameFx = (a: FxState, b: FxState): boolean =>
   a.grain === b.grain && a.grainSize === b.grainSize && a.dither === b.dither && a.ditherMode === b.ditherMode &&
-  a.chroma === b.chroma && a.scan === b.scan && a.vig === b.vig;
+  a.chroma === b.chroma && a.scan === b.scan && a.scanDir === b.scanDir && a.vig === b.vig;
 
 export const fxActive = (fx: FxState): FxId[] => FX_IDS.filter((id) => fx[id] > 0);
 
@@ -58,6 +62,7 @@ export function parseFx(v: unknown): FxState {
     ditherMode: o.ditherMode === 'blue' ? 'blue' : 'bayer',
     chroma: pct(o.chroma),
     scan: pct(o.scan),
+    scanDir: o.scanDir === 'v' || o.scanDir === 'b' ? o.scanDir : 'h',
     vig: pct(o.vig),
   };
 }
@@ -94,6 +99,7 @@ export function fxStatus(id: FxId, fx: FxState): string {
   if (fx[id] <= 0) return `${name} OFF`;
   if (id === 'grain') return `${name} ${fxReadout(id, fx)} · ${fx.grainSize.toUpperCase()}`;
   if (id === 'dither') return `${name} ${fxReadout(id, fx)} · ${fx.ditherMode.toUpperCase()}`;
+  if (id === 'scan') return `${name} ${fxReadout(id, fx)} · ${fx.scanDir.toUpperCase()}`;
   return `${name} ${fxReadout(id, fx)}`;
 }
 

@@ -19,6 +19,7 @@ uniform float u_unit;     // buffer px per preview CSS px
 uniform float u_chroma;   // 0–1
 uniform float u_vig;      // 0–1
 uniform float u_scan;     // 0–1
+uniform float u_scanDir;  // 0 = horizontal, 1 = vertical, 2 = both (grid)
 uniform float u_grain;    // 0–1
 uniform float u_coarse;   // 1 = coarse grain
 uniform float u_levels;   // 0 = dither off, else 2–16
@@ -92,7 +93,10 @@ void main() {
 
   if (u_scan > 0.0) {
     float period = cellPx(3.0);
-    float s = 0.5 - 0.5 * cos(6.28318530718 * fract(pos.y / period));
+    // Lines run along x (horizontal) from pos.y, along y (vertical) from pos.x; both = max, so the grid never darkens more than one set.
+    float sh = 0.5 - 0.5 * cos(6.28318530718 * fract(pos.y / period));
+    float sv = 0.5 - 0.5 * cos(6.28318530718 * fract(pos.x / period));
+    float s = u_scanDir > 1.5 ? max(sh, sv) : u_scanDir > 0.5 ? sv : sh;
     rgb *= 1.0 - u_scan * 0.5 * s * s;
   }
 
@@ -168,7 +172,7 @@ export class PostPass {
     try {
       if (!this.prog) {
         this.prog = buildProgram(gl, VERT, FRAG);
-        for (const n of ['u_src', 'u_blue', 'u_res', 'u_unit', 'u_chroma', 'u_vig', 'u_scan', 'u_grain', 'u_coarse', 'u_levels', 'u_blueMode']) {
+        for (const n of ['u_src', 'u_blue', 'u_res', 'u_unit', 'u_chroma', 'u_vig', 'u_scan', 'u_scanDir', 'u_grain', 'u_coarse', 'u_levels', 'u_blueMode']) {
           this.u[n] = gl.getUniformLocation(this.prog, n);
         }
       }
@@ -242,6 +246,7 @@ export class PostPass {
     gl.uniform1f(this.u.u_chroma, fx.chroma / 100);
     gl.uniform1f(this.u.u_vig, fx.vig / 100);
     gl.uniform1f(this.u.u_scan, fx.scan / 100);
+    gl.uniform1f(this.u.u_scanDir, fx.scanDir === 'v' ? 1 : fx.scanDir === 'b' ? 2 : 0);
     gl.uniform1f(this.u.u_grain, fx.grain / 100);
     gl.uniform1f(this.u.u_coarse, fx.grainSize === 'coarse' ? 1 : 0);
     gl.uniform1f(this.u.u_levels, fx.dither);

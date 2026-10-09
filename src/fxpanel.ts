@@ -88,7 +88,8 @@ export class FxPanel {
     }
     for (const b of this.opts) {
       const on =
-        b.dataset.fxOpt === `grain-${fx.grainSize}` || b.dataset.fxOpt === `dither-${fx.ditherMode}`;
+        b.dataset.fxOpt === `grain-${fx.grainSize}` || b.dataset.fxOpt === `dither-${fx.ditherMode}` ||
+        b.dataset.fxOpt === `scan-${fx.scanDir}`;
       b.setAttribute('aria-checked', String(on));
     }
     const active = fxActive(fx);
@@ -104,7 +105,7 @@ export class FxPanel {
 export class WallpaperPanel {
   private cells = [...document.querySelectorAll<HTMLButtonElement>('[data-wp]')];
   private dims = $('wp-dims');
-  private btn = document.querySelector<HTMLButtonElement>('[data-action="export-wallpaper"]')!;
+  private btn = document.querySelector<HTMLButtonElement>('[data-action="export"]')!;
   private label = this.btn.querySelector<HTMLElement>('.btn-label')!;
   private count = 0;
   private customSeeded: boolean;
@@ -164,7 +165,10 @@ export class WallpaperPanel {
       this.store.wpCustom = { w: c.h, h: c.w };
       this.sync();
     });
-    this.btn.addEventListener('click', () => void this.export());
+    // One EXPORT button: a plain click renders the wallpaper target here; ⇧-click is the quick 2048 px copy (ui.ts).
+    this.btn.addEventListener('click', (e) => {
+      if (!e.shiftKey) void this.export();
+    });
     store.listeners.add(() => this.sync());
     this.sync();
   }
@@ -214,7 +218,9 @@ export class WallpaperPanel {
     this.wIn.classList.remove('is-bad');
     this.hIn.classList.remove('is-bad');
     this.range.classList.remove('is-bad');
-    setText(this.dims, wallpaperSize(wallpaperTarget(wp, c)));
+    const size = wallpaperSize(wallpaperTarget(wp, c));
+    setText(this.dims, size);
+    this.btn.title = `Export ${size} PNG (E; ⇧ for a quick 2048 px copy)`;
   }
 
   private say(text: string): void {
@@ -230,7 +236,11 @@ export class WallpaperPanel {
     setText(this.label, 'Rendering…');
     try {
       // Let the "Rendering…" label paint before the (synchronous) GPU work starts.
-      await new Promise<void>((res) => requestAnimationFrame(() => setTimeout(res, 0)));
+      // (rAF never fires in a hidden tab, so a timer races it: the button must never hang on "Rendering…".)
+      await new Promise<void>((res) => {
+        const t = window.setTimeout(res, 120);
+        requestAnimationFrame(() => setTimeout(() => (window.clearTimeout(t), res()), 0));
+      });
       const res = await renderOffscreen(s, this.metrics, t.w, t.h, s.reducedMotion ? 0.5 : this.now() / 1000);
       if (res.ok) {
         const name = wallpaperFilename(currentPreset(s).serial.replace('-', ''), t, stamp(), ++this.count);
@@ -253,10 +263,10 @@ export class WallpaperPanel {
       this.say('Export failed. Your browser blocked the canvas or the download.');
     } finally {
       window.setTimeout(() => {
-        setText(this.label, 'Export wallpaper');
+        setText(this.label, 'Export');
         this.btn.classList.remove('is-done');
         this.btn.disabled = false;
-      }, 1800);
+      }, 1500);
     }
   }
 }
