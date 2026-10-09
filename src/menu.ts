@@ -252,8 +252,8 @@ export class NodeMenu {
 }
 
 /**
- * Board menu: right-click on the artboard away from any node. The node menu's plate with ADD NODE HERE (the
- * double-click add, colour = the field under the point; mirror partners too when MIRROR is on) and DRAW.
+ * Board menu: right-click on the artboard away from any node. The node menu's plate with ADD NODE [+] (the
+ * double-click add at the click point, colour = the field under the point; mirror partners too when MIRROR is on) and DRAW.
  */
 export class BoardMenu {
   readonly el: HTMLDivElement;
@@ -293,8 +293,8 @@ export class BoardMenu {
       el.appendChild(b);
       return b;
     };
-    this.addBtn = item('board-add', 'ADD NODE HERE', 'DBL-CLICK');
-    item('board-draw', 'DRAW', 'D');
+    this.addBtn = item('board-add', 'ADD NODE', '[+]');
+    item('board-draw', 'DRAW', '[D]');
     this.el = el;
     stage.appendChild(el);
     for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'dblclick']) {
@@ -320,7 +320,7 @@ export class BoardMenu {
     return !this.el.hidden;
   }
 
-  /** Open at stage-local (x, y), the point ADD NODE HERE will use. */
+  /** Open at stage-local (x, y), the point ADD NODE will use. */
   open(x: number, y: number): void {
     this.at = { x, y };
     this.openedAt = performance.now();
