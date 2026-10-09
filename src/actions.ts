@@ -24,7 +24,7 @@ import {
   type Store,
 } from './store';
 import { fieldHexAt } from './field';
-import { copyFx, FX_DEFAULT, fxActive, fxFromPos, fxMaxPos, fxPos, fxStatus, onValue, rememberFx, sameFx, type DitherMode, type FxId, type GrainSize, type ScanDir } from './fx';
+import { copyFx, FX_IDS, fxActive, fxFromPos, fxMaxPos, fxOptId, fxPos, fxStatus, fxWithOption, onValue, rememberFx, sameFx, type FxId, type FxOpt } from './fx';
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 
@@ -228,14 +228,11 @@ export class Actions {
     this.fxChanged(id);
   }
 
-  fxOption(opt: 'grain-fine' | 'grain-coarse' | 'dither-bayer' | 'dither-blue' | 'scan-h' | 'scan-v' | 'scan-b'): void {
+  fxOption(opt: FxOpt): void {
     const s = this.store;
-    const next = { ...s.fx };
-    if (opt.startsWith('grain')) next.grainSize = opt.slice(6) as GrainSize;
-    else if (opt.startsWith('scan')) next.scanDir = opt.slice(5) as ScanDir;
-    else next.ditherMode = opt.slice(7) as DitherMode;
+    const next = fxWithOption(s.fx, opt);
     if (sameFx(next, s.fx)) return;
-    const id: FxId = opt.startsWith('grain') ? 'grain' : opt.startsWith('scan') ? 'scan' : 'dither';
+    const id = fxOptId(opt);
     this.history.mark(`FX ${id.toUpperCase()}`);
     this.lastFxId = null;
     s.fx = next;
@@ -248,7 +245,10 @@ export class Actions {
     rememberFx(s.fx);
     this.history.mark('FX OFF');
     this.lastFxId = null;
-    s.fx = copyFx({ ...FX_DEFAULT, grainSize: s.fx.grainSize, ditherMode: s.fx.ditherMode, scanDir: s.fx.scanDir });
+    // Every amount goes to 0 (WARP back to the house look); the option choices stay.
+    const next = copyFx(s.fx);
+    for (const id of FX_IDS) next[id] = 0;
+    s.fx = next;
     this.fxChanged(null);
     s.say('FX OFF');
   }

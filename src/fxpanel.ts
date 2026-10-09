@@ -1,6 +1,6 @@
 import type { Actions } from './actions';
 import { downloadBlob, renderOffscreen, stamp } from './exporter';
-import { FX_IDS, fxActive, fxMaxPos, fxPos, fxReadout, type FxId } from './fx';
+import { FX_IDS, fxActive, fxMaxPos, fxOptOn, fxPos, fxReadout, fxSpoken, type FxId, type FxOpt } from './fx';
 import type { Metrics } from './handles';
 import type { History } from './history';
 import { Knob } from './knob';
@@ -13,9 +13,9 @@ function setText(el: HTMLElement, text: string): void {
   if (el.textContent !== text) el.textContent = text;
 }
 
-const NAMES: Record<FxId, string> = { grain: 'GRAIN', dither: 'DITHER', chroma: 'CHROMA', scan: 'SCAN', vig: 'VIG' };
+const NAMES = Object.fromEntries(FX_IDS.map((id) => [id, id.toUpperCase()])) as Record<FxId, string>;
 
-/** The FX section: four spec rows of knobs and option toggles, ALL OFF, the hint and the `data-fx` hook. */
+/** The FX section: twelve spec rows of knobs and option toggles, ALL OFF, the hint and the `data-fx` hook. */
 export class FxPanel {
   private knobs = new Map<FxId, Knob>();
   private reads = new Map<FxId, HTMLElement>();
@@ -58,7 +58,7 @@ export class FxPanel {
       });
     }
     for (const b of this.opts) {
-      b.addEventListener('click', () => this.actions.fxOption(b.dataset.fxOpt as Parameters<Actions['fxOption']>[0]));
+      b.addEventListener('click', () => this.actions.fxOption(b.dataset.fxOpt as FxOpt));
     }
     this.offBtn.addEventListener('click', () => this.actions.fxOff());
     actions.fxListeners.add(() => this.sync());
@@ -73,11 +73,7 @@ export class FxPanel {
     this.lastKey = key;
     for (const id of FX_IDS) {
       const text = fxReadout(id, fx);
-      const spoken =
-        fx[id] <= 0 ? 'off'
-        : id === 'dither' ? `${fx.dither} levels, ${fx.ditherMode}`
-        : id === 'grain' ? `${fx.grain}, ${fx.grainSize}`
-        : String(fx[id]);
+      const spoken = fxSpoken(id, fx);
       this.knobs.get(id)!.render(fxPos(id, fx[id]), fx[id], spoken);
       const read = this.reads.get(id)!;
       setText(read, text);
@@ -87,9 +83,7 @@ export class FxPanel {
       this.rows.get(id)!.classList.toggle('is-off', fx[id] <= 0);
     }
     for (const b of this.opts) {
-      const on =
-        b.dataset.fxOpt === `grain-${fx.grainSize}` || b.dataset.fxOpt === `dither-${fx.ditherMode}` ||
-        b.dataset.fxOpt === `scan-${fx.scanDir}`;
+      const on = fxOptOn(b.dataset.fxOpt as FxOpt, fx);
       b.setAttribute('aria-checked', String(on));
     }
     const active = fxActive(fx);

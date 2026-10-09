@@ -1,4 +1,4 @@
-import { fxActive, type FxState } from './fx';
+import { fxNeedsPost, warpFreq, warpGain, WARP_HOUSE, type FxState } from './fx';
 import { buildProgram, PostPass } from './post';
 
 const VERT = `
@@ -25,6 +25,7 @@ uniform float u_time;
 uniform float u_grain;
 uniform float u_min;
 uniform float u_warp;
+uniform float u_wscale;
 
 vec3 oklabToLinear(vec3 c) {
   float l_ = c.x + 0.3963377774 * c.y + 0.2158037573 * c.z;
@@ -93,8 +94,8 @@ void main() {
   vec2 n = p / u_min;
   float t = u_time * 0.035;
   vec2 q = vec2(
-    fbm(n * 1.7 + vec2(t, 0.3 * t)),
-    fbm(n * 1.7 + vec2(5.2, 1.3) - vec2(0.2 * t, t)));
+    fbm(n * u_wscale + vec2(t, 0.3 * t)),
+    fbm(n * u_wscale + vec2(5.2, 1.3) - vec2(0.2 * t, t)));
   vec2 pw = p + (q - 0.44) * u_warp;
 
   vec3 acc = vec3(0.0);
@@ -156,9 +157,6 @@ void main() {
   gl_FragColor = vec4(rgb, 1.0);
 }
 `;
-
-/** Warp gain: fbm deviation (~±0.35) × gain ≈ ±6 % of the short side. */
-const WARP = 0.17;
 
 export interface FieldParams {
   /** Node centres in CSS px of the canvas. */
@@ -230,7 +228,7 @@ export class GradientRenderer {
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
     for (const name of [
-      'u_res', 'u_scale', 'u_count', 'u_pos', 'u_rad', 'u_lab', 'u_time', 'u_grain', 'u_min', 'u_warp',
+      'u_res', 'u_scale', 'u_count', 'u_pos', 'u_rad', 'u_lab', 'u_time', 'u_grain', 'u_min', 'u_warp', 'u_wscale',
       'u_shape', 'u_rot', 'u_npts', 'u_soft', 'u_opac', 'u_pts', 'u_css',
     ]) {
       this.u[name] = gl.getUniformLocation(this.program, name);
@@ -271,7 +269,7 @@ export class GradientRenderer {
    */
   render(p: FieldParams, fx?: FxState, fxUnit?: number): boolean {
     const gl = this.gl;
-    const wantFx = !!fx && fxActive(fx).length > 0;
+    const wantFx = !!fx && fxNeedsPost(fx);
     const useFx = wantFx && this.post.begin(this.canvas.width, this.canvas.height);
     gl.useProgram(this.program);
     gl.uniform2f(this.u.u_res, this.canvas.width, this.canvas.height);
@@ -298,9 +296,11 @@ export class GradientRenderer {
     gl.uniform1f(this.u.u_grain, p.grain);
     const min = this.minUnit ?? Math.min(this.cssW, this.cssH);
     gl.uniform1f(this.u.u_min, min);
-    gl.uniform1f(this.u.u_warp, min * WARP);
+    // Warp gain: fbm deviation (~±0.35) × gain ≈ ±6 % of the short side at the house value; WARP in the FX panel moves it.
+    gl.uniform1f(this.u.u_warp, min * (fx ? warpGain(fx) : WARP_HOUSE));
+    gl.uniform1f(this.u.u_wscale, fx ? warpFreq(fx) : 1.7);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    if (useFx) this.post.draw(fx!, fxUnit ?? this.scale);
+    if (useFx) this.post.draw(fx!, fxUnit ?? this.scale, p.lab, p.count);
     return !wantFx || useFx;
   }
 

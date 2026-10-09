@@ -1,6 +1,6 @@
 import { wheelUp } from './wheel';
 import type { Actions } from './actions';
-import { FX_IDS, fxMaxPos, fxPos, type FxId } from './fx';
+import { FX_IDS, FX_PAGES, fxMaxPos, fxPageOf, fxPos, fxSpoken, type FxId } from './fx';
 import { bracketPath, ticksPath } from './handles';
 import { G_SPAN, G_START, gaugeHit, gaugeSpacing, layoutGauge, makeGauge, renderGauge, type GaugeParts } from './gauge';
 import type { Metrics } from './handles';
@@ -9,7 +9,7 @@ import { emit, type Store } from './store';
 
 const NS = 'http://www.w3.org/2000/svg';
 const TAU = Math.PI * 2;
-const NAMES: Record<FxId, string> = { grain: 'GRAIN', dither: 'DITHER', chroma: 'CHROMA', scan: 'SCAN', vig: 'VIG' };
+const NAMES = Object.fromEntries(FX_IDS.map((id) => [id, id.toUpperCase()])) as Record<FxId, string>;
 /** Wheel events right after a summon belong to the summoning gesture (trackpad inertia): they must not step a ring. */
 const SETTLE_MS = 350;
 /** Pointer this far (px) outside the outer ring, and idle this long, dismisses the dial. */
@@ -33,6 +33,8 @@ interface RingView extends GaugeParts {
 
 /**
  * Global FX dial: one concentric 270° gauge per enabled effect (SOFT-gauge language), summoned over the stage.
+ * Twelve effects flip between three pages (`FX_PAGES`, at most five rings each so the node gauges' spacing rule holds),
+ * like the node bezel's COLOUR page: a small chip above the bezel (click, Enter / Space, ← →) turns the page.
  * It owns its pointer / wheel / key gestures in the capture phase while open, so nodes never see them.
  */
 export class FxDial {
@@ -42,6 +44,13 @@ export class FxDial {
   private empty = el('g', { class: 'fxempty' });
   private emptyText = el('text', { 'text-anchor': 'middle' });
   private emptyBg!: SVGRectElement;
+  private page = 0;
+  private pageG = el('g', { class: 'fxpage', role: 'button', tabindex: '0' });
+  private pageBg = el('rect', { class: 'tag-bg', height: 14 });
+  private pageText = el('text', { class: 'tag-text', 'text-anchor': 'middle' });
+  /** The page chip's box in stage px, for hit testing. */
+  private chip = { x0: 0, x1: 0, y0: 0, y1: 0 };
+  private chipHover = false;
   private shown = new Set<FxId>();
   open = false;
   private cx = 0;
@@ -98,6 +107,9 @@ export class FxDial {
   ) {
     this.svg.style.display = 'none';
     this.bezel.append(this.bezH, this.bezI, this.bezTicksH, this.bezTicksI, ...this.bearings);
+    this.pageG.append(this.pageBg, this.pageText);
+    this.pageG.addEventListener('keydown', (e) => this.onPageKey(e));
+    this.bezel.appendChild(this.pageG);
     this.root.appendChild(this.bezel);
     for (const id of FX_IDS) this.views.push(this.makeView(id));
     // Empty state: the bezel alone plus a callout chip.
@@ -163,7 +175,12 @@ export class FxDial {
     this.want = { x: x ?? this.metrics.w / 2, y: y ?? this.metrics.h / 2 };
     const was = this.open;
     this.open = true;
-    if (!was) this.shown = new Set(FX_IDS.filter((id) => s.fx[id] > 0));
+    if (!was) {
+      this.shown = new Set(FX_IDS.filter((id) => s.fx[id] > 0));
+      // Open on the page of the first enabled effect (the STOCK page when nothing is on).
+      const first = FX_IDS.find((id) => this.shown.has(id));
+      this.page = first ? fxPageOf(first) : 0;
+    }
     this.openedAt = this.lastActive = performance.now();
     this.svg.style.display = '';
     this.svg.classList.add('is-open');
@@ -179,7 +196,7 @@ export class FxDial {
     this.sync(true);
     this.animate(); // apply the current progress before the first paint (no full-strength flash)
     if (focus) {
-      const first = this.views.find((v) => this.shown.has(v.id));
+      const first = this.views.find((v) => this.visible(v.id));
       first?.g.focus({ preventScroll: true });
     }
   }
@@ -254,16 +271,17 @@ export class FxDial {
 
   private layout(): void {
     const m = this.metrics;
-    const ids = FX_IDS.filter((id) => this.shown.has(id));
+    const ids = FX_IDS.filter((id) => this.visible(id));
     const n = ids.length;
-    // Spacing is sized for the full five rings plus bezel (shared with the node gauges), so adding a ring never rescales the others.
+    // Spacing is sized for the full five rings plus bezel (shared with the node gauges), so adding a ring never rescales the
+    // others, and no page holds more than five.
     const { sp } = gaugeSpacing(m.w, m.h);
     this.sp = sp;
     ids.forEach((id, i) => (this.views.find((v) => v.id === id)!.r = 1.5 * sp + i * sp));
     this.outer = n ? 1.5 * sp + (n - 1) * sp + sp / 2 : 1.9 * sp;
     const bz = n ? this.outer + 0.55 * sp + 3 : 2.4 * sp;
     this.extent = n
-      ? { x: bz + 14, y: bz + 14 }
+      ? { x: bz + 14, y: bz + 26 }
       : { x: Math.min(m.w / 2 - 4, Math.max(bz + 14, 108)), y: bz + 32 };
     const ex = Math.min(this.extent.x + 2, m.w / 2);
     const ey = Math.min(this.extent.y + 2, m.h / 2);
@@ -293,14 +311,69 @@ export class FxDial {
     this.svg.style.setProperty('--ret-o', `${o}px`);
     const fs = Math.max(7.5, Math.min(9.5, sp * 0.36));
     this.svg.style.setProperty('--fx-fs', `${fs}px`);
-    this.setTag(this.emptyBg, this.emptyText, 'FX // ALL OFF · CHECK AN EFFECT', bz + 22);
+    this.layoutChip(bz);
+    this.setTag(this.emptyBg, this.emptyText, this.emptyLabel(), bz + 22);
     for (const v of this.views) {
-      const on = this.shown.has(v.id);
+      const on = this.visible(v.id);
       v.g.style.display = on ? '' : 'none';
       if (!on) continue;
       layoutGauge(v, v.r, sp);
       v.key = '';
     }
+  }
+
+  /** Rings visible now: enabled (or enabled earlier this session) and on the current page. */
+  private visible(id: FxId): boolean {
+    return this.shown.has(id) && fxPageOf(id) === this.page;
+  }
+
+  private emptyLabel(): string {
+    return this.shown.size ? 'FX // NONE ON THIS PAGE' : 'FX // ALL OFF · CHECK AN EFFECT';
+  }
+
+  /** `PAGE 1/3 · STOCK ›`, plus how many effects are on over the other pages. Sits just above the bezel's ticks. */
+  private layoutChip(bz: number): void {
+    const other = [...this.shown].filter((id) => fxPageOf(id) !== this.page && this.store.fx[id] > 0).length;
+    const label = `PAGE ${this.page + 1}/${FX_PAGES.length} · ${FX_PAGES[this.page].name}${other ? ` · +${other} ON` : ''} ›`;
+    const y = -(bz + 16);
+    const w = this.setTag(this.pageBg, this.pageText, label, y);
+    this.pageG.setAttribute('aria-label', `FX page ${this.page + 1} of ${FX_PAGES.length}, ${FX_PAGES[this.page].name}. Press to flip`);
+    this.chip = { x0: this.cx - w / 2, x1: this.cx + w / 2, y0: this.cy + y - 9, y1: this.cy + y + 9 };
+  }
+
+  private chipAt(x: number, y: number): boolean {
+    const c = this.chip;
+    return x >= c.x0 && x <= c.x1 && y >= c.y0 && y <= c.y1;
+  }
+
+  /** Flip to another page (wraps). Not an undo step: it is a view, like the node bezel's COLOUR page. */
+  private setPage(n: number): void {
+    const count = FX_PAGES.length;
+    const next = ((n % count) + count) % count;
+    if (next === this.page) return;
+    this.page = next;
+    this.hover = null;
+    this.wheelActive = null;
+    this.lastActive = performance.now();
+    this.stage.classList.remove('fx-ring');
+    this.lastKey = '';
+    this.sync(true);
+    this.store.say(`FX PAGE ${next + 1}/${count} · ${FX_PAGES[next].name}`);
+  }
+
+  private onPageKey(e: KeyboardEvent): void {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const d = e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.setPage(this.page + d);
+  }
+
+  private setChipHover(on: boolean): void {
+    if (on === this.chipHover) return;
+    this.chipHover = on;
+    this.pageG.classList.toggle('is-hover', on);
   }
 
   /** Black mono chip, sized to its text (Martian Mono ≈ 0.62 em per glyph + tracking). */
@@ -317,17 +390,9 @@ export class FxDial {
     return w;
   }
 
-  private spoken(id: FxId): string {
-    const fx = this.store.fx;
-    return fx[id] <= 0 ? 'off'
-      : id === 'dither' ? `${fx.dither} levels, ${fx.ditherMode}`
-      : id === 'grain' ? `${fx.grain}, ${fx.grainSize}`
-      : String(fx[id]);
-  }
-
   private text(id: FxId): string {
     const v = this.store.fx[id];
-    return `${NAMES[id]} // ${v <= 0 ? 'OFF' : id === 'dither' ? `${v} LV` : v}`;
+    return `${NAMES[id]} // ${v <= 0 ? (id === 'warp' ? 'STD' : 'OFF') : id === 'dither' ? `${v} LV` : v}`;
   }
 
   /** Mirror the store: add rings for newly enabled effects (they stay while the dial is open), refresh values. */
@@ -335,7 +400,13 @@ export class FxDial {
     if (!this.open) return;
     const fx = this.store.fx;
     let grew = false;
-    for (const id of FX_IDS) if (fx[id] > 0 && !this.shown.has(id)) (this.shown.add(id), (grew = true));
+    for (const id of FX_IDS) {
+      if (fx[id] > 0 && !this.shown.has(id)) {
+        this.shown.add(id);
+        grew = true;
+        this.page = fxPageOf(id); // a newly checked effect brings its page forward, so its ring is the one you see
+      }
+    }
     const box = `${this.metrics.w}x${this.metrics.h}`;
     if (grew || force || box !== this.lastBox) {
       this.lastBox = box;
@@ -345,13 +416,13 @@ export class FxDial {
     if (key === this.lastKey && !force) return;
     this.lastKey = key;
     for (const v of this.views) {
-      if (!this.shown.has(v.id)) continue;
+      if (!this.visible(v.id)) continue;
       const max = fxMaxPos(v.id);
       const t = fxPos(v.id, fx[v.id]) / max;
       const off = fx[v.id] <= 0;
       renderGauge(v, t, off, this.text(v.id));
       v.g.setAttribute('aria-valuenow', String(fx[v.id]));
-      v.g.setAttribute('aria-valuetext', this.spoken(v.id));
+      v.g.setAttribute('aria-valuetext', fxSpoken(v.id, fx));
       v.g.classList.toggle('is-hover', this.hover === v.id);
       v.g.classList.toggle('is-drag', this.drag?.id === v.id);
       v.g.classList.toggle('is-active', (this.drag?.id ?? this.wheelActive) === v.id);
@@ -380,7 +451,7 @@ export class FxDial {
     this.ret.style.transform = `scale(${(1 + (1 - b)).toFixed(4)})`;
     let k = 1;
     for (const v of this.views) {
-      if (!this.shown.has(v.id)) continue;
+      if (!this.visible(v.id)) continue;
       const a = part(k++);
       v.g.style.setProperty('--pa', a.toFixed(3));
       v.g.style.transform = `scale(${(0.7 + 0.3 * a).toFixed(4)})`;
@@ -418,7 +489,7 @@ export class FxDial {
     let best: FxId | null = null;
     let bd = Infinity;
     for (const v of this.views) {
-      if (!this.shown.has(v.id)) continue;
+      if (!this.visible(v.id)) continue;
       const e = gaugeHit(v.r, x - this.cx, y - this.cy, this.sp);
       if (e !== null && e < bd) (bd = e, (best = v.id));
     }
@@ -481,6 +552,12 @@ export class FxDial {
     }
     this.lastActive = now;
     this.ptr = { x, y, in: true, touch };
+    if (!this.drag && this.chipAt(x, y)) {
+      e.stopPropagation();
+      e.preventDefault();
+      this.setPage(this.page + (e.shiftKey ? -1 : 1));
+      return;
+    }
     const id = this.ringAt(x, y);
     if (id && !this.drag) {
       e.stopPropagation();
@@ -539,7 +616,9 @@ export class FxDial {
     const { x, y } = this.local(e);
     this.ptr = { x, y, in: true, touch: e.pointerType === 'touch' };
     const id = this.ringAt(x, y);
-    if (id || Math.hypot(x - this.cx, y - this.cy) <= this.outer + 8) this.lastActive = performance.now();
+    const onChip = this.chipAt(x, y);
+    this.setChipHover(onChip);
+    if (id || onChip || Math.hypot(x - this.cx, y - this.cy) <= this.outer + 8) this.lastActive = performance.now();
     this.setHover(id);
   };
 
