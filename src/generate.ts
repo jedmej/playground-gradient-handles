@@ -122,48 +122,26 @@ export function randomSpecs(rng: () => number, rule: Harmony, existing: NodeSpec
 }
 
 /**
- * A mutation of the current document over the same nodes, scaled by `k` (~0.8 gentle … 2 bold): every unlocked node
- * jitters in position, reach, softness, rotation and colour, and each variant also rolls a few whole-field moves
- * (a shared hue turn, a colour reshuffle between nodes, a mirrored layout, a light / dark swing) that make the four
- * thumbnails read as different takes rather than four near-copies. Locked nodes are copied untouched. Specs keep
- * their uid, so adopting one is an identity-matched restore.
+ * A new composition over the same nodes, scaled by `k` (~0.8 gentle … 2 bold): every unlocked node keeps its colour
+ * exactly and jitters in position, reach, softness, opacity and rotation; each variant may also mirror the whole
+ * layout on x / y, so the four thumbnails read as different arrangements rather than near-copies. Locked nodes are
+ * copied untouched. Specs keep their uid, so adopting one is an identity-matched restore.
  */
 export function varySpecs(rng: () => number, nodes: NodeSpec[], k: number): NodeSpec[] {
-  const free = nodes.map((n, i) => (n.lock ? -1 : i)).filter((i) => i >= 0);
-  // Whole-field moves, more likely (and stronger) as k grows.
   const p = (base: number): boolean => rng() < Math.min(0.95, base * k);
-  const hueTurn = p(0.35) ? jit(rng, 70 * k) : 0;
-  const lightSwing = p(0.25) ? jit(rng, 0.1 * k) : 0;
   const flipX = p(0.2);
   const flipY = p(0.15);
-  // Reshuffle colours among the unlocked nodes: a full shuffle or a few swaps.
-  const hexes = new Map<number, string>(free.map((i) => [i, nodes[i].hex]));
-  if (free.length > 1 && p(0.3)) {
-    const order = [...free];
-    const swaps = Math.max(1, Math.round(free.length * Math.min(1, 0.3 * k)));
-    for (let t = 0; t < swaps; t++) {
-      const a = Math.floor(rng() * order.length);
-      const b = Math.floor(rng() * order.length);
-      [order[a], order[b]] = [order[b], order[a]];
-    }
-    free.forEach((i, j) => hexes.set(i, nodes[order[j]].hex));
-  }
-  return nodes.map((n, i) => {
+  return nodes.map((n) => {
     const out: NodeSpec = { ...n, pts: copyPts(n.pts) };
     if (n.lock) return out;
     const bx = flipX ? 1 - n.x : n.x;
     const by = flipY ? 1 - n.y : n.y;
-    out.x = clamp(bx + jit(rng, 0.14 * k), 0.02, 0.98);
-    out.y = clamp(by + jit(rng, 0.14 * k), 0.02, 0.98);
-    out.r = clamp(n.r * Math.exp(jit(rng, 0.42 * k)), R_MIN, R_MAX);
+    out.x = clamp(bx + jit(rng, 0.16 * k), 0.02, 0.98);
+    out.y = clamp(by + jit(rng, 0.16 * k), 0.02, 0.98);
+    out.r = clamp(n.r * Math.exp(jit(rng, 0.45 * k)), R_MIN, R_MAX);
     out.soft = clamp((n.soft ?? defaultSoft(n.shape)) + jit(rng, 0.25 * k), 0, 1);
     if (n.opac !== undefined && n.opac < 1) out.opac = clamp(n.opac + jit(rng, 0.2 * k), 0.15, 1);
     if (out.shape && out.shape !== 'circle' && out.shape !== 'stroke') out.rot = (n.rot ?? 0) + jit(rng, 0.5 * k);
-    const [L, C, h] = hexToOklch(hexes.get(i) ?? n.hex);
-    const L2 = clamp(L + lightSwing + jit(rng, 0.1 * k), 0.04, 0.97);
-    const h2 = wrap(h + hueTurn + jit(rng, 32 * k));
-    const C2 = Math.min(C * Math.exp(jit(rng, 0.35 * k)), maxChroma(L2, h2));
-    out.hex = oklchToHex(L2, C2, C < 0.01 ? h : h2);
     return out;
   });
 }
