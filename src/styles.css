@@ -390,6 +390,22 @@ b {
   z-index: 2;
 }
 .corner-fx { left: 18px; }
+/* NODES (ADD NODE · REMOVE NODE · DRAW): centred on the frame's top edge between FX DIAL and PREVIEW, same style. */
+.stage-frame .frame-top {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: calc(50% + 9px); /* centred on the stage (the frame's first 18 px column is the y ruler) */
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+.frame-top .foot-btn { margin: 0; height: 20px; }
+.frame-top .foot-btn:disabled { opacity: 0.4; cursor: default; }
+@media (pointer: coarse), (max-width: 959px) {
+  .frame-top .foot-btn { height: 36px; padding: 0 12px; }
+}
 .corner-preview { right: 0; }
 .corner-preview[aria-pressed='true'],
 .corner-preview[aria-pressed='true']:hover {
@@ -615,7 +631,7 @@ html[data-tool='draw'][data-drag] .stage {
   grid-row: 3;
   /* Cursor readout | GENERATE (centred) | stage size. A narrow (portrait) stage wraps onto more lines. */
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
   gap: 4px 14px;
   align-items: center;
   font-size: 10px;
@@ -626,15 +642,18 @@ html[data-tool='draw'][data-drag] .stage {
 .foot-l {
   color: var(--ink);
 }
+.foot-l, .foot-r { white-space: nowrap; }
 .foot-r { justify-self: end; }
 
 /* GENERATE under the artboard: RANDOM · HARMONY · VARY in the FX DIAL / PREVIEW corner-button style. */
 .foot-gen {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   justify-self: center;
 }
 .foot-gen .foot-btn { margin: 0; height: 20px; }
+.foot-gen .foot-sep { width: 1px; align-self: stretch; margin: 0 4px; background: var(--void); }
 .foot-gen .foot-btn[aria-pressed='true'],
 .foot-gen .foot-btn[aria-pressed='true']:hover { background: var(--plate); color: var(--signal); }
 .foot-gen .foot-btn[aria-pressed='true'] b { color: var(--signal); }
@@ -642,8 +661,9 @@ html[data-tool='draw'][data-drag] .stage {
   .foot-gen .foot-btn { height: 36px; padding: 0 12px; }
   .stage-foot { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .foot-gen { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
-  /* Readouts on one line, the 36 px GENERATE buttons under them: the foot row grows to hold both. */
-  :root { --foot-row: 62px; }
+  /* Readouts on one line, the 36 px TOOLS + GENERATE buttons under them (two rows on a phone): the foot row grows. */
+  :root { --foot-row: 104px; }
+  .foot-gen .foot-sep { display: none; }
 }
 
 .reg {
@@ -1979,7 +1999,13 @@ html[data-tool='draw'][data-drag] .stage {
   }
 
   .stage-area {
-    padding: 50px 12px 6px 12px;
+    /* Two rows above the frame: NODES (ADD / REMOVE / DRAW) over the FX DIAL / PREVIEW corners. */
+    padding: 94px 12px 6px 12px;
+  }
+  .stage-frame .frame-top {
+    bottom: calc(100% + 46px);
+    left: 18px;
+    transform: none;
   }
 
   /* One scrollable row of actions (groups keep their dividers) instead of a four-row wrap. */
@@ -2930,11 +2956,13 @@ html[data-drag='lum'] .stage,
    hides with the rest (the stage is inert). Layout does not shift: visibility, not display. */
 .stage-col .toolbar,
 .stage-col > .stage-bar,
-.corner-fx {
+.corner-fx,
+.frame-top {
   transition: opacity 200ms var(--ease), visibility 0s linear 0s;
 }
 .stage-col.is-preview .toolbar,
 .stage-col.is-preview .corner-fx,
+.stage-col.is-preview .frame-top,
 .stage-col.is-preview > .stage-bar {
   opacity: 0;
   visibility: hidden;
@@ -2964,8 +2992,10 @@ html[data-drag='lum'] .stage,
   .stage-col .toolbar,
   .stage-col > .stage-bar,
   .corner-fx,
+  .frame-top,
   .stage-col.is-preview .toolbar,
   .stage-col.is-preview .corner-fx,
+  .stage-col.is-preview .frame-top,
   .stage-col.is-preview > .stage-bar {
     transition: none;
   }

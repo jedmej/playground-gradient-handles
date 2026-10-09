@@ -54,25 +54,6 @@
     <main class="body" id="top">
       <section class="stage-col" aria-label="Gradient field">
         <div class="toolbar mono" id="toolbar" role="toolbar" aria-label="Actions">
-          <div class="tb-group tb-nodes" role="group" aria-label="Nodes">
-            <button class="mini tb-btn" id="add-node" data-action="add-node" type="button" title="Add a node at the emptiest spot (max 16)">
-              <span class="btn-label">Add node</span> <b>[+]</b>
-            </button>
-            <button class="mini tb-btn" id="remove-node" data-action="remove-node" type="button" title="Remove the selected node (Delete)" disabled>
-              <span class="btn-label">Remove node</span> <b>[−]</b>
-            </button>
-            <button class="mini tb-btn mini-draw" type="button" data-action="draw-mode" aria-pressed="false" title="Draw a stroke of colour (D)">
-              <span class="mini-l">DRAW</span> <b>[D]</b>
-            </button>
-          </div>
-          <div class="tb-group tb-tools" role="group" aria-label="Tools">
-            <button class="mini tb-btn mini-tool" type="button" data-action="snap" aria-pressed="false" aria-keyshortcuts="G" title="Snap node drags to the ruler grid and to other nodes (G; hold ⌘/Ctrl to invert while dragging)">
-              <span class="mini-l">SNAP</span> <b>[G]</b>
-            </button>
-            <button class="mini tb-btn mini-tool" type="button" data-action="mirror" aria-pressed="false" aria-keyshortcuts="Y" title="Mirror: OFF → X → Y → XY (Y). Moving a node moves its mirrored partner(s)">
-              <span class="mini-l">MIRROR</span> <b>[Y]</b> <span class="tool-mode">OFF</span>
-            </button>
-          </div>
           <div class="tb-group tb-history" role="group" aria-label="History">
             <button class="mini tb-btn" id="undo" data-action="undo" type="button" title="Undo (⌘Z)" disabled>
               <span class="btn-label">Undo</span> <b>[↶]</b>
@@ -103,6 +84,17 @@
           <button class="mini corner-btn corner-fx" type="button" data-action="fx-dial" title="FX dial: hold ⌥ and scroll on empty field, or press F">
             <span class="mini-l">FX DIAL</span> <b>[F]</b>
           </button>
+          <div class="frame-top" role="group" aria-label="Nodes">
+            <button class="mini foot-btn" id="add-node" data-action="add-node" type="button" title="Add a node at the emptiest spot (max 16)">
+              <span class="mini-l">ADD NODE</span> <b>[+]</b>
+            </button>
+            <button class="mini foot-btn" id="remove-node" data-action="remove-node" type="button" title="Remove the selected node (Delete)" disabled>
+              <span class="mini-l">REMOVE NODE</span> <b>[−]</b>
+            </button>
+            <button class="mini foot-btn mini-draw" type="button" data-action="draw-mode" aria-pressed="false" title="Draw a stroke of colour (D)">
+              <span class="mini-l">DRAW</span> <b>[D]</b>
+            </button>
+          </div>
           <button class="mini corner-btn corner-preview" type="button" data-action="preview" aria-pressed="false" title="Preview: hide every control and see the bare wallpaper (P, Esc exits)">
             <span class="mini-l">PREVIEW</span> <b>[P]</b>
           </button>
@@ -120,7 +112,14 @@
           </div>
           <div class="stage-foot">
             <span class="foot-l" id="foot-serial">CUR // X —.——— Y —.———</span>
-            <div class="foot-gen" role="group" aria-label="Generate">
+            <div class="foot-gen" role="group" aria-label="Tools and generate">
+              <button class="mini foot-btn mini-tool" type="button" data-action="snap" aria-pressed="false" aria-keyshortcuts="G" title="Snap node drags to the ruler grid and to other nodes (G; hold ⌘/Ctrl to invert while dragging)">
+                <span class="mini-l">SNAP</span> <b>[G]</b>
+              </button>
+              <button class="mini foot-btn mini-tool" type="button" data-action="mirror" aria-pressed="false" aria-keyshortcuts="Y" title="Mirror: OFF → X → Y → XY (Y). Moving a node moves its mirrored partner(s)">
+                <span class="mini-l">MIRROR</span> <b>[Y]</b> <span class="tool-mode">OFF</span>
+              </button>
+              <span class="foot-sep" aria-hidden="true"></span>
               <button class="mini foot-btn" id="randomize" data-action="randomize" type="button" aria-keyshortcuts="R" title="New random composition (R) — locked nodes stay">
                 <span class="mini-l">RANDOM</span> <b>[R]</b>
               </button>
