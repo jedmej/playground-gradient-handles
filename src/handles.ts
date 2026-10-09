@@ -1329,7 +1329,7 @@ export class Handles {
     const y = e.clientY - this.metrics.top;
     const hit = this.pick(x, y);
     if (hit.index < 0) {
-      // Off every node: the artboard's own menu (ADD NODE HERE · DRAW).
+      // Off every node: the artboard's own menu (ADD NODE · DRAW).
       this.menu.close();
       if (s.selected !== null) {
         s.selected = null;
