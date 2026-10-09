@@ -3613,3 +3613,18 @@ html[data-drag='lum'] .stage,
 .node .lead .ink { fill: none; stroke: #f2f3ee; stroke-width: 1.1; }
 .node .lead .lead-l.ink { stroke-dasharray: 3 3; }
 .node.is-hover .lead .ink, .node.is-selected .lead .ink { stroke: var(--signal); }
+
+/* Screen-reader only: off the layout, takes no space and no input (unlike `.vh`, which is an invisible full-cover). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+  pointer-events: none;
+}
