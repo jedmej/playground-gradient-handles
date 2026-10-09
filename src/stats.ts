@@ -38,3 +38,23 @@ export function bumpStat(id: StatId): void {
   }
   renderStats();
 }
+
+/**
+ * The REV plate: `[data-build="version|sha|date|env"]` get the build stamp vite.config.ts injects, so each deploy
+ * shows its own commit and date (version `6.1.0` → `06.1`; date as `YY.MM.DD`).
+ */
+export function renderBuild(): void {
+  const [maj, min] = __BUILD_VERSION__.split('.');
+  const d = new Date(__BUILD_DATE__);
+  const two = (n: number): string => String(n).padStart(2, '0');
+  const values: Record<string, string> = {
+    version: `${two(Number(maj) || 0)}.${Number(min) || 0}`,
+    sha: __BUILD_SHA__.toUpperCase(),
+    date: `${two(d.getUTCFullYear() % 100)}.${two(d.getUTCMonth() + 1)}.${two(d.getUTCDate())}`,
+    env: import.meta.env.DEV ? 'DEV' : 'LIVE',
+  };
+  document.querySelectorAll<HTMLElement>('[data-build]').forEach((el) => {
+    const v = values[el.dataset.build!];
+    if (v) el.textContent = v;
+  });
+}

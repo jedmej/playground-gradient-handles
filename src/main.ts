@@ -19,10 +19,11 @@ import { Output } from './output';
 import { createStore, EASE } from './store';
 import { ToolsOverlay, ToolsUI } from './tools';
 import { drawRulers, UI } from './ui';
-import { bumpStat } from './stats';
+import { bumpStat, renderBuild } from './stats';
 import { wallpaperTarget } from './wallpaper';
 
 bumpStat('visits'); // one per page load; also paints every [data-stat] readout
+renderBuild();
 
 const store = createStore();
 store.slots = library.load();

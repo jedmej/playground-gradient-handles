@@ -193,6 +193,8 @@ Martian Mono). No runtime network calls beyond same-origin assets.
 
 - Footer and rail stats: `[data-stat="visits|exports"]` show this browser's counts (`localStorage` `gh.stats.v1`): VISITS = page loads, EXPORTS = PNG downloads (Export and the quick copy). Nothing is sent anywhere.
 
+- REV plate (spec panel head, `.rev`, `[data-build="version|sha|date|env"]`): `REV 06.1`, `BUILD <sha> // YY.MM.DD`, `LIVE` / `DEV`. Stamped at build time by `vite.config.ts` (`package.json` version; commit from `VERCEL_GIT_COMMIT_SHA` on Vercel, else `git rev-parse`), so every deploy shows its own commit and date. Bump `version` in `package.json` for a new REV number.
+
 ## Credits
 
 Handle mechanic after Isaiah (@eyexayuh)'s mesh-gradient node controls.
