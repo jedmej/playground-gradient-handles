@@ -154,8 +154,12 @@ export class Explore {
       lock.setAttribute('aria-pressed', 'false');
       lock.setAttribute('aria-label', `Keep take ${k + 1} across rolls`);
       lock.title = 'Lock: keep this take when rolling again';
+      // Square-cut padlock in the spec-sheet line: open shackle (raised, right leg clear of the body) by default,
+      // closed when locked. Outlined body with a keyhole slot; CSS swaps open / closed and fills it when locked.
       lock.innerHTML =
-        '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path class="lk-sh" d="M3.5 5.5V4a2.5 2.5 0 0 1 5 0v1.5"/><rect class="lk-bd" x="2" y="5.5" width="8" height="5.5"/></svg>';
+        '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">' +
+        '<path class="lk-open" d="M3.5 6V2H8.5V3.5"/><path class="lk-shut" d="M3.5 6V3H8.5V6"/>' +
+        '<rect class="lk-bd" x="2" y="6" width="8" height="5"/><rect class="lk-key" x="5.5" y="7.6" width="1" height="1.8"/></svg>';
       lock.addEventListener('click', () => this.toggleKeep(k));
       const cell = document.createElement('div');
       cell.className = 'vary-cell';
