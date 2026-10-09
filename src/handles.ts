@@ -309,7 +309,14 @@ export class Handles {
     const outInk = el('path', { class: 'ink out-p' });
     outG.append(outHalo, outInk);
     outG.style.opacity = '0';
-    g.append(ring, outG, focusHalo, focus, holdHalo, holdInk, retHalo, retInk, cp.sw, coreHalo, coreInk);
+    // LOCK glyph: a small padlock off the reticle's top-right corner (shown by `.is-locked`).
+    const lockG = el('g', { class: 'lock-g', transform: 'translate(17 -17)' });
+    const lockD = 'M-2.5 0V-2.2a2.5 2.5 0 0 1 5 0V0';
+    lockG.append(
+      el('path', { class: 'halo lock-sh', d: lockD }), el('rect', { class: 'halo lock-bd', x: -3.5, y: 0, width: 7, height: 5.5 }),
+      el('path', { class: 'ink lock-sh', d: lockD }), el('rect', { class: 'ink lock-bd', x: -3.5, y: 0, width: 7, height: 5.5 }),
+    );
+    g.append(ring, outG, focusHalo, focus, holdHalo, holdInk, retHalo, retInk, cp.sw, coreHalo, coreInk, lockG);
 
     const view: NodeView = {
       outG, outHalo, outInk, outKey: '', outPts: null, shape: '', npts: -1,
@@ -474,8 +481,8 @@ export class Handles {
   }
 
   /** Are node `i`'s gauges on screen (and so grabbable)? Edit tool only: they sit at fixed radii, whatever the node's size. */
-  private gaugeShown(_i: number): boolean {
-    return this.store.tool === 'edit';
+  private gaugeShown(i: number): boolean {
+    return this.store.tool === 'edit' && !this.store.nodes[i]?.lock;
   }
 
   /** Something is active (a selected / focused node or stroke, an open node menu, a stroke being drawn): the next empty click only clears it. */
@@ -487,7 +494,7 @@ export class Handles {
   /** Is node `i` on the COLOUR page (edit tool only)? */
   private onColor(i: number): boolean {
     const n = this.store.nodes[i];
-    return !!n && this.colorUid === n.uid && this.store.tool === 'edit';
+    return !!n && this.colorUid === n.uid && this.store.tool === 'edit' && !n.lock;
   }
 
   /** The unrounded colour of node `i`, kept across edits (see colorpage.ts). */
@@ -501,6 +508,7 @@ export class Handles {
   private setColorPage(i: number, on: boolean): void {
     const n = this.store.nodes[i];
     if (!n) return;
+    if (on && this.actions.isLocked(i)) return;
     if (on) {
       this.colorUid = n.uid;
       this.colorOf(i);
@@ -571,7 +579,7 @@ export class Handles {
     let bestRD = Infinity;
     for (let i = 0; i < this.store.nodes.length; i++) {
       // Only circles show the dotted size ring; other shapes resize by scroll / pinch / keys (their own outline is the extent).
-      if (!this.revealed(i) || this.store.nodes[i].shape !== 'circle') continue;
+      if (!this.revealed(i) || this.store.nodes[i].shape !== 'circle' || this.store.nodes[i].lock) continue;
       const p = this.px(i);
       const d = Math.abs(Math.hypot(x - p.x, y - p.y) - p.r);
       if (d <= band && d < bestRD) {
@@ -770,6 +778,18 @@ export class Handles {
     e.preventDefault();
 
     const wasSelected = s.selected;
+    if (res.index >= 0 && s.nodes[res.index]?.lock) {
+      // LOCK: the node can be selected (and, on touch, held for its menu) but never grabbed.
+      const li = res.index;
+      s.selected = li;
+      s.armed = li;
+      this.lastTap = null;
+      this.views[li].g.focus({ preventScroll: true });
+      if (e.pointerType === 'touch' && wasSelected === li) this.hold = { start: performance.now(), x, y, uid: s.nodes[li].uid };
+      this.actions.isLocked(li);
+      emit(s);
+      return;
+    }
     if (res.kind === 'body') {
       // Grab the shape/stroke anywhere on its body: the same move drag as the core, with the grab offset kept.
       const p = this.px(res.index);
@@ -1154,7 +1174,7 @@ export class Handles {
       const ri = s.nodes.findIndex((n) => n.uid === pr.uid);
       if (ri >= 0) s.selected = ri;
     }
-    if (this.pinch || s.tool !== 'edit' || s.selected === null || s.selected >= s.nodes.length) return;
+    if (this.pinch || s.tool !== 'edit' || s.selected === null || s.selected >= s.nodes.length || s.nodes[s.selected].lock) return;
     const d0 = this.pinchDistance();
     if (d0 < 12) return;
     if (s.drag.kind !== 'none') {
@@ -1231,6 +1251,10 @@ export class Handles {
     if (i < 0) return;
     e.preventDefault();
     s.armed = i;
+    if (s.nodes[i].lock) {
+      this.actions.isLocked(i);
+      return;
+    }
     const zone0 = hit.kind;
     const colorZone = zone0 === 'hue' || zone0 === 'sat' || zone0 === 'lum';
     const zone = e.ctrlKey ? 'r' : (e.shiftKey || e.altKey) && !colorZone ? 'soft' : zone0;
@@ -1336,6 +1360,10 @@ export class Handles {
       return;
     }
     const mutating = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key);
+    if (mutating && this.actions.isLocked(i)) {
+      e.preventDefault();
+      return;
+    }
     if (mutating) this.actions.nudge(i);
     let handled = true;
     switch (e.key) {
@@ -1541,7 +1569,7 @@ export class Handles {
       }
       // OPAC, SOFT, ROT: the FX dial's gauges at fixed radii (innermost first), each riding the bezel's staggered fade.
       {
-        const edit = s.tool === 'edit' ? 1 : 0;
+        const edit = s.tool === 'edit' && !n.lock ? 1 : 0;
         // Page flip: pg runs linearly 0 → 1 (COLOUR) in 0.36 s and back. The first half collapses the default gauges
         // outermost-first (the open stagger reversed), the second grows HUE / SAT / LUM in innermost-first, like opening.
         const wantColor = this.onColor(i);
@@ -1632,12 +1660,16 @@ export class Handles {
         (v.pg > 0.005 ? ' is-colour' : '') +
         (cls0 ? ` is-focus focus-${focusKind}` : '') +
         (n.shape !== 'circle' ? ' no-ring' : '') +
+        (n.lock ? ' is-locked' : '') +
+        (n.hide ? ' is-hidden' : '') +
         (isSel ? ' is-selected' : '') +
         (isHold ? ' is-hold' : '') +
         (s.drag.kind === 'ring' && s.drag.index === i ? ' is-ring-drag' : '');
       if (cls !== v.cls) {
         v.cls = cls;
         v.g.setAttribute('class', cls);
+        v.g.dataset.lock = String(n.lock);
+        v.g.dataset.hide = String(n.hide);
       }
     }
 
@@ -1692,7 +1724,7 @@ export class Handles {
     // Serial / coordinate readout near the active node.
     if (activeNode >= 0 && activeNode < s.nodes.length) {
       const n = s.nodes[activeNode];
-      const text = `${nodeSerial(activeNode)} // X ${n.x.toFixed(3)} Y ${n.y.toFixed(3)}`;
+      const text = `${nodeSerial(activeNode)} // X ${n.x.toFixed(3)} Y ${n.y.toFixed(3)}${n.lock ? ' · LOCK' : ''}${n.hide ? ' · HIDE' : ''}`;
       if (text !== this.chipNodeText) {
         this.chipNodeText = text;
         this.chipNode.textContent = text;

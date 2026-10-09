@@ -11,6 +11,7 @@ import { FxPanel, WallpaperPanel } from './fxpanel';
 import { GradientRenderer } from './gradient';
 import { Actions } from './actions';
 import { loadCustom } from './custom';
+import { Explore } from './explore';
 import { createMetrics, Handles } from './handles';
 import { History } from './history';
 import { FieldBuffers, packField } from './field';
@@ -110,6 +111,7 @@ const ui = new UI(store, handles.metrics, now, () => ({ ...handles.pointer, insi
 actions.bindKeys();
 const toolsOverlay = new ToolsOverlay(svg, handles.metrics);
 const toolsUi = new ToolsUI(store, actions, history, stage, handles.metrics, isPreview);
+new Explore(store, actions, stage, handles.metrics, now);
 new FxPanel(store, actions, history);
 new WallpaperPanel(store, handles.metrics, now);
 const fxDial = new FxDial(store, actions, history, stage, handles.metrics, (x, y) => handles.emptyAt(x, y), () => handles.busy());

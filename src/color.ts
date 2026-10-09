@@ -16,7 +16,15 @@ function toSrgb(c: number): number {
 }
 
 export function hexToLab(hex: string): Lab {
-  const [r, g, b] = hexToRgb(hex).map(toLinear);
+  const [r, g, b] = hexToRgb(hex);
+  return rgbToLab(r, g, b);
+}
+
+/** sRGB (0–1 per channel) → OKLab. */
+export function rgbToLab(sr: number, sg: number, sb: number): Lab {
+  const r = toLinear(sr);
+  const g = toLinear(sg);
+  const b = toLinear(sb);
   const l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
   const m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b;
   const s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b;

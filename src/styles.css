@@ -3001,3 +3001,185 @@ html[data-drag='lum'] .stage,
   height: 12px;
   outline: 1px solid var(--graphite);
 }
+
+/* ---------- v6 Generate: RANDOM / VARY, node LOCK / HIDE, palette EXTRACT ---------- */
+/* Toolbar: the VARY button reads as armed while its strip is open (the DRAW treatment). */
+.tb-generate .tb-btn[aria-pressed='true'],
+.tb-generate .tb-btn[aria-pressed='true']:hover {
+  background: var(--plate);
+  color: var(--signal);
+}
+.tb-generate .tb-btn[aria-pressed='true'] b {
+  color: var(--signal);
+}
+@media (hover: none) {
+  .tb-generate .tb-btn[aria-pressed='false']:hover {
+    background: none;
+    color: var(--void);
+  }
+  .tb-generate .tb-btn[aria-pressed='false']:hover b {
+    color: var(--graphite);
+  }
+}
+
+/* VARY strip: a VOID plate over the foot of the stage, four thumbnails of the same field. */
+.vary-strip {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  z-index: 5;
+  width: min(calc(100% - 16px), 560px);
+  transform: translateX(-50%);
+  padding: 0 0 6px;
+  /* Not fully opaque on purpose, like the node menu (see .node-menu). */
+  background: rgba(0, 0, 0, 0.995);
+  outline: 1px solid var(--graphite);
+  outline-offset: -1px;
+  color: var(--plate-fg);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: default;
+  touch-action: manipulation;
+}
+.vary-strip[hidden] { display: none; }
+.vary-head {
+  padding: 6px 8px 5px;
+  color: var(--graphite);
+  border-bottom: 1px solid var(--hull);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vary-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px 6px 0;
+}
+.vary-btn {
+  position: relative;
+  display: block;
+  min-width: 0;
+  padding: 0;
+  background: var(--hull);
+  outline: 1px solid var(--hull);
+  outline-offset: -1px;
+  cursor: pointer;
+  aspect-ratio: var(--vary-aspect, 1.78);
+  max-height: 30vh;
+  overflow: hidden;
+}
+.vary-btn img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.vary-btn.is-loading img { visibility: hidden; }
+.vary-btn.is-loading { cursor: progress; }
+.vary-btn:hover,
+.vary-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: -2px;
+}
+.vary-serial,
+.vary-btn kbd {
+  position: absolute;
+  bottom: 0;
+  padding: 2px 4px 1px;
+  background: var(--plate);
+  color: var(--plate-fg);
+  font: inherit;
+}
+.vary-serial { left: 0; }
+.vary-btn kbd { right: 0; color: var(--graphite); }
+.vary-btn:hover .vary-serial,
+.vary-btn:focus-visible .vary-serial { color: var(--signal); }
+@media (pointer: coarse) {
+  .vary-btn kbd { display: none; }
+}
+
+/* A file dragged over the stage: EXTRACT target. */
+.stage.is-drop::after {
+  content: 'DROP IMAGE → PALETTE';
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+  outline: 2px dashed var(--signal);
+  outline-offset: -10px;
+  color: var(--signal);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+}
+
+/* Colour set: FROM IMAGE [↥] and its hint. */
+.extract-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.extract-row .mini { margin: 0; }
+.extract-hint {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+/* NODE panel: STATE row (LOCK / HIDE / SOLO), the SHAPE row's treatment. */
+.node-spec .flag-row {
+  height: 32px;
+  gap: 8px;
+  justify-content: flex-start;
+}
+.flag-row dd {
+  gap: 6px;
+  margin-left: auto;
+}
+.mini-flag {
+  height: 24px;
+  margin: 0;
+  padding: 0 6px;
+  gap: 4px;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+}
+.mini-flag[aria-pressed='true'],
+.mini-flag[aria-pressed='true']:hover {
+  background: var(--plate);
+  color: var(--signal);
+}
+.mini-flag[aria-pressed='true'] b { color: var(--signal); }
+.mini-flag:disabled { opacity: 0.4; cursor: default; }
+.mini-flag:disabled:hover { background: none; color: var(--void); }
+@media (hover: none) {
+  .mini-flag[aria-pressed='false']:hover { background: none; color: var(--void); }
+  .mini-flag[aria-pressed='false']:hover b { color: var(--graphite); }
+}
+@media (pointer: coarse) {
+  .node-spec .flag-row { height: auto; flex-wrap: wrap; padding: 4px 0; row-gap: 4px; }
+  .mini-flag { height: 40px; padding: 0 12px; }
+}
+
+/* LOCK: a small padlock off the reticle's corner. HIDE: the reticle goes ghost (hollow core, dashed brackets). */
+.node .lock-g { opacity: 0; pointer-events: none; }
+.node.is-locked .lock-g { opacity: 1; }
+.node .lock-sh.halo,
+.node .lock-sh.ink { fill: none; }
+.node .lock-sh.halo { stroke: #000; stroke-opacity: 0.6; stroke-width: 3.5; }
+.node .lock-bd.halo { fill: #000; fill-opacity: 0.6; stroke: #000; stroke-opacity: 0.6; stroke-width: 2; }
+.node .lock-sh.ink { stroke: #f2f3ee; stroke-width: 1.25; }
+.node .lock-bd.ink { fill: #f2f3ee; stroke: none; }
+.node.is-hover.is-locked .lock-bd.ink,
+.node.is-selected.is-locked .lock-bd.ink { fill: var(--signal); }
+.node.is-hidden .ret.ink,
+.node.is-hidden .ret.halo { stroke-dasharray: 2 2; opacity: 0.7; }
+.node.is-hidden .core.ink { fill: none; stroke: #f2f3ee; stroke-width: 1; }
+.node.is-hidden .core.halo { fill-opacity: 0.25; }
+.node.is-hidden .out-p.ink { stroke-opacity: 0.55; }
