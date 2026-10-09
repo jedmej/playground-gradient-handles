@@ -3336,6 +3336,11 @@ html[data-drag='lum'] .stage,
   transition: background-color var(--t) var(--ease), color var(--t) var(--ease), border-color var(--t) var(--ease);
 }
 .slot-main:hover { background: var(--wash); border-color: var(--void); }
+/* The thumbnail covers most of the card, so hover also shows on it: keyline to INK, serial brightens. */
+.slot-main:hover .slot-thumb { outline-color: var(--void); }
+.slot-main:hover .slot-serial { color: var(--void); }
+.slot-main.is-active:hover .slot-thumb { outline-color: var(--signal); }
+.slot-main.is-active:hover .slot-serial { color: var(--signal); }
 .slot-main.is-active { background: var(--plate); border-color: var(--plate); color: var(--signal); }
 .slot-thumb {
   display: block;
