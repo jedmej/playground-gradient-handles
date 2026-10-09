@@ -3360,16 +3360,17 @@ html[data-drag='lum'] .stage,
   .vary-axis { height: 36px; padding: 0 12px 0 10px; }
 }
 
-/* Value flag: a short band on each gauge's arc hanging off the knob bar (same INK as the knob, VOID number set along
-   it), so bar and flag read as one part. FLARE with the knob while magnetized, dragged or wheeled. */
-.gring .val-bg { fill: none; stroke: var(--plate-fg); stroke-linecap: butt; transition: stroke var(--t) var(--ease); }
+/* Value arc: a short curved band on each gauge's arc at its value, the number written along it (`50`, `045°`),
+   sliding round with the knob like the size ring's bearing arc. FLARE while magnetized, dragged or wheeled. */
+.gring .val-bg { fill: none; stroke: var(--plate); stroke-opacity: 0.92; stroke-linecap: butt; transition: stroke var(--t) var(--ease); }
 .gring .val-text {
   font-family: var(--mono);
-  font-size: calc(var(--fx-fs, 9px) * 0.85);
-  font-weight: 700;
+  font-size: calc(var(--fx-fs, 9px) * 0.9);
+  font-weight: 600;
   letter-spacing: 0.04em;
-  fill: var(--plate);
+  fill: var(--plate-fg);
   stroke: none;
   pointer-events: none;
 }
-.gring.is-hover .val-bg, .gring.is-drag .val-bg { stroke: var(--flare); }
+.gring.is-hover .val-bg, .gring.is-drag .val-bg { stroke: var(--flare); stroke-opacity: 1; }
+.gring.is-hover .val-text, .gring.is-drag .val-text { fill: var(--plate); }

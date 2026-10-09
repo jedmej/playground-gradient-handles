@@ -139,7 +139,7 @@ export function renderGauge(v: GaugeParts, t: number, off: boolean, label: strin
     v.knobI.setAttribute('d', k);
     v.g.classList.toggle('is-off', off);
   }
-  // `NAME // value`: the chip in the bottom gap shows the name only; the value rides the arc on the knob's flag.
+  // `NAME // value`: the chip in the bottom gap shows the name only; the value rides the arc (renderValue).
   const cut = label.indexOf('//');
   const name = cut < 0 ? label : label.slice(0, cut).trim();
   if (name !== v.label) {
@@ -154,10 +154,8 @@ export function renderGauge(v: GaugeParts, t: number, off: boolean, label: strin
 }
 
 /**
- * The value flag: a short band on the gauge's own arc that starts at the knob and runs along the arc, so knob and
- * flag read as one Marathon-style part (the knob bar stays clear, the flag hangs off it). It runs toward higher values
- * unless there is no room before the end of the sweep, then back. The number is set along it on a `textPath`; on the
- * lower half of the dial the path runs counter-clockwise so the text never reads upside down.
+ * The value arc: a short curved band on the gauge's own arc, centred on the current value, with the number set along
+ * it on a `textPath`. On the lower half of the dial the path runs counter-clockwise so the text never reads upside down.
  */
 function renderValue(v: GaugeParts, t: number, value: string): void {
   if (value !== v.valLabel) {
@@ -167,23 +165,18 @@ function renderValue(v: GaugeParts, t: number, value: string): void {
   }
   if (!value) return;
   const fs = (parseFloat(v.g.style.getPropertyValue('--fx-fs')) || 9) * 0.9;
-  const w = value.length * (fs * 0.62 + fs * 0.06) + 8;
+  const w = value.length * (fs * 0.62 + fs * 0.06) + 10;
   const vk = `${key0(t)}|${w.toFixed(1)}|${v.r.toFixed(1)}`;
   if (vk === v.valKey) return;
   v.valKey = vk;
-  const r = Math.max(1, v.r);
   const a = G_START + G_SPAN * t;
-  const span = Math.min(Math.PI * 0.9, w / r);
-  const gap = 2.5 / r; // clear of the knob bar's stroke
-  const fwd = (1 - t) * G_SPAN * r >= w + 3;
-  const s0 = fwd ? a + gap : a - gap - span;
-  const s1 = s0 + span;
-  const flip = Math.sin((s0 + s1) / 2) > 0;
+  const half = Math.min(Math.PI * 0.45, w / 2 / Math.max(1, v.r));
+  const flip = Math.sin(a) > 0;
+  const a0 = flip ? a + half : a - half;
+  const a1 = flip ? a - half : a + half;
   const pt = (ang: number): string => `${(v.r * Math.cos(ang)).toFixed(2)} ${(v.r * Math.sin(ang)).toFixed(2)}`;
-  const d = flip
-    ? `M${pt(s1)}A${v.r.toFixed(2)} ${v.r.toFixed(2)} 0 0 0 ${pt(s0)}`
-    : `M${pt(s0)}A${v.r.toFixed(2)} ${v.r.toFixed(2)} 0 0 1 ${pt(s1)}`;
+  const d = `M${pt(a0)}A${v.r.toFixed(2)} ${v.r.toFixed(2)} 0 0 ${flip ? 0 : 1} ${pt(a1)}`;
   v.valBg.setAttribute('d', d);
   v.valPath.setAttribute('d', d);
-  v.valBg.style.strokeWidth = `${Math.min(12, Math.max(8, v.sp * 0.5)).toFixed(1)}px`;
+  v.valBg.style.strokeWidth = `${Math.min(13, Math.max(8, v.sp * 0.75)).toFixed(1)}px`;
 }
