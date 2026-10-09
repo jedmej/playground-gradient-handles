@@ -502,3 +502,4 @@ Colour on the gauges no longer fades: FLARE / INK flip on the frame the gauge is
 
 **Artboard menu (v6.1).** Right-click on the board away from any node opens `BoardMenu` (menu.ts), the node menu's plate with ADD NODE `[+]` (the double-click add at that point, mirror-aware) and DRAW `[D]`. It replaces the browser's own menu, which used to appear there; a right-click on a node still opens the node menu.
 While the artboard menu is open a small SIGNAL triangle (black halo) stands on the right-click point, its tip on the exact spot ADD NODE will use; it sits above the point so the menu, which opens below-right, never covers it.
+The artboard menu counts as "busy" for the FX dial while open and for 350 ms after it closes, so neither picking an item nor the click that dismisses it summons the dial (the dial's click-to-open only fires from a clean empty-board click).

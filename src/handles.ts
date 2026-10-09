@@ -493,7 +493,10 @@ export class Handles {
   /** Something is active (a selected / focused node or stroke, an open node menu, a stroke being drawn): the next empty click only clears it. */
   busy(): boolean {
     const s = this.store;
-    return s.selected !== null || s.focused !== null || s.drawing || this.menu.isOpen || this.colorUid !== null;
+    // The artboard menu counts while open and for a moment after it closes: the press that picks an item or dismisses it
+    // (its own window listener closes it first) must not also summon the FX dial.
+    const board = this.boardMenu.isOpen || performance.now() - this.boardMenu.closedAt < 350;
+    return s.selected !== null || s.focused !== null || s.drawing || this.menu.isOpen || board || this.colorUid !== null;
   }
 
   /** Is node `i` on the COLOUR page (edit tool only)? */

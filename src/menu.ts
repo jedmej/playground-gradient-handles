@@ -262,6 +262,8 @@ export class BoardMenu {
   private addBtn: HTMLButtonElement;
   private at = { x: 0, y: 0 };
   private openedAt = -Infinity;
+  /** When it last closed: the press that closes it (or picks an item) must not also open the FX dial. */
+  closedAt = -Infinity;
 
   constructor(
     private store: Store,
@@ -353,6 +355,7 @@ export class BoardMenu {
 
   close(): void {
     if (!this.isOpen) return;
+    this.closedAt = performance.now();
     this.el.hidden = true;
     this.mark.hidden = true;
     this.el.classList.remove('is-kb');
