@@ -1452,6 +1452,10 @@ export class Handles {
     if (['soft', 'rot', 'opac', 'hue', 'sat', 'lum', 'ring'].includes(s.drag.kind) && s.drag.index < s.nodes.length) {
       focusIdx = s.drag.index;
       focusKind = s.drag.kind;
+    } else if (s.drag.kind === 'node' && s.drag.index < s.nodes.length && (!this.coreDown || this.coreDown.moved)) {
+      // Moving a node (past the click slop, so a plain click on the core never flashes the dim).
+      focusIdx = s.drag.index;
+      focusKind = 'node';
     } else if (this.wheelFocus) {
       const wi = performance.now() <= this.wheelFocus.until ? s.nodes.findIndex((nn) => nn.uid === this.wheelFocus!.uid) : -1;
       if (wi >= 0) {
@@ -1740,7 +1744,8 @@ export class Handles {
       const cy = flipY ? p.y - off - 18 : p.y + off;
       this.chipNode.style.transform = `translate(${cx.toFixed(1)}px, ${cy.toFixed(1)}px)`;
       this.chipNode.classList.add('is-on');
-      this.chipNode.classList.remove('is-focus'); // the coordinate tag always steps back while a control is adjusted
+      // The coordinate tag steps back while a control is adjusted, but it is the live readout while the node moves.
+      this.chipNode.classList.toggle('is-focus', s.drag.kind === 'node' && this.stage.classList.contains('ui-focus'));
       this.chipNode.classList.toggle('is-engaged', s.drag.kind === 'node');
     } else {
       this.chipNode.classList.remove('is-on');

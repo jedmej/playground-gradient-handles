@@ -29,7 +29,15 @@ const el = <K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, 
 interface RingView extends GaugeParts {
   id: FxId;
   key: string;
+  /** REMOVE chip: a small FLARE square with an X, just right of the ring's label chip. */
+  x: SVGGElement;
+  /** Its centre's x offset from the dial centre (the y is the ring's radius). */
+  xOff: number;
 }
+
+/** Side of the REMOVE square and the ADD chip, in px (the label chips are 14 tall). */
+const BTN = 12;
+const ADD = 14;
 
 /**
  * Global FX dial: one concentric 270° gauge per enabled effect (SOFT-gauge language), summoned over the stage.
@@ -44,6 +52,13 @@ export class FxDial {
   private emptyText = el('text', { 'text-anchor': 'middle' });
   private emptyBg!: SVGRectElement;
   private shown = new Set<FxId>();
+  /** ADD chip under the outermost label; opens the effect menu (the node menu's plate). */
+  private add = el('g', { class: 'fx-add' });
+  private addY = 0;
+  private menu: HTMLDivElement;
+  private menuHead: HTMLDivElement;
+  /** Pointer over a REMOVE square (its effect) or the ADD chip. */
+  private btnHover: FxId | 'add' | null = null;
   /** The ring last stepped from the keyboard: kept (even at 0) until focus leaves it. */
   private keyed: FxId | null = null;
   open = false;
@@ -110,10 +125,39 @@ export class FxDial {
     this.emptyText.textContent = 'FX // ALL OFF · CHECK AN EFFECT';
     this.empty.append(this.emptyBg, this.emptyText);
     this.root.appendChild(this.empty);
+    this.add.append(
+      el('rect', { class: 'tag-bg', width: ADD, height: ADD, x: -ADD / 2, y: -ADD / 2 }),
+      el('path', { class: 'add-glyph', d: 'M-3.5 0H3.5M0 -3.5V3.5' }),
+    );
+    this.root.appendChild(this.add);
+    this.menu = document.createElement('div');
+    this.menu.className = 'node-menu fx-menu';
+    this.menu.setAttribute('role', 'menu');
+    this.menu.setAttribute('aria-label', 'Add an effect');
+    this.menu.dataset.testid = 'fx-menu';
+    this.menu.hidden = true;
+    this.menuHead = document.createElement('div');
+    this.menuHead.className = 'menu-head';
+    this.menuHead.setAttribute('role', 'presentation');
+    this.menuHead.textContent = 'FX // ADD';
+    this.menu.appendChild(this.menuHead);
+    for (const id of FX_IDS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'menu-item';
+      b.setAttribute('role', 'menuitem');
+      b.dataset.fxAdd = id;
+      b.innerHTML = `<span class="mi-l">${NAMES[id]}</span><kbd>+</kbd>`;
+      b.addEventListener('click', () => this.addFx(id));
+      this.menu.appendChild(b);
+    }
+    this.menu.addEventListener('keydown', (e) => this.onMenuKey(e));
+    this.menu.addEventListener('contextmenu', (e) => e.preventDefault());
     this.ret.append(this.retH, this.retI, this.coreH, this.coreI);
     this.root.appendChild(this.ret);
     this.svg.appendChild(this.root);
     stage.appendChild(this.svg);
+    stage.appendChild(this.menu);
 
     const w = window;
     w.addEventListener('pointerdown', this.onDown, { capture: true });
@@ -150,7 +194,13 @@ export class FxDial {
     g.setAttribute('aria-orientation', 'horizontal');
     g.style.display = 'none';
     g.style.setProperty('--i', String(this.views.length));
-    const v: RingView = Object.assign(gp, { id, key: '' });
+    const x = el('g', { class: 'fx-x' });
+    x.append(
+      el('rect', { width: BTN, height: BTN, x: -BTN / 2, y: -BTN / 2 }),
+      el('path', { d: 'M-2.75 -2.75L2.75 2.75M2.75 -2.75L-2.75 2.75' }),
+    );
+    gp.tag.appendChild(x);
+    const v: RingView = Object.assign(gp, { id, key: '', x, xOff: 0 });
     g.addEventListener('keydown', (e) => this.onRingKey(e, id));
     g.addEventListener('blur', () => {
       if (this.keyed !== id) return;
@@ -244,6 +294,8 @@ export class FxDial {
     }
     this.open = false;
     this.hover = null;
+    this.btnHover = null;
+    this.closeMenu();
     // Logically closed at once (not grabbable); the svg plays the open sequence backwards, then hides in frame().
     this.svg.classList.remove('is-open');
     this.tPrev = performance.now();
@@ -274,7 +326,7 @@ export class FxDial {
     const bz = n ? this.outer + 0.55 * sp + 3 : 2.4 * sp;
     this.extent = n
       ? { x: bz + 14, y: bz + 14 }
-      : { x: Math.min(m.w / 2 - 4, Math.max(bz + 14, 108)), y: bz + 32 };
+      : { x: Math.min(m.w / 2 - 4, Math.max(bz + 14, 108)), y: bz + 50 };
     const ex = Math.min(this.extent.x + 2, m.w / 2);
     const ey = Math.min(this.extent.y + 2, m.h / 2);
     this.cx = Math.min(m.w - ex, Math.max(ex, this.want.x));
@@ -293,7 +345,7 @@ export class FxDial {
     this.bearings.forEach((t, k) => {
       t.setAttribute('x', bpos[k][0].toFixed(1));
       t.setAttribute('y', bpos[k][1].toFixed(1));
-      t.setAttribute('visibility', q && !(k === 2 && n && sp < 20) ? 'visible' : 'hidden');
+      t.setAttribute('visibility', q && !(k === 2 && n) ? 'visible' : 'hidden'); // 180 gives way to the ADD chip
     });
     // Centre reticle at the click point.
     const o = Math.max(5, Math.min(11, 1.5 * sp - sp / 2 - 3));
@@ -303,7 +355,12 @@ export class FxDial {
     this.svg.style.setProperty('--ret-o', `${o}px`);
     const fs = Math.max(7.5, Math.min(9.5, sp * 0.36));
     this.svg.style.setProperty('--fx-fs', `${fs}px`);
-    this.setTag(this.emptyBg, this.emptyText, 'FX // ALL OFF · CHECK AN EFFECT', bz + 22);
+    this.setTag(this.emptyBg, this.emptyText, 'FX // ALL OFF · ADD AN EFFECT', bz + 22);
+    // ADD sits one spacing below the outermost label chip (or under the empty-state chip), hidden once all twelve are on.
+    this.addY = n ? 1.5 * sp + n * sp : bz + 40;
+    this.add.setAttribute('transform', `translate(0 ${this.addY.toFixed(1)})`);
+    this.add.style.display = n < FX_IDS.length ? '' : 'none';
+    if (n >= FX_IDS.length) this.closeMenu();
     for (const v of this.views) {
       const on = this.shown.has(v.id);
       v.g.style.display = on ? '' : 'none';
@@ -357,6 +414,10 @@ export class FxDial {
       const t = fxPos(v.id, fx[v.id]) / max;
       const off = fx[v.id] <= 0;
       renderGauge(v, t, off, this.text(v.id));
+      const w = Number(v.tagBg.getAttribute('width')) || 0;
+      v.xOff = w / 2 + 2 + BTN / 2;
+      v.x.setAttribute('transform', `translate(${v.xOff.toFixed(1)} 0)`);
+      v.x.classList.toggle('is-hover', this.btnHover === v.id);
       v.g.setAttribute('aria-valuenow', String(fx[v.id]));
       v.g.setAttribute('aria-valuetext', fxSpoken(v.id, fx));
       v.g.classList.toggle('is-hover', this.hover === v.id);
@@ -364,6 +425,7 @@ export class FxDial {
       v.g.classList.toggle('is-active', (this.drag?.id ?? this.wheelActive) === v.id);
     }
     this.svg.classList.toggle('has-hover', this.hover !== null);
+    this.add.classList.toggle('is-hover', this.btnHover === 'add' || !this.menu.hidden);
   }
 
   private animate(): void {
@@ -383,6 +445,7 @@ export class FxDial {
     this.bezel.style.opacity = b.toFixed(3);
     this.bezel.style.transform = `scale(${(0.9 + 0.1 * b).toFixed(4)})`;
     this.empty.style.opacity = b.toFixed(3);
+    this.add.style.opacity = b.toFixed(3);
     this.ret.style.opacity = b.toFixed(3);
     this.ret.style.transform = `scale(${(1 + (1 - b)).toFixed(4)})`;
     let k = 1;
@@ -406,7 +469,7 @@ export class FxDial {
     const box = `${this.metrics.w}x${this.metrics.h}`;
     if (box !== this.lastBox) this.sync(true);
     const focused = this.svg.contains(document.activeElement) && (document.activeElement as HTMLElement).matches(':focus-visible');
-    if (this.drag || focused || !this.ptr.in || this.ptr.touch) return;
+    if (this.drag || focused || !this.menu.hidden || !this.ptr.in || this.ptr.touch) return;
     const dist = Math.hypot(this.ptr.x - this.cx, this.ptr.y - this.cy);
     if (dist > Math.max(this.extent.x, this.extent.y) + AWAY_PX && performance.now() - this.lastActive > IDLE_MS) this.close();
   }
@@ -430,6 +493,102 @@ export class FxDial {
       if (e !== null && e < bd) (bd = e, (best = v.id));
     }
     return best;
+  }
+
+  /** REMOVE square or ADD chip under the pointer (checked before the rings: both sit inside a ring's band). */
+  private btnAt(x: number, y: number): FxId | 'add' | null {
+    const dx = x - this.cx;
+    const dy = y - this.cy;
+    const pad = this.ptr.touch ? 6 : 2;
+    if (this.add.style.display !== 'none' && Math.abs(dx) <= ADD / 2 + pad && Math.abs(dy - this.addY) <= ADD / 2 + pad) return 'add';
+    for (const v of this.views) {
+      if (!this.shown.has(v.id) || this.store.fx[v.id] <= 0) continue;
+      if (Math.abs(dx - v.xOff) <= BTN / 2 + pad && Math.abs(dy - v.r) <= BTN / 2 + pad) return v.id;
+    }
+    return null;
+  }
+
+  private setBtnHover(b: FxId | 'add' | null): void {
+    if (b === this.btnHover) return;
+    this.btnHover = b;
+    this.stage.classList.toggle('fx-btn', b !== null);
+    this.sync(true);
+  }
+
+  // ----- ADD menu ------------------------------------------------------------------------
+
+  /** The node menu's plate, listing the effects that are off; one press turns one on (as its panel checkbox would). */
+  private openMenu(viaKey = false): void {
+    let first: HTMLButtonElement | null = null;
+    for (const b of this.menu.querySelectorAll<HTMLButtonElement>('[data-fx-add]')) {
+      const on = this.store.fx[b.dataset.fxAdd as FxId] > 0;
+      b.hidden = on;
+      if (!on && !first) first = b;
+    }
+    if (!first) return;
+    this.menu.classList.toggle('is-kb', viaKey);
+    this.menu.hidden = false;
+    const m = this.metrics;
+    const mw = this.menu.offsetWidth;
+    const mh = this.menu.offsetHeight;
+    // Like a right-click: from the ADD chip's right edge, down (flipping left / up when it would leave the stage).
+    const ax = this.cx + ADD / 2 + 4;
+    const ay = this.cy + this.addY - ADD / 2;
+    let left = ax;
+    let top = ay;
+    if (left + mw > m.w - 4) left = this.cx - ADD / 2 - 4 - mw;
+    if (top + mh > m.h - 4) top = this.cy + this.addY + ADD / 2 - mh;
+    left = Math.max(4, Math.min(left, m.w - mw - 4));
+    top = Math.max(4, Math.min(top, m.h - mh - 4));
+    this.menu.style.left = `${Math.round(left)}px`;
+    this.menu.style.top = `${Math.round(top)}px`;
+    if (viaKey) first.focus({ preventScroll: true });
+    this.lastActive = performance.now();
+    this.sync(true);
+  }
+
+  private closeMenu(): void {
+    if (this.menu.hidden) return;
+    const had = this.menu.contains(document.activeElement);
+    this.menu.hidden = true;
+    this.menu.classList.remove('is-kb');
+    if (had) (document.activeElement as HTMLElement).blur();
+    this.sync(true);
+  }
+
+  private addFx(id: FxId): void {
+    const viaKey = this.menu.classList.contains('is-kb');
+    this.closeMenu();
+    if (this.store.fx[id] <= 0) this.actions.fxToggle(id);
+    this.lastActive = performance.now();
+    if (viaKey) this.views.find((v) => v.id === id)?.g.focus({ preventScroll: true });
+  }
+
+  private removeFx(id: FxId): void {
+    if (this.store.fx[id] > 0) this.actions.fxToggle(id);
+    if (this.keyed === id) this.keyed = null;
+    this.btnHover = null;
+    this.stage.classList.remove('fx-btn');
+    this.lastActive = performance.now();
+    this.sync(true);
+  }
+
+  private onMenuKey(e: KeyboardEvent): void {
+    const items = [...this.menu.querySelectorAll<HTMLButtonElement>('[data-fx-add]')].filter((b) => !b.hidden);
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    let to = -1;
+    if (e.key === 'ArrowDown') to = (at + 1) % items.length;
+    else if (e.key === 'ArrowUp') to = (at - 1 + items.length) % items.length;
+    else if (e.key === 'Home') to = 0;
+    else if (e.key === 'End') to = items.length - 1;
+    else if (e.key === 'Tab') {
+      e.preventDefault();
+      return;
+    } else return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.menu.classList.add('is-kb');
+    items[to]?.focus({ preventScroll: true });
   }
 
   /** Angle round the dial → 0…1 along the 270° sweep; the 90° gap snaps to the nearer end, never wraps mid-drag. */
@@ -461,6 +620,11 @@ export class FxDial {
   // ----- gestures (capture phase) -------------------------------------------------------------
 
   private onDown = (e: PointerEvent): void => {
+    if (this.open && e.target instanceof Node && this.menu.contains(e.target)) {
+      e.stopPropagation(); // a press on the ADD menu is the menu's own (its click adds); the board never sees it
+      this.lastActive = performance.now();
+      return;
+    }
     if (!this.inStage(e)) return; // the panel keeps working (and live-updating the dial) while it is open
     const touch = e.pointerType === 'touch';
     const primary = e.isPrimary && (touch || e.button === 0);
@@ -488,6 +652,25 @@ export class FxDial {
     }
     this.lastActive = now;
     this.ptr = { x, y, in: true, touch };
+    const btn = this.drag ? null : this.btnAt(x, y);
+    const menuWasOpen = !this.menu.hidden;
+    if (menuWasOpen) this.closeMenu();
+    if (btn) {
+      e.stopPropagation();
+      e.preventDefault();
+      this.swallow = e.pointerId; // its release is not a board click either
+      if (btn === 'add') {
+        if (!menuWasOpen) this.openMenu();
+      } else this.removeFx(btn);
+      return;
+    }
+    if (menuWasOpen) {
+      // A press off the menu only closes it; the dial stays up.
+      e.stopPropagation();
+      e.preventDefault();
+      this.swallow = e.pointerId;
+      return;
+    }
     const id = this.ringAt(x, y);
     if (id && !this.drag) {
       e.stopPropagation();
@@ -545,8 +728,10 @@ export class FxDial {
     e.stopPropagation(); // nodes do not hover while the dial is up
     const { x, y } = this.local(e);
     this.ptr = { x, y, in: true, touch: e.pointerType === 'touch' };
-    const id = this.ringAt(x, y);
-    if (id || Math.hypot(x - this.cx, y - this.cy) <= this.outer + 8) this.lastActive = performance.now();
+    const btn = this.btnAt(x, y);
+    const id = btn ? null : this.ringAt(x, y);
+    if (btn || id || Math.hypot(x - this.cx, y - this.cy) <= this.outer + 8) this.lastActive = performance.now();
+    this.setBtnHover(btn);
     this.setHover(id);
   };
 
@@ -625,7 +810,11 @@ export class FxDial {
     if (e.key === 'Escape' && this.open) {
       e.preventDefault();
       e.stopPropagation();
-      this.close();
+      if (!this.menu.hidden) {
+        const kb = this.menu.classList.contains('is-kb');
+        this.closeMenu();
+        if (kb) this.views.find((v) => this.shown.has(v.id))?.g.focus({ preventScroll: true });
+      } else this.close();
       return;
     }
     if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat) {
@@ -653,6 +842,21 @@ export class FxDial {
       case 'PageDown': to = pos - 10; break;
       case 'Home': to = 0; break;
       case 'End': to = max; break;
+      case 'Delete':
+      case 'Backspace': {
+        e.preventDefault();
+        e.stopPropagation();
+        const next = this.views.find((v) => v.id !== id && this.shown.has(v.id) && this.store.fx[v.id] > 0);
+        this.removeFx(id);
+        next?.g.focus({ preventScroll: true });
+        return;
+      }
+      case '+':
+      case '=':
+        e.preventDefault();
+        e.stopPropagation();
+        this.openMenu(true);
+        return;
       default: return;
     }
     e.preventDefault();

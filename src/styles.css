@@ -2817,11 +2817,12 @@ html[data-drag='lum'] .stage,
 }
 .stage .fxdial .fxring { transition: opacity 60ms linear, filter 200ms var(--ease); }
 
-.stage.ui-focus .handles > :not(.is-focus),
+.stage.ui-focus .handles > :not(.is-focus):not(.tools-layer),
 .stage.ui-focus .chip.is-on:not(.is-focus),
 .stage.ui-focus > .fxdial:not(.is-focus),
-/* inside the node being adjusted: everything but the active control */
-.stage.ui-focus .node.is-focus > :not(.ring),
+/* inside the node being adjusted: everything but the active control (a moving node keeps its reticle, drops its gauges) */
+.stage.ui-focus .node.is-focus:not(.focus-node) > :not(.ring),
+.stage.ui-focus .node.focus-node .ring > .gauge,
 .stage.ui-focus .node.focus-soft .ring > :not(.gauge.soft),
 .stage.ui-focus .node.focus-opac .ring > :not(.gauge.opac),
 .stage.ui-focus .node.focus-rot .ring > :not(.gauge.rot),
@@ -3306,3 +3307,19 @@ html[data-drag='lum'] .stage,
   .code-dlg[open] { animation: code-in 160ms var(--ease); }
   @keyframes code-in { from { opacity: 0; transform: translateY(6px); } }
 }
+
+/* ---------- FX dial: ADD chip + menu, REMOVE squares ---------- */
+/* REMOVE: a FLARE square with an X, right of each ring's label chip. Hover fills it. */
+.fxdial .fx-x rect { fill: var(--plate); fill-opacity: 0.92; stroke: var(--flare); stroke-width: 1; transition: fill var(--t) var(--ease); }
+.fxdial .fx-x path { fill: none; stroke: var(--flare); stroke-width: 1.4; stroke-linecap: square; }
+.fxdial .fx-x.is-hover rect { fill: var(--flare); fill-opacity: 1; }
+.fxdial .fx-x.is-hover path { stroke: var(--plate); }
+.fxdial .fxring.is-off .fx-x { display: none; }
+/* ADD: a square chip in the label language, one spacing under the outermost label. SIGNAL while hovered or open. */
+.fxdial .fx-add .add-glyph { fill: none; stroke: var(--plate-fg); stroke-width: 1.5; stroke-linecap: square; }
+.fxdial .fx-add.is-hover .tag-bg { fill: var(--signal); fill-opacity: 1; }
+.fxdial .fx-add.is-hover .add-glyph { stroke: var(--plate); }
+.stage.fx-btn, .stage.fx-btn * { cursor: pointer !important; }
+/* The ADD menu reuses the node menu's plate; effects already on are hidden. Above the dial. */
+.fx-menu { z-index: 7; min-width: 168px; }
+.fx-menu .menu-item[hidden] { display: none; }
