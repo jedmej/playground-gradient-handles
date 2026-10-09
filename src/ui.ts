@@ -28,8 +28,12 @@ export class UI {
   private lastTargetUid = -1;
   private lastCount = -1;
 
-  private stateV = $('state-readout');
-  private stateGlyph = $('state-glyph');
+  private hudCursor = $('hud-cursor');
+  private hudMeter = $('hud-meter');
+  private hudCount = $('hud-count');
+  private hudCells: HTMLElement[] = [];
+  private hudKey = '';
+  private hudX = -1;
   private footSerial = $('foot-serial');
   private footDims = $('foot-dims');
   private nodeHint = $('node-hint');
@@ -488,7 +492,7 @@ export class UI {
       b.setAttribute('aria-checked', String(!!n && !stroke && n.shape === b.dataset.shape));
     }
     this.shapeTag.hidden = !stroke;
-    if (stroke) setText(this.shapeTag, `STROKE · ${pad2(n!.pts.length)} PTS`);
+    if (stroke) setText(this.shapeTag, `${n!.fill ? 'FILL' : n!.closed ? 'SHAPE' : 'STROKE'} · ${pad2(n!.pts.length)} PTS`);
     this.shapeGroup.closest('.shape-row')!.classList.toggle('is-stroke', stroke);
     const canRot = !!n && n.shape !== 'circle' && !stroke && !n.lock;
     for (const b of this.rotBtns) if (b.disabled === canRot) b.disabled = !canRot;
@@ -569,30 +573,7 @@ export class UI {
     const m = this.metrics;
     const active = this.activeNode();
 
-    let state = 'IDLE';
-    let glyph = '[—]';
-    if (s.drawing) { state = 'DRAWING'; glyph = '[✎]'; }
-    else if (s.tool === 'draw') { state = 'DRAW'; glyph = '[✎]'; }
-    else if (s.drag.kind === 'node') { state = `MOVE ${nodeSerial(s.drag.index)}`; glyph = '[✕]'; }
-    else if (s.drag.kind === 'ring') { state = `RADIUS ${nodeSerial(s.drag.index)}`; glyph = '[○]'; }
-    else if (s.drag.kind === 'soft') { state = `SOFT ${nodeSerial(s.drag.index)}`; glyph = '[◐]'; }
-    else if (s.drag.kind === 'opac') { state = `OPAC ${nodeSerial(s.drag.index)}`; glyph = '[◑]'; }
-    else if (s.drag.kind === 'hue') { state = `HUE ${nodeSerial(s.drag.index)}`; glyph = '[◍]'; }
-    else if (s.drag.kind === 'sat') { state = `SAT ${nodeSerial(s.drag.index)}`; glyph = '[◍]'; }
-    else if (s.drag.kind === 'lum') { state = `LUM ${nodeSerial(s.drag.index)}`; glyph = '[◍]'; }
-    else if (s.drag.kind === 'rot') { state = `ROT ${nodeSerial(s.drag.index)}`; glyph = '[↻]'; }
-    else if (s.hover.kind === 'node') { state = `NODE ${nodeSerial(s.hover.index)}`; glyph = '[+]'; }
-    else if (s.hover.kind === 'ring') { state = `RING ${nodeSerial(s.hover.index)}`; glyph = '[○]'; }
-    else if (s.hover.kind === 'soft') { state = `SOFT ${nodeSerial(s.hover.index)}`; glyph = '[◐]'; }
-    else if (s.hover.kind === 'opac') { state = `OPAC ${nodeSerial(s.hover.index)}`; glyph = '[◑]'; }
-    else if (s.hover.kind === 'rot') { state = `ROT ${nodeSerial(s.hover.index)}`; glyph = '[↻]'; }
-    else if (s.hover.kind === 'hue') { state = `HUE ${nodeSerial(s.hover.index)}`; glyph = '[◍]'; }
-    else if (s.hover.kind === 'sat') { state = `SAT ${nodeSerial(s.hover.index)}`; glyph = '[◍]'; }
-    else if (s.hover.kind === 'lum') { state = `LUM ${nodeSerial(s.hover.index)}`; glyph = '[◍]'; }
-    else if (s.hover.kind === 'body') { state = `BODY ${nodeSerial(s.hover.index)}`; glyph = '[◇]'; }
-    else if (s.selected !== null) { state = `SEL ${nodeSerial(s.selected)}`; glyph = '[▪]'; }
-    setText(this.stateV, state);
-    setText(this.stateGlyph, glyph);
+    this.syncHud();
 
     const root = document.documentElement;
     const hs = s.hover.kind;
@@ -692,6 +673,31 @@ export class UI {
       const len = `${Math.round(10 + s.nodes[i].dr * 36)}px`;
       const bar = this.bars[i];
       if (bar.style.getPropertyValue('--len') !== len) bar.style.setProperty('--len', len);
+    }
+  }
+
+  /** HUD strip in the top bar: the node meter and the pointer cursor on the tick rail. */
+  private syncHud(): void {
+    const s = this.store;
+    if (!this.hudCells.length) {
+      for (let i = 0; i < MAX_NODES; i++) this.hudCells.push(this.hudMeter.appendChild(document.createElement('i')));
+    }
+    const sel = this.actions.target;
+    const key = `${s.nodes.length}|${sel}`;
+    if (key !== this.hudKey) {
+      this.hudKey = key;
+      this.hudCells.forEach((c, i) => {
+        c.classList.toggle('is-on', i < s.nodes.length && i !== sel);
+        c.classList.toggle('is-sel', i === sel);
+      });
+      this.hudCount.firstChild!.textContent = String(s.nodes.length).padStart(2, '0');
+    }
+    const p = this.pointer();
+    const x = p.inside ? Math.min(1, Math.max(0, p.x / this.metrics.w)) : -1;
+    if (Math.abs(x - this.hudX) > 0.0005) {
+      this.hudX = x;
+      this.hudCursor.classList.toggle('is-on', x >= 0);
+      if (x >= 0) this.hudCursor.style.left = `${(x * 100).toFixed(2)}%`;
     }
   }
 

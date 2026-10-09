@@ -23,7 +23,7 @@
         document.documentElement.setAttribute('data-theme', t);
       })();
     </script>
-    <title>Gradient handles — a mesh-gradient handle study · NEWFRAME</title>
+    <title>Gradientlabs — a mesh-gradient handle study · NEWFRAME</title>
     <meta
       name="description"
       content="A mesh-gradient handle study: two to sixteen colour nodes on a shader field, with separate grab zones for moving a node and resizing its influence ring."
@@ -35,13 +35,15 @@
         <span class="mark-glyph" aria-hidden="true"></span>NEWFRAME
       </a>
       <nav class="topnav" aria-label="Page">
-        <span class="nav-item nav-title">GRADIENT HANDLES <b>[>]</b></span>
-        <a class="nav-item" href="#spec">SPEC <b>[↓]</b></a>
+        <span class="nav-item nav-title">GRADIENTLABS <b>[>]</b></span>
       </nav>
-      <div class="state-readout" aria-live="off">
-        <span class="state-k">STATE</span>
-        <span class="state-v" id="state-readout">IDLE</span>
-        <b id="state-glyph">[—]</b>
+      <!-- HUD strip (ui.ts): hazard block, a tick rail whose cursor tracks the pointer across the stage, and the node
+           meter (one cell per possible node, filled = in use, PAPER = selected). -->
+      <div class="hud" aria-hidden="true">
+        <span class="hud-hazard"></span>
+        <div class="hud-track"><i class="hud-cursor" id="hud-cursor"></i></div>
+        <div class="hud-meter" id="hud-meter"></div>
+        <span class="hud-count" id="hud-count">09<span class="dim">/16</span></span>
       </div>
       <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false" aria-keyshortcuts="M" title="Dark mode (M)">
         <span class="mini-l">DARK</span> <b>[◐]</b>
@@ -186,7 +188,7 @@
       <aside class="spec" id="spec" aria-label="Specification">
         <div class="spec-head">
           <p class="eyebrow">FIELD MESH <span class="dim">//</span> <span id="eyebrow-count">09</span> NODES <span class="dim">//</span> GH-01</p>
-          <h1 class="sr-only">Gradient handles</h1>
+          <h1 class="sr-only">Gradientlabs</h1>
           <!-- REV plate: build stamp filled in by stats.ts renderBuild() from vite.config.ts (new commit + date per deploy). -->
           <div class="rev" aria-label="Build">
             <div class="rev-top">
@@ -206,9 +208,16 @@
           </p>
         </div>
 
-        <section class="spec-section" aria-labelledby="h-presets">
+        <section class="spec-section" aria-labelledby="h-presets" data-sec="presets">
           <div class="label label-row">
             <h2 id="h-presets">COLOUR SET</h2>
+          </div>
+          <div class="presets" id="presets" role="radiogroup" aria-label="Colour set"></div>
+        </section>
+
+        <section class="spec-section" aria-labelledby="h-saved" data-sec="saved">
+          <div class="label label-row">
+            <h2 id="h-saved">SAVED SETS</h2>
             <span class="label-actions">
               <button class="mini mini-clear" type="button" data-action="clear-custom" title="Clear the active saved set (press twice)" hidden>
                 <span class="mini-l">CLEAR</span> <b>[×]</b>
@@ -218,18 +227,23 @@
               </button>
             </span>
           </div>
-          <div class="presets" id="presets" role="radiogroup" aria-label="Colour set"></div>
           <div class="slots" id="slots" role="radiogroup" aria-label="Saved sets"></div>
+        </section>
+
+        <section class="spec-section" aria-labelledby="h-image" data-sec="image">
+          <div class="label label-row">
+            <h2 id="h-image">FROM IMAGE</h2>
+          </div>
           <div class="extract-row">
             <button class="mini" type="button" data-action="extract" title="Take a palette from an image (it never leaves this browser). You can also drop an image on the stage.">
-              <span class="mini-l">FROM IMAGE</span> <b>[↥]</b>
+              <span class="mini-l">PICK IMAGE</span> <b>[↥]</b>
             </button>
             <span class="extract-hint dim"><span class="t-fine">OR DROP ONE ON THE STAGE</span></span>
             <input id="extract-file" type="file" accept="image/*" hidden />
           </div>
         </section>
 
-        <section class="spec-section" aria-labelledby="h-node">
+        <section class="spec-section" aria-labelledby="h-node" data-sec="node">
           <div class="label label-row">
             <h2 id="h-node">NODE <span class="dim" id="node-hint">— HOVER / TAP A RETICLE</span></h2>
           </div>
@@ -322,7 +336,7 @@
           </dl>
         </section>
 
-        <section class="spec-section fx-section" aria-labelledby="h-fx">
+        <section class="spec-section fx-section" aria-labelledby="h-fx" data-sec="fx">
           <div class="label label-row">
             <h2 id="h-fx">FX <span class="dim" id="fx-hint">— ALL OFF</span></h2>
             <span class="label-actions">
@@ -484,7 +498,7 @@
           </dl>
         </section>
 
-        <section class="spec-section wp-section" aria-labelledby="h-wp">
+        <section class="spec-section wp-section" aria-labelledby="h-wp" data-sec="wallpaper">
           <div class="label label-row">
             <h2 id="h-wp">WALLPAPER <span class="dim" id="wp-dims">3840×2160</span></h2>
           </div>
@@ -514,7 +528,7 @@
         <div class="rail-nums"><span id="rail-node">——</span><span id="rail-preset">01</span></div>
         <span class="pict pict-check"></span>
         <p class="rail-small">NEWFRAME / FIELD MESH <span id="rail-count">09</span> NODES<br />VISITS <span data-stat="visits">0000</span> // EXPORTS <span data-stat="exports">0000</span></p>
-        <p class="wordmark"><span>GRADIENT HANDLES</span></p>
+        <p class="wordmark"><span>GRADIENTLABS</span></p>
         <span class="plus"></span>
       </aside>
     </main>

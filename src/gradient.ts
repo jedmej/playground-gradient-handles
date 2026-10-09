@@ -14,7 +14,7 @@ uniform int   u_count;
 uniform vec2  u_pos[16];
 uniform float u_rad[16];
 uniform vec3  u_lab[16];
-uniform float u_shape[16];   // 0 circle · 1 ellipse · 2 box · 3 capsule · 4 stroke
+uniform float u_shape[16];   // 0 circle · 1 ellipse · 2 box · 3 capsule · 4 stroke · 5 filled stroke (closed loop)
 uniform float u_rot[16];
 uniform float u_npts[16];
 uniform float u_opac[16];    // node opacity 0–1: scales its pull on the field
@@ -112,6 +112,7 @@ void main() {
     } else if (sh > 3.5) {
       vec2 prev = fetchPt(float(i), 0.0);
       float dm = length(pw - prev);
+      bool inside = false;
       for (int k = 1; k < 64; k++) {
         if (float(k) >= u_npts[i]) break;
         vec2 cur = fetchPt(float(i), float(k));
@@ -119,9 +120,11 @@ void main() {
         vec2 ap = pw - prev;
         float t = clamp(dot(ap, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
         dm = min(dm, length(ap - ab * t));
+        // Even-odd crossings for a filled loop (its last point repeats the first).
+        if ((prev.y > pw.y) != (cur.y > pw.y) && pw.x < ab.x * (pw.y - prev.y) / ab.y + prev.x) inside = !inside;
         prev = cur;
       }
-      qd = dm / r;
+      qd = (sh > 4.5 && inside) ? 0.0 : dm / r;
     } else {
       float cs = cos(u_rot[i]);
       float sn = sin(u_rot[i]);

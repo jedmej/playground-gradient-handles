@@ -2,6 +2,7 @@ import { coreWeight, hexToRgb, labToHex, LAYER_K, sampleField, softTail } from '
 import { serialiseDoc } from './custom';
 import { CAPSULE_L, CAPSULE_T, ELLIPSE_RATIO, FieldBuffers, packField } from './field';
 import { warpFreq, warpGain } from './fx';
+import { strokePath } from './geom';
 import { FRAG, VERT } from './gradient';
 import { snapshotSpecs, type Dim, type NodeState, type Store } from './store';
 import { wallpaperTarget } from './wallpaper';
@@ -59,7 +60,7 @@ export function buildGlsl(store: Store, stage: Dim): string {
       : `  // u_pts: no strokes in this field; bind any 64×16 RGBA8 texture`,
   ].join('\n');
   return [
-    `// GRADIENT HANDLES // GLSL // ${store.nodes.length} NODES // ${d.w}×${d.h}`,
+    `// GRADIENTLABS // GLSL // ${store.nodes.length} NODES // ${d.w}×${d.h}`,
     `// WebGL1 / GLSL ES 1.00. Draw one fullscreen triangle (a_pos on attribute 0: -1,-1  3,-1  -1,3) with both shaders.`,
     `// OKLab colours, up to 16 nodes. The FX stack (grain, dither, halftone, glow …) is a separate post pass and is not included; WARP is baked into u_warp / u_wscale.`,
     `// The warp is time-driven; u_time is frozen at ${T0} below. u_grain 0.05 is the exporter's value (0 = clean).`,
@@ -127,10 +128,11 @@ function blobs(n: NodeState, cx: number, cy: number, r: number, u: number): Blob
   const R = r * Q_MAX;
   const deg = (n.rot * 180) / Math.PI;
   if (n.shape === 'stroke') {
-    const k = Math.min(12, n.pts.length);
+    const path = strokePath(n.pts, n);
+    const k = Math.min(12, path.length);
     const out: Blob2D[] = [];
     for (let i = 0; i < k; i++) {
-      const p = n.pts[k === 1 ? 0 : Math.round((i * (n.pts.length - 1)) / (k - 1))];
+      const p = path[k === 1 ? 0 : Math.round((i * (path.length - 1)) / (k - 1))];
       out.push({ cx: cx + p[0] * u, cy: cy + p[1] * u, rx: R, ry: R, rot: 0 });
     }
     return out;
@@ -174,7 +176,7 @@ export function buildCss(store: Store, stage: Dim): string {
     }
   }
   return [
-    `/* GRADIENT HANDLES // CSS // ${store.nodes.length} NODES — an APPROXIMATION.`,
+    `/* GRADIENTLABS // CSS // ${store.nodes.length} NODES — an APPROXIMATION.`,
     `   Plain radial-gradients cannot do the OKLab blend, the domain warp, softness curves or FX, and cannot rotate;`,
     `   rotated shapes snap to the nearest axis, boxes become circles, strokes become a chain of circles.`,
     `   Sizes are px for a ${d.w}×${d.h} canvas (positions are %): scale the px values for any other size. */`,
@@ -199,9 +201,10 @@ export function buildSvg(store: Store, stage: Dim): string {
     if (n.shape === 'stroke') {
       const cx = n.x * d.w;
       const cy = n.y * d.h;
-      const pts = n.pts.map((p) => `${n2(cx + p[0] * d.min)},${n2(cy + p[1] * d.min)}`).join(' ');
+      const pts = strokePath(n.pts, n).map((p) => `${n2(cx + p[0] * d.min)},${n2(cy + p[1] * d.min)}`).join(' ');
+      const fill = n.fill ? `${hex}" fill-opacity="${n2(n.opac * 0.8)}` : 'none';
       strokes.push(
-        `    <polyline points="${pts}" fill="none" stroke="${hex}" stroke-opacity="${n2(n.opac * 0.8)}" stroke-width="${n2(n.r * d.min * 0.9)}" stroke-linecap="round" stroke-linejoin="round"/>`,
+        `    <polyline points="${pts}" fill="${fill}" stroke="${hex}" stroke-opacity="${n2(n.opac * 0.8)}" stroke-width="${n2(n.r * d.min * 0.9)}" stroke-linecap="round" stroke-linejoin="round"/>`,
       );
       return;
     }
@@ -218,7 +221,7 @@ export function buildSvg(store: Store, stage: Dim): string {
   });
   const blur = n2(d.min * 0.012);
   return [
-    `<!-- GRADIENT HANDLES // SVG // ${store.nodes.length} NODES — an APPROXIMATION: plain radial gradients, no OKLab blend, warp, softness curves or FX.`,
+    `<!-- GRADIENTLABS // SVG // ${store.nodes.length} NODES — an APPROXIMATION: plain radial gradients, no OKLab blend, warp, softness curves or FX.`,
     `     Strokes are blurred polylines (drop filter="url(#blur)" for crisp ones). -->`,
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${d.w} ${d.h}" width="${d.w}" height="${d.h}">`,
     `  <defs>`,
