@@ -2,13 +2,12 @@ import { wheelUp } from './wheel';
 import type { Actions } from './actions';
 import { FX_IDS, fxMaxPos, fxPos, fxSpoken, type FxId } from './fx';
 import { bracketPath, ticksPath } from './handles';
-import { G_SPAN, G_START, gaugeHit, gaugeSpacing, layoutGauge, makeGauge, renderGauge, type GaugeParts } from './gauge';
+import { gaugeHit, gaugeSpacing, layoutGauge, makeGauge, renderGauge, sweepT, type GaugeParts } from './gauge';
 import type { Metrics } from './handles';
 import type { History } from './history';
 import { emit, type Store } from './store';
 
 const NS = 'http://www.w3.org/2000/svg';
-const TAU = Math.PI * 2;
 const NAMES = Object.fromEntries(FX_IDS.map((id) => [id, id.toUpperCase()])) as Record<FxId, string>;
 /** Wheel events right after a summon belong to the summoning gesture (trackpad inertia): they must not step a ring. */
 const SETTLE_MS = 350;
@@ -182,7 +181,7 @@ export class FxDial {
   // ----- construction ------------------------------------------------------------------
 
   private makeView(id: FxId): RingView {
-    const gp = makeGauge('fxring');
+    const gp = makeGauge('fxring', NAMES[id], BTN + 2); // keep the × square clear too
     const g = gp.g;
     g.setAttribute('data-fx-ring', id);
     g.setAttribute('role', 'slider');
@@ -591,18 +590,15 @@ export class FxDial {
     items[to]?.focus({ preventScroll: true });
   }
 
-  /** Angle round the dial → 0…1 along the 270° sweep; the 90° gap snaps to the nearer end, never wraps mid-drag. */
-  private angleT(x: number, y: number, prev: number): number {
-    const rel = (((Math.atan2(y - this.cy, x - this.cx) - G_START) % TAU) + TAU) % TAU;
-    let t = rel / G_SPAN;
-    if (t > 1) t = rel > G_SPAN + (TAU - G_SPAN) / 2 ? 0 : 1;
-    if (Math.abs(t - prev) > 0.6) t = prev > 0.5 ? 1 : 0;
-    return t;
+  /** Angle round the dial → 0…1 along that ring's sweep; the gap snaps to the nearer end, never wraps mid-drag. */
+  private angleT(id: FxId, x: number, y: number, prev: number): number {
+    const v = this.views.find((w) => w.id === id)!;
+    return sweepT(v.sw, x - this.cx, y - this.cy, prev);
   }
 
   private setFromPointer(x: number, y: number): void {
     const d = this.drag!;
-    d.t = this.angleT(x, y, d.t);
+    d.t = this.angleT(d.id, x, y, d.t);
     this.actions.fxSetPos(d.id, Math.round(d.t * fxMaxPos(d.id)));
   }
 

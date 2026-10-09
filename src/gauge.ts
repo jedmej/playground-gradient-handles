@@ -1,7 +1,8 @@
 /**
  * One gauge renderer for the whole app: the FX dial's rings and a node's OPAC / SOFT / ROT dials are the same object.
- * 270° arc with the gap at 6 o'clock (0 at the lower left, clockwise through the top), halo + ink base, 11 ticks,
- * a SIGNAL fill, a notch at the value, and a black mono chip in the bottom gap (`GRAIN // 50`).
+ * An arc that runs almost all the way round, its gap at 6 o'clock just wide enough for the name chip (0 at the lower
+ * left, clockwise through the top), halo + ink base, 11 ticks, a SIGNAL fill, a notch at the value, a value arc on the
+ * knob and a black mono name chip in the bottom gap (`GRAIN`).
  * Styles live under `.gring` in styles.css; state classes (`is-hover`, `is-drag`, `is-off`, `is-active`) are set by the owner.
  */
 const NS = 'http://www.w3.org/2000/svg';
@@ -30,14 +31,34 @@ export function gaugeHit(r: number, dx: number, dy: number, sp: number): number 
   return e <= sp / 2 ? e : null;
 }
 
-export const gaugePt =(ri: number, t: number, dr = 0): string => {
-  const a = G_START + G_SPAN * t;
+/** A gauge's sweep: screen angle of value 0 and the clockwise span to value 1 (the gap is centred at 6 o'clock). */
+export interface Sweep {
+  a0: number;
+  span: number;
+}
+export const SWEEP_270: Readonly<Sweep> = { a0: G_START, span: G_SPAN };
+
+export const gaugePt = (ri: number, t: number, dr = 0, sw: Sweep = SWEEP_270): string => {
+  const a = sw.a0 + sw.span * t;
   return `${((ri + dr) * Math.cos(a)).toFixed(2)} ${((ri + dr) * Math.sin(a)).toFixed(2)}`;
 };
 
-export function gaugeArc(ri: number, t0: number, t1: number): string {
+export function gaugeArc(ri: number, t0: number, t1: number, sw: Sweep = SWEEP_270): string {
   if (t1 - t0 < 0.002) return '';
-  return `M${gaugePt(ri, t0)}A${ri.toFixed(2)} ${ri.toFixed(2)} 0 ${(t1 - t0) * 270 > 180 ? 1 : 0} 1 ${gaugePt(ri, t1)}`;
+  return `M${gaugePt(ri, t0, 0, sw)}A${ri.toFixed(2)} ${ri.toFixed(2)} 0 ${(t1 - t0) * sw.span > Math.PI ? 1 : 0} 1 ${gaugePt(ri, t1, 0, sw)}`;
+}
+
+/**
+ * Pointer angle (dx, dy from the centre) → 0…1 along sweep `sw`. In the gap the value sticks to the end it came from
+ * (`prev`), and it never jumps across the gap mid-drag.
+ */
+export function sweepT(sw: Sweep, dx: number, dy: number, prev: number): number {
+  const TAU = Math.PI * 2;
+  const u = (((Math.atan2(dy, dx) - sw.a0) % TAU) + TAU) % TAU;
+  let t = u / sw.span;
+  if (t > 1) t = u > sw.span + (TAU - sw.span) / 2 ? 0 : 1;
+  if (Math.abs(t - prev) > 0.6) t = prev > 0.5 ? 1 : 0;
+  return t;
 }
 
 const el = <K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}): SVGElementTagNameMap[K] => {
@@ -75,13 +96,19 @@ export interface GaugeParts {
   sp: number;
   label: string;
   t: number;
+  /** Name in the bottom chip (`OPAC`, `GRAIN`); fixed per gauge, it sizes the gap. */
+  name: string;
+  /** Extra px kept clear on each side of the chip (the FX dial's × square). */
+  pad: number;
+  /** This gauge's sweep: the arc runs almost all the way round, stopping just short of its name chip. */
+  sw: Sweep;
 }
 
-export function makeGauge(cls: string): GaugeParts {
+export function makeGauge(cls: string, name = '', pad = 0): GaugeParts {
   const p = (c: string): SVGPathElement => el('path', { class: c });
   const g = el('g', { class: `gring ${cls}` });
   const v: GaugeParts = {
-    g, r: 0, sp: 0, label: '', t: -1,
+    g, r: 0, sp: 0, label: '', t: -1, name, pad, sw: { ...SWEEP_270 },
     baseH: p('halo base'), baseI: p('ink base'), ticksH: p('halo gticks'), ticksI: p('ink gticks'),
     fillH: p('halo fill'), fillI: p('ink fill'), knobH: p('halo knob'), knobI: p('ink knob'),
     tag: el('g', { class: 'fx-tag' }), tagBg: el('rect', { class: 'tag-bg', height: 14, y: -7 }),
@@ -104,17 +131,25 @@ export function layoutGauge(v: GaugeParts, r: number, sp: number): void {
   v.r = r;
   v.sp = sp;
   const half = Math.min(4.5, sp * 0.3);
-  const base = gaugeArc(r, 0, 1);
+  const fs = Math.max(7.5, Math.min(9.5, sp * 0.36));
+  // Sweep: the arc runs round to a little short of the name chip in the bottom gap (chip half-width + pad + 14 px, so
+  // the 0 / max ends, their knob and value arc stay clear of the name), leaving a short name an almost full circle.
+  // Never less than 270° of travel, never past 340°.
+  const chipHalf = v.name ? Math.ceil(v.name.length * (fs * 0.62 + fs * 0.06) + 10) / 2 : r * 0.7;
+  const clear = Math.min(r * 0.99, chipHalf + v.pad + 14);
+  const gap = Math.min(Math.PI / 2, Math.max((20 * Math.PI) / 180, 2 * Math.asin(clear / Math.max(1, r))));
+  v.sw = { a0: Math.PI / 2 + gap / 2, span: Math.PI * 2 - gap };
+  const sw = v.sw;
+  const base = gaugeArc(r, 0, 1, sw);
   v.baseH.setAttribute('d', base);
   v.baseI.setAttribute('d', base);
   let t = '';
   for (let k = 0; k <= 10; k++) {
     const h = half * (k % 5 ? 0.6 : 1);
-    t += `M${gaugePt(r, k / 10, -h)}L${gaugePt(r, k / 10, h)}`;
+    t += `M${gaugePt(r, k / 10, -h, sw)}L${gaugePt(r, k / 10, h, sw)}`;
   }
   v.ticksH.setAttribute('d', t);
   v.ticksI.setAttribute('d', t);
-  const fs = Math.max(7.5, Math.min(9.5, sp * 0.36));
   v.g.style.setProperty('--fx-fs', `${fs}px`);
   v.tag.setAttribute('transform', `translate(0 ${r.toFixed(1)})`);
   v.t = -1;
@@ -131,10 +166,10 @@ export function renderGauge(v: GaugeParts, t: number, off: boolean, label: strin
   const key = off ? -2 : Math.round(t * 5000) / 5000;
   if (key !== v.t) {
     v.t = key;
-    const d = off ? '' : gaugeArc(v.r, 0, t);
+    const d = off ? '' : gaugeArc(v.r, 0, t, v.sw);
     v.fillH.setAttribute('d', d);
     v.fillI.setAttribute('d', d);
-    const k = `M${gaugePt(v.r, t, -v.sp * 0.38)}L${gaugePt(v.r, t, v.sp * 0.38)}`;
+    const k = `M${gaugePt(v.r, t, -v.sp * 0.38, v.sw)}L${gaugePt(v.r, t, v.sp * 0.38, v.sw)}`;
     v.knobH.setAttribute('d', k);
     v.knobI.setAttribute('d', k);
     v.g.classList.toggle('is-off', off);
@@ -169,8 +204,9 @@ function renderValue(v: GaugeParts, t: number, value: string): void {
   const vk = `${key0(t)}|${w.toFixed(1)}|${v.r.toFixed(1)}`;
   if (vk === v.valKey) return;
   v.valKey = vk;
-  const a = G_START + G_SPAN * t;
   const half = Math.min(Math.PI * 0.45, w / 2 / Math.max(1, v.r));
+  // Centred on the value, but kept inside the sweep so near either end it never runs into the name chip.
+  const a = Math.min(v.sw.a0 + v.sw.span - half, Math.max(v.sw.a0 + half, v.sw.a0 + v.sw.span * t));
   const flip = Math.sin(a) > 0;
   const a0 = flip ? a + half : a - half;
   const a1 = flip ? a - half : a + half;

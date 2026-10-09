@@ -1,5 +1,5 @@
 import { wheelUp } from './wheel';
-import { G_SPAN, G_START, gaugeHit, gaugeSpacing, layoutGauge, makeGauge, renderGauge, type GaugeParts } from './gauge';
+import { gaugeHit, gaugeSpacing, layoutGauge, makeGauge, renderGauge, type GaugeParts, type Sweep } from './gauge';
 import { colorStateOf, createColorPage, layoutColorPage, renderColorPage, withAxis, type ColorAxis, type ColorPage, type ColorState } from './colorpage';
 import type { Actions } from './actions';
 import type { History } from './history';
@@ -280,9 +280,9 @@ export class Handles {
     });
 
     // OPAC / SOFT / ROT: the FX dial's gauge, on fixed radii packed round the core (see gauge.ts).
-    const gp = makeGauge('gauge soft');
-    const op = makeGauge('gauge opac');
-    const rp = makeGauge('gauge rot');
+    const gp = makeGauge('gauge soft', 'SOFT');
+    const op = makeGauge('gauge opac', 'OPAC');
+    const rp = makeGauge('gauge rot', 'ROT');
     layoutGauge(gp, this.gr.soft, this.gr.sp);
     layoutGauge(op, this.gr.opac, this.gr.sp);
     layoutGauge(rp, this.gr.rot, this.gr.sp);
@@ -946,23 +946,31 @@ export class Handles {
     this.hoverAt(x, y);
   };
 
+  /**
+   * Pointer offset → 0–1 along a gauge's own sweep. In the bottom gap the value sticks to the end it came from, and
+   * leaving the gap on the far side holds that end until the pointer comes back round (no snap across the gap).
+   */
+  private arcT(sw: Sweep, dx: number, dy: number): number {
+    const u = (((Math.atan2(dy, dx) - sw.a0) % TAU) + TAU) % TAU;
+    let t: number;
+    if (u > sw.span) {
+      t = this.softPrev > 0.5 ? 1 : 0;
+      this.softGap = true;
+    } else {
+      t = u / sw.span;
+      if (this.softGap && Math.abs(t - this.softPrev) > 0.5) t = this.softPrev;
+      else this.softGap = false;
+    }
+    this.softPrev = t;
+    return t;
+  }
+
   /** Pointer angle around the node → 0–1 along the 270° arc. In the bottom gap the value sticks to the end it came from. */
   private applySoft(i: number, x: number, y: number): void {
     const n = this.store.nodes[i];
     if (!n) return;
     const p = this.px(i);
-    const u = (((Math.atan2(y - p.y, x - p.x) - G_START) % TAU) + TAU) % TAU;
-    let t: number;
-    if (u > G_SPAN) {
-      t = this.softPrev > 0.5 ? 1 : 0;
-      this.softGap = true;
-    } else {
-      t = u / G_SPAN;
-      // Leaving the gap on the far side would snap across it: hold the old end until the pointer comes back round.
-      if (this.softGap && Math.abs(t - this.softPrev) > 0.5) t = this.softPrev;
-      else this.softGap = false;
-    }
-    this.softPrev = t;
+    const t = this.arcT(this.views[i].gaugeParts.sw, x - p.x, y - p.y);
     n.soft = Math.round(t * 1000) / 1000;
   }
 
@@ -971,17 +979,7 @@ export class Handles {
     const n = this.store.nodes[i];
     if (!n) return;
     const p = this.px(i);
-    const u = (((Math.atan2(y - p.y, x - p.x) - G_START) % TAU) + TAU) % TAU;
-    let t: number;
-    if (u > G_SPAN) {
-      t = this.softPrev > 0.5 ? 1 : 0;
-      this.softGap = true;
-    } else {
-      t = u / G_SPAN;
-      if (this.softGap && Math.abs(t - this.softPrev) > 0.5) t = this.softPrev;
-      else this.softGap = false;
-    }
-    this.softPrev = t;
+    const t = this.arcT(this.views[i].opParts.sw, x - p.x, y - p.y);
     n.opac = Math.round(t * 1000) / 1000;
     this.store.modified = true;
   }
@@ -990,17 +988,7 @@ export class Handles {
   private applyColor(i: number, axis: ColorAxis, x: number, y: number): void {
     if (!this.store.nodes[i]) return;
     const p = this.px(i);
-    const u = (((Math.atan2(y - p.y, x - p.x) - G_START) % TAU) + TAU) % TAU;
-    let t: number;
-    if (u > G_SPAN) {
-      t = this.softPrev > 0.5 ? 1 : 0;
-      this.softGap = true;
-    } else {
-      t = u / G_SPAN;
-      if (this.softGap && Math.abs(t - this.softPrev) > 0.5) t = this.softPrev;
-      else this.softGap = false;
-    }
-    this.softPrev = t;
+    const t = this.arcT(this.views[i].cp[axis].p.sw, x - p.x, y - p.y);
     this.setAxis(i, axis, t);
   }
 
@@ -1009,17 +997,7 @@ export class Handles {
     const n = this.store.nodes[i];
     if (!n) return;
     const p = this.px(i);
-    const u = (((Math.atan2(y - p.y, x - p.x) - G_START) % TAU) + TAU) % TAU;
-    let t: number;
-    if (u > G_SPAN) {
-      t = this.softPrev > 0.5 ? 1 : 0;
-      this.softGap = true;
-    } else {
-      t = u / G_SPAN;
-      if (this.softGap && Math.abs(t - this.softPrev) > 0.5) t = this.softPrev;
-      else this.softGap = false;
-    }
-    this.softPrev = t;
+    const t = this.arcT(this.views[i].rotP.sw, x - p.x, y - p.y);
     let a = Math.min(t, 0.9999) * TAU;
     if (snap) a = Math.round(a / ROT_STEP) * ROT_STEP;
     n.rot = ((a % TAU) + TAU) % TAU;

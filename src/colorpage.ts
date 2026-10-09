@@ -66,7 +66,7 @@ export interface ColorPage {
 }
 
 function makeColorGauge(cls: string): ColorGauge {
-  const p = makeGauge(`gauge ccol ${cls}`);
+  const p = makeGauge(`gauge ccol ${cls}`, cls.toUpperCase());
   const track = document.createElementNS(NS, 'g');
   track.setAttribute('class', 'ctrack');
   track.setAttribute('fill', 'none');
@@ -106,9 +106,9 @@ export function layoutColorPage(cp: ColorPage, rHue: number, rSat: number, rLum:
   for (const [g, r] of [[cp.hue, rHue], [cp.sat, rSat], [cp.lum, rLum]] as const) {
     layoutGauge(g.p, r, sp);
     g.track.setAttribute('stroke-width', band.toFixed(2));
-    g.track.firstElementChild!.setAttribute('d', gaugeArc(r, 0, 1));
+    g.track.firstElementChild!.setAttribute('d', gaugeArc(r, 0, 1, g.p.sw));
     g.track.firstElementChild!.setAttribute('stroke-width', (band + 3).toFixed(2));
-    g.segs.forEach((e, k) => e.setAttribute('d', gaugeArc(r, k / SEGS, Math.min(1, (k + 1.35) / SEGS))));
+    g.segs.forEach((e, k) => e.setAttribute('d', gaugeArc(r, k / SEGS, Math.min(1, (k + 1.35) / SEGS), g.p.sw)));
     g.key = '';
   }
 }
