@@ -101,6 +101,8 @@ interface NodeView {
    */
   gox: number;
   goy: number;
+  /** 0…1: on open, the offset centre first slides out from the core (leader following), then the stack opens there. */
+  slide: number;
   lead: SVGGElement;
   leadHalo: SVGPathElement;
   leadInk: SVGPathElement;
@@ -152,6 +154,9 @@ function arcPath(cx: number, cy: number, r: number, angle: number, span: number)
     `A${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(cx + r * Math.cos(a1)).toFixed(2)} ${(cy + r * Math.sin(a1)).toFixed(2)}`
   );
 }
+
+/** Seconds the offset gauge centre takes to slide out from the core before its stack opens there. */
+const SLIDE_S = 0.45;
 
 function approach(current: number, target: number, k: number, dt: number, snap: boolean): number {
   if (snap) return target;
@@ -350,7 +355,7 @@ export class Handles {
       uid: n.uid, g, ring, ringHalo, ringInk, ticksHalo, ticksInk, bearings, retHalo, retInk, focus,
       gauge, gaugeParts: gp, gaugeOp: 0, rotD, rotP: rp, rotOp: 0, lastRotR: -1, lastRotA: -9, opG, opParts: op, opOp: 0, lastOpRi: -1, lastOpac: -1, lastRi: -1, lastSoft: -1, softAttr: '', layerAttr: '',
       holdHalo, holdInk, holding: false, cp, pg: 0,
-      gox: 0, goy: 0, lead, leadHalo, leadInk, leadMark, leadMarkHalo, leadKey: '',
+      gox: 0, goy: 0, slide: 0, lead, leadHalo, leadInk, leadMark, leadMarkHalo, leadKey: '',
       // Fresh nodes "acquire": brackets start wide and settle, the ring eases in.
       bracket: n.fresh && !this.store.reducedMotion ? 22 : 11,
       ringOp: 0, lastR: -1, lastBracket: -1, cls: '',
@@ -1698,13 +1703,23 @@ export class Handles {
         const Rb = outer + 16;
         const tx = m.w < 2 * R ? m.w / 2 : Math.min(m.w - R, Math.max(R, x));
         const ty = m.h < R + Rb ? (R + m.h - Rb) / 2 : Math.min(m.h - Rb, Math.max(R, y));
-        v.gox = approach(v.gox, tx - x, 18, dt, snap);
-        v.goy = approach(v.goy, ty - y, 18, dt, snap);
-        const tr = `translate(${v.gox.toFixed(2)} ${v.goy.toFixed(2)})`;
-        for (const gg of [v.opG, v.gauge, v.rotD, v.cp.lum.p.g, v.cp.sat.p.g, v.cp.hue.p.g, v.cp.sw]) gg.setAttribute('transform', tr);
+        // Eased target offset; on open it is played out over SLIDE_S (marker and leader travel from the core), and only
+        // then does the stack open at its new centre. Closing resets it, so every reveal replays the move.
+        const far = Math.hypot(tx - x, ty - y) > 18;
+        v.slide = !wantOpen ? 0 : !far || snap ? 1 : Math.min(1, v.slide + dt / SLIDE_S);
+        const ease = 1 - Math.pow(1 - v.slide, 3);
+        v.gox = approach(v.gox, (tx - x) * ease, v.slide < 1 ? 60 : 18, dt, snap);
+        v.goy = approach(v.goy, (ty - y) * ease, v.slide < 1 ? 60 : 18, dt, snap);
+        // The stack waits for the slide: it fades and grows in over the last quarter of it.
+        const gate = far ? Math.min(1, Math.max(0, (v.slide - 0.75) / 0.25)) : 1;
+        const tr = `translate(${v.gox.toFixed(2)} ${v.goy.toFixed(2)})` + (gate < 1 ? ` scale(${(0.8 + 0.2 * gate).toFixed(3)})` : '');
+        for (const gg of [v.opG, v.gauge, v.rotD, v.cp.lum.p.g, v.cp.sat.p.g, v.cp.hue.p.g, v.cp.sw]) {
+          gg.setAttribute('transform', tr);
+          if (gate < 1) gg.style.opacity = (parseFloat(gg.style.opacity || '0') * gate).toFixed(3);
+        }
         const dist = Math.hypot(v.gox, v.goy);
-        const show = dist > 18 && s.tool === 'edit' && !n.lock ? 1 : 0;
-        const leadOp = show * part(1) * Math.min(1, (dist - 18) / 12);
+        const show = dist > 6 && far && s.tool === 'edit' && !n.lock ? 1 : 0;
+        const leadOp = show * Math.min(1, v.slide * 4) * Math.min(1, (dist - 6) / 12);
         v.lead.style.opacity = leadOp < 0.005 ? '0' : leadOp.toFixed(3);
         if (leadOp >= 0.005) {
           const ux = v.gox / dist;
