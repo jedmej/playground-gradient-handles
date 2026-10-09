@@ -72,6 +72,7 @@ export class Explore {
   /** Full-size render per take (keyed by the take itself) and the stage size it was made for. */
   private fullCache = new WeakMap<object, { size: string; url: string }>();
   private fullToken = 0;
+  private fullHideTimer = 0;
   private variants: Array<{ specs: NodeSpec[]; fx: FxState | null; rule?: Harmony; seed?: number }> = [];
   private mode: 'vary' | 'random' = 'vary';
   private axesEl!: HTMLElement;
@@ -226,9 +227,9 @@ export class Explore {
       b.append(img, tag); // the serial (R-1 / V-1) doubles as the 1–4 key hint
       b.addEventListener('click', () => this.pick(k));
       b.addEventListener('pointerenter', () => void this.showFull(k));
-      b.addEventListener('pointerleave', () => this.hideFull());
+      b.addEventListener('pointerleave', () => this.hideFull(true));
       b.addEventListener('focus', () => void this.showFull(k));
-      b.addEventListener('blur', () => this.hideFull());
+      b.addEventListener('blur', () => this.hideFull(true));
       // Padlock over the thumbnail's top-right corner (a sibling, not inside the pick button).
       const lock = document.createElement('button');
       lock.type = 'button';
@@ -552,6 +553,7 @@ export class Explore {
     if (!this.viewOn || !this.isOpen) return;
     const v = this.variants[k];
     if (!v) return;
+    window.clearTimeout(this.fullHideTimer); // moving onto the next take: keep the current preview up until it swaps
     const token = ++this.fullToken;
     const m = this.metrics;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -574,7 +576,16 @@ export class Explore {
     this.full.hidden = false;
   }
 
-  private hideFull(): void {
+  /**
+   * Drop the full preview. `soon`: after leaving a thumbnail, wait 500 ms first, so crossing the gap to the next take
+   * does not flash the real field in between (entering a take cancels it and swaps straight over).
+   */
+  private hideFull(soon = false): void {
+    window.clearTimeout(this.fullHideTimer);
+    if (soon) {
+      this.fullHideTimer = window.setTimeout(() => this.hideFull(), 500);
+      return;
+    }
     this.fullToken++;
     this.full.hidden = true;
   }
