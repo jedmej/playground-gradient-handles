@@ -294,6 +294,32 @@ window.addEventListener('keydown', (e) => {
   setTheme(!isDark());
 });
 
+// ----- SHORTCUTS [?]: the key list lives in a popup under the artboard (closed by default). ? or the button toggles it;
+// Esc, a press outside or the button again closes it.
+const keysBtn = document.getElementById('keys-btn') as HTMLButtonElement;
+const keysPop = document.getElementById('keys') as HTMLElement;
+const setKeys = (open: boolean): void => {
+  keysPop.hidden = !open;
+  keysBtn.setAttribute('aria-expanded', String(open));
+};
+keysBtn.addEventListener('click', () => setKeys(keysPop.hidden));
+window.addEventListener('pointerdown', (e) => {
+  if (!keysPop.hidden && !keysPop.contains(e.target as Node) && !keysBtn.contains(e.target as Node)) setKeys(false);
+}, { capture: true });
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !keysPop.hidden) {
+    e.preventDefault();
+    e.stopPropagation();
+    setKeys(false);
+    return;
+  }
+  if (e.key !== '?' || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target as HTMLElement | null;
+  if (t?.closest?.(TYPING) || t?.closest?.('[data-fx-knob], [data-fx-ring]')) return;
+  e.preventDefault();
+  setKeys(keysPop.hidden);
+}, { capture: true });
+
 let last = now();
 function tick(): void {
   const t = now();

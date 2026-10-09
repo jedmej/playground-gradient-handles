@@ -172,7 +172,6 @@ b {
 .preset,
 .node-spec,
 .status,
-.keys,
 .stage-foot,
 .state-readout {
   font-family: var(--mono);
@@ -424,12 +423,69 @@ b {
   display: block;
 }
 
-/* ---------- shortcut strip: keyboard / touch hints under the artboard ---------- */
-.stage-col > .keys {
-  padding: 8px 24px 8px 26px;
+/* ---------- stage bar under the artboard: GENERATE (Random, Harmony, Vary) + SHORTCUTS [?] ---------- */
+.stage-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  padding: 7px 24px 7px 26px;
   border-top: 1px solid var(--void);
-  line-height: 1.5;
 }
+.stage-bar .tb-btn {
+  margin: 0;
+  height: 28px;
+  padding: 0 7px;
+  gap: 5px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.stage-bar .tb-btn[aria-expanded='true'],
+.stage-bar .tb-btn[aria-expanded='true']:hover { background: var(--plate); color: var(--signal); }
+.stage-bar .tb-btn[aria-expanded='true'] b { color: var(--signal); }
+.keys-wrap { position: relative; margin-left: auto; }
+
+/* SHORTCUTS popup: the node menu's plate, a vertical key → action list, opening up from its button. */
+.keys-pop {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  min-width: 232px;
+  max-height: min(80vh, 640px);
+  overflow-y: auto;
+  padding: 0 0 4px;
+  /* Not quite opaque, like the node menu (a fully opaque plate over WebGL confused Chrome's culling). */
+  background: rgba(0, 0, 0, 0.995);
+  outline: 1px solid var(--graphite);
+  outline-offset: -1px;
+  color: var(--plate-fg);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.keys-pop[hidden] { display: none; }
+.keys-list { margin: 0; padding: 0; }
+.keys-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  height: 20px;
+  padding: 0 10px;
+}
+.keys-list dt {
+  padding: 1px 5px 0;
+  border: 1px solid var(--hull);
+  color: var(--plate-fg);
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+.keys-list dd { margin: 0; color: var(--graphite); text-align: right; }
+.keys-list > div:hover dd { color: var(--signal); }
+.keys-pop .k-touch { display: none; }
 
 .stage-frame {
   position: relative;
@@ -552,12 +608,11 @@ html[data-tool='draw'][data-drag] .stage {
 .stage-foot {
   grid-column: 2;
   grid-row: 3;
-  /* A narrow (portrait) stage wraps the readouts onto a second line instead of overflowing. */
-  flex-wrap: wrap;
-  gap: 0 14px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
+  /* Cursor readout | GENERATE (centred) | stage size. A narrow (portrait) stage wraps onto more lines. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 4px 14px;
+  align-items: center;
   font-size: 10px;
   color: var(--graphite);
   padding-top: 7px;
@@ -565,6 +620,25 @@ html[data-tool='draw'][data-drag] .stage {
 
 .foot-l {
   color: var(--ink);
+}
+.foot-r { justify-self: end; }
+
+/* GENERATE under the artboard: RANDOM · HARMONY · VARY in the FX DIAL / PREVIEW corner-button style. */
+.foot-gen {
+  display: flex;
+  gap: 6px;
+  justify-self: center;
+}
+.foot-gen .foot-btn { margin: 0; height: 20px; }
+.foot-gen .foot-btn[aria-pressed='true'],
+.foot-gen .foot-btn[aria-pressed='true']:hover { background: var(--plate); color: var(--signal); }
+.foot-gen .foot-btn[aria-pressed='true'] b { color: var(--signal); }
+@media (pointer: coarse), (max-width: 959px) {
+  .foot-gen .foot-btn { height: 36px; padding: 0 12px; }
+  .stage-foot { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .foot-gen { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+  /* Readouts on one line, the 36 px GENERATE buttons under them: the foot row grows to hold both. */
+  :root { --foot-row: 62px; }
 }
 
 .reg {
@@ -1495,47 +1569,14 @@ html[data-tool='draw'][data-drag] .stage {
   visibility: visible;
 }
 
-.keys {
-  font-size: 9.5px;
-  color: var(--graphite);
-  text-transform: none;
-  letter-spacing: 0.02em;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 6px;
-  align-items: center;
-}
-
-.keys span {
-  border: 1px solid var(--rule);
-  padding: 1px 4px 0;
-  color: var(--soft);
-  font-size: 9px;
-  letter-spacing: 0.06em;
-}
-
-.keys .k-fine,
-.keys .k-touch {
-  display: contents;
-  border: 0;
-  padding: 0;
-  font-size: inherit;
-  letter-spacing: inherit;
-  color: inherit;
-}
-
-.keys .k-touch {
-  display: none;
-}
-
 /* Same switch for the intro copy: "Double-click" on mouse, "Double-tap" on touch. */
 .t-touch {
   display: none;
 }
 
 @media (pointer: coarse) {
-  .keys .k-fine { display: none; }
-  .keys .k-touch { display: contents; }
+  .keys-pop .k-fine { display: none; }
+  .keys-pop .k-touch { display: block; }
   .t-fine { display: none; }
   .t-touch { display: inline; }
 }
@@ -1971,7 +2012,7 @@ html[data-tool='draw'][data-drag] .stage {
     max-width: none;
   }
 
-  .stage-col > .keys {
+  .stage-bar {
     padding: 8px 12px 10px;
   }
 
@@ -2883,13 +2924,13 @@ html[data-drag='lum'] .stage,
 /* `.stage-col.is-preview` (main.ts) hides the toolbar and the shortcut strip; PREVIEW (corner button) stays, FX DIAL
    hides with the rest (the stage is inert). Layout does not shift: visibility, not display. */
 .stage-col .toolbar,
-.stage-col > .keys,
+.stage-col > .stage-bar,
 .corner-fx {
   transition: opacity 200ms var(--ease), visibility 0s linear 0s;
 }
 .stage-col.is-preview .toolbar,
 .stage-col.is-preview .corner-fx,
-.stage-col.is-preview > .keys {
+.stage-col.is-preview > .stage-bar {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -2916,11 +2957,11 @@ html[data-drag='lum'] .stage,
 }
 @media (prefers-reduced-motion: reduce) {
   .stage-col .toolbar,
-  .stage-col > .keys,
+  .stage-col > .stage-bar,
   .corner-fx,
   .stage-col.is-preview .toolbar,
   .stage-col.is-preview .corner-fx,
-  .stage-col.is-preview > .keys {
+  .stage-col.is-preview > .stage-bar {
     transition: none;
   }
   .stage-frame .ruler,
@@ -3010,25 +3051,6 @@ html[data-drag='lum'] .stage,
 }
 
 /* ---------- v6 Generate: RANDOM / VARY, node LOCK / HIDE, palette EXTRACT ---------- */
-/* Toolbar: the VARY button reads as armed while its strip is open (the DRAW treatment). */
-.tb-generate .tb-btn[aria-pressed='true'],
-.tb-generate .tb-btn[aria-pressed='true']:hover {
-  background: var(--plate);
-  color: var(--signal);
-}
-.tb-generate .tb-btn[aria-pressed='true'] b {
-  color: var(--signal);
-}
-@media (hover: none) {
-  .tb-generate .tb-btn[aria-pressed='false']:hover {
-    background: none;
-    color: var(--void);
-  }
-  .tb-generate .tb-btn[aria-pressed='false']:hover b {
-    color: var(--graphite);
-  }
-}
-
 /* VARY strip: a VOID plate over the foot of the stage, four thumbnails of the same field. */
 .vary-strip {
   position: absolute;

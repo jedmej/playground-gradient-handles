@@ -81,17 +81,6 @@
               <span class="btn-label">Reset</span> <b>[↺]</b>
             </button>
           </div>
-          <div class="tb-group tb-generate" role="group" aria-label="Generate">
-            <button class="mini tb-btn" id="randomize" data-action="randomize" type="button" aria-keyshortcuts="R" title="New random composition (R) — locked nodes stay">
-              <span class="btn-label">Random</span> <b>[R]</b>
-            </button>
-            <button class="mini tb-btn tb-harmony" id="harmony" data-action="harmony" data-harmony="any" type="button" title="Colour harmony Random uses: ANY · ANALOG · COMPL · TRIAD · SPLIT · MONO (⇧ = back)">
-              <span class="btn-label">Harmony</span> <b>[ANY]</b>
-            </button>
-            <button class="mini tb-btn" id="vary" data-action="vary" type="button" aria-pressed="false" aria-keyshortcuts="V" title="Four small variations of this field (V) — locked nodes stay">
-              <span class="btn-label">Vary</span> <b>[V]</b>
-            </button>
-          </div>
           <div class="tb-group tb-export" role="group" aria-label="Export">
             <button class="mini tb-btn" id="share" data-action="share" type="button" aria-keyshortcuts="U" title="Copy a link that restores this exact gradient (U)">
               <span class="btn-label">Share</span> <b>[U]</b>
@@ -131,16 +120,71 @@
           </div>
           <div class="stage-foot">
             <span class="foot-l" id="foot-serial">CUR // X —.——— Y —.———</span>
+            <div class="foot-gen" role="group" aria-label="Generate">
+              <button class="mini foot-btn" id="randomize" data-action="randomize" type="button" aria-keyshortcuts="R" title="New random composition (R) — locked nodes stay">
+                <span class="mini-l">RANDOM</span> <b>[R]</b>
+              </button>
+              <button class="mini foot-btn tb-harmony" id="harmony" data-action="harmony" data-harmony="any" type="button" title="Colour harmony Random uses: ANY · ANALOG · COMPL · TRIAD · SPLIT · MONO (⇧ = back)">
+                <span class="mini-l">HARMONY</span> <b>[ANY]</b>
+              </button>
+              <button class="mini foot-btn" id="vary" data-action="vary" type="button" aria-pressed="false" aria-keyshortcuts="V" title="Variations of this field (V) — locked nodes stay">
+                <span class="mini-l">VARY</span> <b>[V]</b>
+              </button>
+            </div>
             <span class="foot-r" id="foot-dims">—×— PX</span>
           </div>
         </div>
         </div>
 
-        <p class="keys" id="keys">
-          <span>TAB</span> focus <span>←↑→↓</span> nudge <span>[ ]</span> layer
-          <span class="k-fine"><span>SCROLL</span> radius <span>⇧ SCROLL</span> soft <span>DBL-CLICK</span> add <span>CLICK CORE</span> colour <span>D</span> draw <span>G</span> snap <span>Y</span> mirror <span>I</span> pick <span>R</span> random <span>V</span> vary <span>L</span> lock <span>H</span> hide <span>, .</span> rotate <span>DEL</span> remove <span>⌘Z</span> undo <span>E</span> export <span>U</span> share <span>C</span> copy <span>X</span> code <span>F</span> FX dial <span>P</span> preview <span>M</span> dark <span>\</span> panel <span>ESC</span> back</span>
-          <span class="k-touch"><span>DOUBLE-TAP</span> add <span>TAP CORE</span> colour <span>DRAW</span> toggle <span>PINCH</span> radius <span>TAP + HOLD</span> menu <span>FX DIAL</span> effects <span>PREVIEW</span> bare</span>
-        </p>
+        <div class="stage-bar" id="stage-bar">
+          <div class="keys-wrap">
+            <button class="mini tb-btn" id="keys-btn" data-action="keys" type="button" aria-expanded="false" aria-controls="keys" aria-keyshortcuts="?" title="Keyboard shortcuts (?)">
+              <span class="btn-label">Shortcuts</span> <b>[?]</b>
+            </button>
+            <div class="keys-pop" id="keys" role="dialog" aria-label="Shortcuts" hidden>
+              <div class="menu-head">SHORTCUTS</div>
+              <dl class="keys-list k-fine">
+                <div><dt>TAB</dt><dd>focus</dd></div>
+                <div><dt>←↑→↓</dt><dd>nudge (⇧ ×10)</dd></div>
+                <div><dt>[ ]</dt><dd>layer</dd></div>
+                <div><dt>SCROLL</dt><dd>radius</dd></div>
+                <div><dt>⇧ SCROLL</dt><dd>soft</dd></div>
+                <div><dt>DBL-CLICK</dt><dd>add node</dd></div>
+                <div><dt>CLICK CORE</dt><dd>colour</dd></div>
+                <div><dt>D</dt><dd>draw</dd></div>
+                <div><dt>G</dt><dd>snap</dd></div>
+                <div><dt>Y</dt><dd>mirror</dd></div>
+                <div><dt>I</dt><dd>pick colour</dd></div>
+                <div><dt>R</dt><dd>random</dd></div>
+                <div><dt>V</dt><dd>vary</dd></div>
+                <div><dt>L</dt><dd>lock</dd></div>
+                <div><dt>H</dt><dd>hide (⇧ solo)</dd></div>
+                <div><dt>, .</dt><dd>rotate</dd></div>
+                <div><dt>DEL</dt><dd>remove</dd></div>
+                <div><dt>⌘Z</dt><dd>undo (⇧ redo)</dd></div>
+                <div><dt>E</dt><dd>export</dd></div>
+                <div><dt>U</dt><dd>share link</dd></div>
+                <div><dt>C</dt><dd>copy PNG</dd></div>
+                <div><dt>X</dt><dd>code</dd></div>
+                <div><dt>F</dt><dd>FX dial</dd></div>
+                <div><dt>P</dt><dd>preview</dd></div>
+                <div><dt>M</dt><dd>dark</dd></div>
+                <div><dt>\</dt><dd>panel</dd></div>
+                <div><dt>?</dt><dd>shortcuts</dd></div>
+                <div><dt>ESC</dt><dd>back</dd></div>
+              </dl>
+              <dl class="keys-list k-touch">
+                <div><dt>DOUBLE-TAP</dt><dd>add node</dd></div>
+                <div><dt>TAP CORE</dt><dd>colour</dd></div>
+                <div><dt>DRAW</dt><dd>toggle</dd></div>
+                <div><dt>PINCH</dt><dd>radius</dd></div>
+                <div><dt>TAP + HOLD</dt><dd>menu</dd></div>
+                <div><dt>FX DIAL</dt><dd>effects</dd></div>
+                <div><dt>PREVIEW</dt><dd>bare</dd></div>
+              </dl>
+            </div>
+          </div>
+        </div>
       </section>
 
       <aside class="spec" id="spec" aria-label="Specification">
