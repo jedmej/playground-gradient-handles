@@ -2103,93 +2103,11 @@ html[data-tool='draw'][data-drag] .stage {
 
 /* ---------- round 4b: SOFT gauge, SOFT row, layers, node menu ------------------ */
 
-/* The SOFT gauge sits inside the bezel: hairline arc, 11 ticks, SIGNAL fill, a radial knob at the value. */
+/* Node gauges (SOFT / OPAC / ROT) render through src/gauge.ts (`.gring`); the wrapper only opts out of hits. */
 .node .gauge {
   pointer-events: none;
   will-change: opacity;
 }
-
-.node .g-base.ink,
-.node .g-ticks.ink {
-  stroke: #fff;
-  stroke-width: 1;
-  stroke-opacity: 0.9;
-}
-
-.node .g-base.ink { stroke-opacity: 0.5; }
-.node .g-base.halo { stroke-width: 3; stroke-opacity: 0.5; }
-.node .g-ticks.halo { stroke-width: 3; stroke-opacity: 0.55; }
-
-.node .g-fill.ink {
-  stroke: var(--signal);
-  stroke-width: 2;
-}
-
-.node .g-fill.halo {
-  stroke-width: 4.5;
-  stroke-opacity: 0.6;
-}
-
-.node .g-knob.ink {
-  stroke: #fff;
-  stroke-width: 1.5;
-  transition: stroke var(--t) var(--ease);
-}
-
-.node .g-knob.halo {
-  stroke-width: 4;
-  stroke-opacity: 0.6;
-}
-
-.node.is-soft-hover .gauge.soft .g-knob.ink,
-.node.is-soft-hover .gauge.soft .g-ticks.ink,
-.node.is-opac-hover .gauge.opac .g-knob.ink,
-.node.is-opac-hover .gauge.opac .g-ticks.ink { stroke: var(--signal); }
-
-.node.is-soft-drag .gauge.soft .g-fill.ink,
-.node.is-soft-drag .gauge.soft .g-knob.ink,
-.node.is-soft-flash .gauge.soft .g-fill.ink,
-.node.is-soft-flash .gauge.soft .g-knob.ink,
-.node.is-opac-drag .gauge.opac .g-fill.ink,
-.node.is-opac-drag .gauge.opac .g-knob.ink,
-.node.is-opac-flash .gauge.opac .g-fill.ink,
-.node.is-opac-flash .gauge.opac .g-knob.ink { stroke: var(--flare); }
-
-/* Hover thickens the whole gauge. */
-.node.is-soft-hover .gauge.soft .g-fill.ink,
-.node.is-opac-hover .gauge.opac .g-fill.ink { stroke-width: 3; }
-.node.is-soft-hover .gauge.soft .g-knob.ink,
-.node.is-opac-hover .gauge.opac .g-knob.ink { stroke-width: 2.25; }
-
-.node .soft-label,
-.node .opac-label {
-  font-family: var(--mono);
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  fill: #fff;
-  stroke: #000;
-  stroke-width: 2.5px;
-  stroke-opacity: 0.7;
-  stroke-linejoin: round;
-  paint-order: stroke fill;
-  opacity: 0;
-  transition: opacity var(--t) var(--ease), fill var(--t) var(--ease);
-}
-
-.node.is-soft-hover .soft-label,
-.node.is-soft-drag .soft-label,
-.node.is-soft-flash .soft-label,
-.node.is-opac-hover .opac-label,
-.node.is-opac-drag .opac-label,
-.node.is-opac-flash .opac-label { opacity: 1; }
-
-.node.is-soft-hover .soft-label,
-.node.is-opac-hover .opac-label { fill: var(--signal); }
-.node.is-soft-drag .soft-label,
-.node.is-soft-flash .soft-label,
-.node.is-opac-drag .opac-label,
-.node.is-opac-flash .opac-label { fill: var(--flare); }
 
 /* Cursor: SOFT swallows it on hover, drag and wheel like ROT / OPAC; the highlighted knob is the cursor. */
 html[data-hover-state='soft'] .stage,
@@ -2201,32 +2119,6 @@ html[data-tool='draw'][data-hover-state='soft'] .stage,
 html[data-tool='draw'][data-drag='soft'] .stage {
   cursor: var(--cur-cross), crosshair;
 }
-
-/* ROT dial: a full-turn track just inside the ring, ticks every 15°, SIGNAL fill from 000, a notch at the angle.
-   Same halo + ink dual stroke as the gauges. */
-.node .rotd {
-  pointer-events: none;
-  will-change: opacity;
-}
-.node .rot-track.ink,
-.node .rot-ticks.ink { stroke: #fff; stroke-width: 1; stroke-opacity: 0.9; fill: none; }
-.node .rot-track.ink { stroke-opacity: 0.5; }
-.node .rot-track.halo { stroke-width: 3; stroke-opacity: 0.5; fill: none; }
-.node .rot-ticks.halo { stroke-width: 3; stroke-opacity: 0.55; fill: none; }
-.node .rot-fill.ink { stroke: var(--signal); stroke-width: 2; fill: none; }
-.node .rot-fill.halo { stroke-width: 4.5; stroke-opacity: 0.6; fill: none; }
-.node .rot-knob.ink { stroke: #fff; stroke-width: 1.75; transition: stroke var(--t) var(--ease); }
-.node .rot-knob.halo { stroke-width: 4.5; stroke-opacity: 0.6; }
-
-.node.is-rot-hover .rot-track.ink { stroke-opacity: 0.9; stroke-width: 1.75; }
-.node.is-rot-hover .rot-ticks.ink,
-.node.is-rot-hover .rot-knob.ink { stroke: var(--signal); }
-.node.is-rot-hover .rot-fill.ink { stroke-width: 3; }
-.node.is-rot-hover .rot-knob.ink { stroke-width: 2.5; }
-.node.is-rot-drag .rot-fill.ink,
-.node.is-rot-drag .rot-knob.ink,
-.node.is-rot-flash .rot-fill.ink,
-.node.is-rot-flash .rot-knob.ink { stroke: var(--flare); }
 
 /* Cursor: the dials swallow it on hover, drag and wheel; the notch is the cursor. */
 html[data-hover-state='rot'] .stage,
