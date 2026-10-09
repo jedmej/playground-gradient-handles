@@ -10,16 +10,18 @@ import { FxDial } from './fxdial';
 import { FxPanel, WallpaperPanel } from './fxpanel';
 import { GradientRenderer } from './gradient';
 import { Actions } from './actions';
-import { loadCustom } from './custom';
+import { library } from './custom';
 import { createMetrics, Handles } from './handles';
 import { History } from './history';
 import { FieldBuffers, packField } from './field';
+import { Output } from './output';
 import { createStore, EASE } from './store';
 import { drawRulers, UI } from './ui';
 import { wallpaperTarget } from './wallpaper';
 
 const store = createStore();
-store.custom = loadCustom();
+store.slots = library.load();
+store.custom = store.slots[0];
 const savedFx = loadFxStorage();
 if (savedFx) {
   store.fx = savedFx.fx;
@@ -109,6 +111,7 @@ const ui = new UI(store, handles.metrics, now, () => ({ ...handles.pointer, insi
 actions.bindKeys();
 new FxPanel(store, actions, history);
 new WallpaperPanel(store, handles.metrics, now);
+new Output(store, actions, handles.metrics, now, isPreview);
 const fxDial = new FxDial(store, actions, history, stage, handles.metrics, (x, y) => handles.emptyAt(x, y), () => handles.busy());
 
 import.meta.hot?.dispose(() => fxDial.destroy());
